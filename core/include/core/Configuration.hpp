@@ -1,18 +1,21 @@
 #pragma once
 
+#include "backend/IConfig.hpp"
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace Core {
 
 /**
- * @brief Simple key-value configuration store for backends and components.
+ * @brief Key-value configuration store implementing Backend::IConfig.
  *
- * Configuration is populated by reading from a file (key=value format, with '#' or ';' for comments).
+ * Configuration is populated by reading from a file (key=value format, with '#' or ';' for comments)
+ * or by directly setting key-value pairs. Inherits strongly-typed get<T>() and getOr<T>() from IConfig.
  */
-class Configuration {
+class Configuration : public Backend::IConfig {
 public:
     Configuration() = default;
 
@@ -33,21 +36,12 @@ public:
     void set(std::string key, std::string value);
 
     /**
-     * @brief Gets an optional string value for the given key.
+     * @brief Looks up a raw string value for the given key.
      *
      * @param key Setting identifier.
-     * @return std::optional<std::string> Value if present, std::nullopt otherwise.
+     * @return std::optional<std::string_view> Value view if present, std::nullopt otherwise.
      */
-    [[nodiscard]] std::optional<std::string> get(const std::string& key) const;
-
-    /**
-     * @brief Gets a configuration value or returns a default fallback.
-     *
-     * @param key Setting identifier.
-     * @param defaultValue Fallback value if key is not found.
-     * @return std::string Value or defaultValue.
-     */
-    [[nodiscard]] std::string getOr(const std::string& key, const std::string& defaultValue) const;
+    [[nodiscard]] std::optional<std::string_view> getString(std::string_view key) const override;
 
     /**
      * @brief Checks if a key exists in the configuration.
@@ -56,7 +50,7 @@ public:
      * @return true If present.
      * @return false Otherwise.
      */
-    [[nodiscard]] bool has(const std::string& key) const noexcept;
+    [[nodiscard]] bool has(std::string_view key) const noexcept override;
 
 private:
     std::unordered_map<std::string, std::string> m_entries;

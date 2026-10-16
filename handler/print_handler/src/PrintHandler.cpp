@@ -7,7 +7,7 @@
 
 namespace Proxy::Handler {
 
-PrintHandler::PrintHandler(std::unique_ptr<Core::IBackend> backend)
+PrintHandler::PrintHandler(std::unique_ptr<::Backend::IBackend> backend)
     : m_backend(std::move(backend))
 {
 }

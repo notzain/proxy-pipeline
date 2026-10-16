@@ -16,7 +16,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ProxyBackends)
 
-# Discover and include CMake projects in subdirectories
+# Backend interface library
+add_subdirectory(backend/interface)
+
+# Core domain library (depends on backend-interface)
 add_subdirectory(core)
 
 # Automatically discover all backends under backend/
@@ -28,3 +31,6 @@ add_subdirectory(handler/print_handler)
 # Tests
 enable_testing()
 add_subdirectory(test)
+
+# Export manifest of all generated handler targets for CI/Docker packaging
+proxy_export_targets_manifest("${CMAKE_BINARY_DIR}/manifest.json")

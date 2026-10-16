@@ -52,25 +52,17 @@ void Configuration::set(std::string key, std::string value)
     m_entries[std::move(key)] = std::move(value);
 }
 
-std::optional<std::string> Configuration::get(const std::string& key) const
+std::optional<std::string_view> Configuration::getString(std::string_view key) const
 {
-    if (auto it = m_entries.find(key); it != m_entries.end()) {
+    if (auto it = m_entries.find(std::string(key)); it != m_entries.end()) {
         return it->second;
     }
     return std::nullopt;
 }
 
-std::string Configuration::getOr(const std::string& key, const std::string& defaultValue) const
+bool Configuration::has(std::string_view key) const noexcept
 {
-    if (auto val = get(key); val.has_value()) {
-        return *val;
-    }
-    return defaultValue;
-}
-
-bool Configuration::has(const std::string& key) const noexcept
-{
-    return m_entries.contains(key);
+    return m_entries.contains(std::string(key));
 }
 
 } // namespace Core

@@ -103,37 +103,53 @@ cmake --build build
 ## 6. Project Structure & Naming Conventions
 
 - **Directory Layout for Subprojects**:
-  - `include/`: Public headers exposed to consumers of the library (e.g. `include/core/IHandler.hpp`).
+  - `include/`: Public headers exposed to consumers of the library (e.g. `include/core/IHandler.hpp`, `include/backend/IBackend.hpp`, `include/backend/IConfig.hpp`).
   - `src/`: Implementation files (`.cpp`) and private/internal headers (`.hpp`).
 - **Separation of Declarations & Implementations**:
   - All non-templated function and method implementations must reside in source files (`.cpp`). Headers (`.hpp`) are reserved for declarations only. Templated classes/functions are the only exception to this rule.
 - **Naming Conventions**:
-  - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g., `IHandler`).
-  - **Namespaces**: Namespaces must always be **PascalCase** (e.g., `Core`, `Proxy`, `Proxy::Backend::File`). Note: formatting/layout is maintained by `clang-format`, while identifier casing is enforced via `.clang-tidy` (`readability-identifier-naming.NamespaceCase: CamelCase`).
+  - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g., `IHandler`, `IBackend`, `IConfig`).
+  - **Namespaces**: Namespaces must always be **PascalCase** (e.g., `Backend`, `Core`, `Proxy`, `Proxy::Backend::File`). Note: formatting/layout is maintained by `clang-format`, while identifier casing is enforced via `.clang-tidy` (`readability-identifier-naming.NamespaceCase: CamelCase`).
 
 ---
 
 ## 7. Documentation (Doxygen)
 
-- **Location Convention**: Doxygen documentation comments (`/** ... */`) must be placed in the **header file** (`.hpp`) alongside declarations.
-- **Source File Exception**: Place Doxygen comments in the source file (`.cpp`) only if the entity/function is strictly defined and used within that source file (e.g., file-static helpers or internal anonymous-namespace functions).
+- **Location Convention**: Doxygen documentation comments (`/** ... */`) must be placed in the **header file** (`.hpp`) alongside declarations.\n- **Source File Exception**: Place Doxygen comments in the source file (`.cpp`) only if the entity/function is strictly defined and used within that source file (e.g., file-static helpers or internal anonymous-namespace functions).
 
 ---
 
 ## 8. Architectural Layering & Abstraction
 
 - **Layer Responsibilities**:
-  - `core`: Defines foundational domain interfaces:
+  - `backend/interface` (`backend-interface` target):
+    - `IConfig`: Abstract configuration interface providing strongly-typed templated getters (`get<T>(key)`, `getOr<T>(key, default)`).
+    - `IBackend`: Underlying transport interface for message retrieval (`nextMessage(timeout)`), configured via `configure(const IConfig&)`. Declares `std::unique_ptr<IBackend> createBackend()`.
+  - `backend/*`: Concrete transport implementations of `Backend::IBackend`:
+    - Depend **only** on `backend-interface` (no dependency on `core`).
+    - `backend-file`: Implements `FileBackend` watching a directory specified by `"file.path"`. Newly detected files are read and passed as messages, then deleted immediately.\n    - `backend-socket`: Implements `SocketBackend` listening on a UDP socket specified by `"socket.host"` and `"socket.port"`, emitting received datagram payloads as messages (receive-only).
+    - Backends implement default constructors, `configure(const IConfig&)`, and define the factory function `Backend::createBackend()`. Backends never depend on specific handlers.
+  - `core`: Defines foundational domain classes and serializers (depends on `backend-interface`):
     - `IHandler`: Message processing lifecycle and polling event loop (`onMessageReceived(buffer)`, `nextMessage(timeout)`, `start()`, `stop()`).
-    - `IBackend`: Underlying transport interface for message retrieval (`nextMessage(timeout)`), configured via `configure(const Configuration&)`. Declares `std::unique_ptr<IBackend> createBackend()`.
-    - `Configuration`: Key-value configuration store loaded from file (`Configuration::fromFile(path)`). Applications must not set their own properties in code; properties always originate from configuration files.
-  - `backend/*`: Concrete transport implementations of `IBackend`:
-    - `backend-file`: Implements `FileBackend` watching a directory specified by `"file.path"`. Newly detected files are read and passed as messages, then deleted immediately.
-    - `backend-socket`: Implements `SocketBackend` listening on a UDP socket specified by `"socket.host"` and `"socket.port"`, emitting received datagram payloads as messages (receive-only).
-    - Backends implement default constructors, `configure(config)`, and define the factory function `Core::createBackend()`. Backends never depend on specific handlers.
-  - `handler/*`: Concrete handlers and application executables. Handlers inherit from `IHandler` and accept `std::unique_ptr<IBackend>`. Handler source files **must not** contain backend `#ifdef`s or include any backend headers.
+    - `Configuration`: Key-value configuration store loaded from file (`Configuration::fromFile(path)`), implementing `Backend::IConfig`.
+    - `Serialization`: Strongly-typed, trait-based JSON (`JsonSerializer<T>`, `JsonDeserializer<T>`) and XML (`XmlSerializer<T>`, `XmlDeserializer<T>`) serialization through an intermediate representation (`Value`), supporting PODs, attributes, and standard containers without inheritance or macros.
+  - `handler/*`: Concrete handlers and application executables. Handlers inherit from `IHandler` and accept `std::unique_ptr<Backend::IBackend>`. Handler source files **must not** contain backend `#ifdef`s or include any concrete backend headers.
 - **Multi-Backend Handler Generation & Auto-Discovery (`ProxyBackends.cmake`)**:
   - The CMake module `cmake/ProxyBackends.cmake` provides:
-    - `proxy_discover_backends(<dir>)`: Automatically scans and registers all available backend subprojects under `backend/`.
+    - `proxy_discover_backends(<dir>)`: Automatically scans and registers all available backend subprojects under `backend/` (excluding `interface`).
     - `proxy_add_handler_all_backends(<handler_base_name> SOURCES ... [INCLUDE_DIRS ...])`: Generates executable targets for each discovered backend, named `<handler_base_name>_<backend_name>` (e.g. `print_handler_file` and `print_handler_socket`), outputting directly into the root `bin/` directory.
+    - `proxy_export_targets_manifest(<output_file>)`: Generates `manifest.json` (and `targets.json`) tailored for GitLab CI matrix configuration, as well as `child-pipeline.yml` for dynamic child pipelines.
   - This eliminates hardcoded `STREQUAL` checks from individual handler CMake files and automatically builds every backend combination.
+
+---
+
+## 9. Containerization & OCI Distribution (Pattern 2)
+
+- **Decoupled OCI Packaging**:
+  - A single parameterized multi-stage [`Dockerfile`](file:///Users/zainahmad/Workspace/Proxy/Dockerfile) builds Linux binaries inside a `builder` stage and packages stripped binaries into lightweight distroless runtime images (`gcr.io/distroless/cc-debian12:nonroot`).
+  - **Zero Maintenance on Adding Handlers**: CMake outputs `${CMAKE_BINARY_DIR}/manifest.json` and `${CMAKE_BINARY_DIR}/child-pipeline.yml`. Neither the `Dockerfile`, CI pipelines, nor local scripts require manual updates when new handlers or backends are created.
+- **Local Testing**:
+  - Run `./scripts/build-oci.sh` to compile and package all discovered handlers locally into OCI images (e.g. `proxy/print_handler_file:latest`).
+  - Or package a single handler: `./scripts/build-oci.sh print_handler_socket`.
+- **CI/CD Automation (GitLab CI)**:
+  - Automated via [`.gitlab-ci.yml`](file:///Users/zainahmad/Workspace/Proxy/.gitlab-ci.yml) using dynamic child pipeline generation driven by `manifest.json` and `child-pipeline.yml`.

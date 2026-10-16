@@ -1,13 +1,13 @@
 #pragma once
 
-#include "core/Configuration.hpp"
+#include "backend/IConfig.hpp"
 #include <chrono>
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <vector>
 
-namespace Core {
+namespace Backend {
 
 /**
  * @brief Interface representing a message transport backend.
@@ -26,11 +26,11 @@ public:
     virtual ~IBackend() = default;
 
     /**
-     * @brief Configures the backend instance using a Configuration store.
+     * @brief Configures the backend instance using an abstract IConfig store.
      *
-     * @param config Key-value configuration for the backend.
+     * @param config Strongly-typed key-value configuration.
      */
-    virtual void configure(const Configuration& config) = 0;
+    virtual void configure(const IConfig& config) = 0;
 
     /**
      * @brief Polls the underlying transport for the next available message.
@@ -45,11 +45,10 @@ public:
  * @brief Factory function implemented by whichever concrete backend library is linked.
  *
  * This allows handlers and executables to instantiate the configured backend
- * purely through link-time resolution without any compile-time #ifdefs or knowledge
- * of concrete backend headers/classes.
+ * purely through link-time resolution without compile-time knowledge of concrete classes.
  *
  * @return std::unique_ptr<IBackend> The instantiated backend implementation.
  */
 std::unique_ptr<IBackend> createBackend();
 
-} // namespace Core
+} // namespace Backend

@@ -7,18 +7,16 @@
 
 namespace Proxy::Backend::File {
 
-void FileBackend::configure(const Core::Configuration& config)
+void FileBackend::configure(const ::Backend::IConfig& config)
 {
-    if (auto path = config.get("file.path"); path.has_value()) {
-        m_watchDirectory = *path;
-    }
+    m_watchDirectory = config.getOr<std::string>("file.path", "./watch");
 
     std::error_code ec;
     std::filesystem::create_directories(m_watchDirectory, ec);
     spdlog::info("[FileBackend] Watching directory: {}", m_watchDirectory.string());
 }
 
-std::optional<Core::IBackend::Buffer> FileBackend::nextMessage(Timeout timeout)
+std::optional<::Backend::IBackend::Buffer> FileBackend::nextMessage(Timeout timeout)
 {
     const auto startTime = std::chrono::steady_clock::now();
 
@@ -68,11 +66,11 @@ std::optional<Core::IBackend::Buffer> FileBackend::nextMessage(Timeout timeout)
 
 } // namespace Proxy::Backend::File
 
-namespace Core {
+namespace Backend {
 
 std::unique_ptr<IBackend> createBackend()
 {
     return std::make_unique<Proxy::Backend::File::FileBackend>();
 }
 
-} // namespace Core
+} // namespace Backend

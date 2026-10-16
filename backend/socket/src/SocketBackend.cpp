@@ -58,23 +58,15 @@ void SocketBackend::openAndBindSocket()
     spdlog::info("[SocketBackend] Listening on UDP {}:{}", m_host, m_port);
 }
 
-void SocketBackend::configure(const Core::Configuration& config)
+void SocketBackend::configure(const ::Backend::IConfig& config)
 {
-    if (auto host = config.get("socket.host"); host.has_value()) {
-        m_host = *host;
-    }
-    if (auto portStr = config.get("socket.port"); portStr.has_value()) {
-        try {
-            m_port = static_cast<std::uint16_t>(std::stoi(*portStr));
-        } catch (...) {
-            spdlog::warn("[SocketBackend] Invalid socket.port '{}', keeping default {}", *portStr, m_port);
-        }
-    }
+    m_host = config.getOr<std::string>("socket.host", "0.0.0.0");
+    m_port = config.getOr<std::uint16_t>("socket.port", 8080);
 
     openAndBindSocket();
 }
 
-std::optional<Core::IBackend::Buffer> SocketBackend::nextMessage(Timeout timeout)
+std::optional<::Backend::IBackend::Buffer> SocketBackend::nextMessage(Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
@@ -114,11 +106,11 @@ std::optional<Core::IBackend::Buffer> SocketBackend::nextMessage(Timeout timeout
 
 } // namespace Proxy::Backend::Socket
 
-namespace Core {
+namespace Backend {
 
 std::unique_ptr<IBackend> createBackend()
 {
     return std::make_unique<Proxy::Backend::Socket::SocketBackend>();
 }
 
-} // namespace Core
+} // namespace Backend

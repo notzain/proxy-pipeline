@@ -1,0 +1,49 @@
+stages:
+  - build
+  - trigger-packaging
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build binaries, run tests, and extract manifest.json & child pipeline
+# -----------------------------------------------------------------------------
+build-and-test:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    # Build shared builder stage (compiles all backends, handlers, and unit tests)
+    - docker build --target builder -t "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHA}" .
+
+    # Run unit tests inside the builder container
+    - docker run --rm "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHA}" ctest --test-dir /workspace/build --output-on-failure
+
+    # Extract manifest.json (tailored for GitLab CI) and child-pipeline.yml
+    - docker run --rm "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHA}" cat /workspace/build/manifest.json > manifest.json
+    - docker run --rm "${CI_REGISTRY_IMAGE}/builder:${CI_COMMIT_SHA}" cat /workspace/build/child-pipeline.yml > child-pipeline.yml
+
+    # Log the manifest and child pipeline for debugging
+    - echo "=== Discovered Manifest (manifest.json) ==="
+    - cat manifest.json
+    - echo "=== Generated GitLab CI Dynamic Child Pipeline (child-pipeline.yml) ==="
+    - cat child-pipeline.yml
+  artifacts:
+    paths:
+      - manifest.json
+      - child-pipeline.yml
+    expire_in: 1 day
+
+# -----------------------------------------------------------------------------
+# Stage 2: Trigger dynamic child pipeline to package & push minimal OCI images
+# -----------------------------------------------------------------------------
+package-handlers:
+  stage: trigger-packaging
+  needs:
+    - job: build-and-test
+      artifacts: true
+  trigger:
+    include:
+      - artifact: child-pipeline.yml
+        job: build-and-test
+    strategy: depend

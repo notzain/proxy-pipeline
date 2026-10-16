@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IBackend.hpp"
+#include "backend/IBackend.hpp"
 #include "core/IHandler.hpp"
 #include <memory>
 
@@ -17,7 +17,7 @@ public:
      *
      * @param backend Unique pointer to the underlying transport backend.
      */
-    explicit PrintHandler(std::unique_ptr<Core::IBackend> backend);
+    explicit PrintHandler(std::unique_ptr<::Backend::IBackend> backend);
 
     ~PrintHandler() override = default;
 
@@ -37,7 +37,7 @@ public:
     std::optional<Buffer> nextMessage(Timeout timeout) override;
 
 private:
-    std::unique_ptr<Core::IBackend> m_backend;
+    std::unique_ptr<::Backend::IBackend> m_backend;
 };
 
 } // namespace Proxy::Handler

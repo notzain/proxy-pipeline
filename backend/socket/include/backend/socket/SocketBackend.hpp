@@ -1,18 +1,18 @@
 #pragma once
 
-#include "core/IBackend.hpp"
+#include "backend/IBackend.hpp"
 #include <cstdint>
 #include <string>
 
 namespace Proxy::Backend::Socket {
 
 /**
- * @brief Socket-based transport backend implementing Core::IBackend.
+ * @brief Socket-based transport backend implementing Backend::IBackend.
  *
- * Listens on a UDP socket configured through Configuration ("socket.host", "socket.port").
+ * Listens on a UDP socket configured through IConfig ("socket.host", "socket.port").
  * Emits incoming datagram packet payloads as messages.
  */
-class SocketBackend : public Core::IBackend {
+class SocketBackend : public ::Backend::IBackend {
 public:
     /**
      * @brief Default constructor without parameters.
@@ -24,9 +24,9 @@ public:
     /**
      * @brief Configures socket parameters ("socket.host", "socket.port") and binds the UDP socket.
      *
-     * @param config Key-value configuration.
+     * @param config Strongly-typed key-value configuration.
      */
-    void configure(const Core::Configuration& config) override;
+    void configure(const ::Backend::IConfig& config) override;
 
     /**
      * @brief Polls the UDP socket for incoming datagrams within the given timeout.

@@ -22,7 +22,14 @@ target_include_directories(core
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(core PUBLIC spdlog::spdlog fmt::fmt nlohmann_json::nlohmann_json pugixml::pugixml)
+target_link_libraries(core
+    PUBLIC
+        backend-interface
+        spdlog::spdlog
+        fmt::fmt
+        nlohmann_json::nlohmann_json
+        pugixml::pugixml
+)
 
 target_compile_features(core PUBLIC cxx_std_20)
 
