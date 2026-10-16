@@ -3,6 +3,8 @@ project(core LANGUAGES CXX)
 
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(pugixml REQUIRED)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -20,7 +22,7 @@ target_include_directories(core
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(core PUBLIC spdlog::spdlog fmt::fmt)
+target_link_libraries(core PUBLIC spdlog::spdlog fmt::fmt nlohmann_json::nlohmann_json pugixml::pugixml)
 
 target_compile_features(core PUBLIC cxx_std_20)
 

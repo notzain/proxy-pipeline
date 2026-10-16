@@ -27,6 +27,13 @@ class CoreConan(ConanFile):
     def requirements(self):
         self.requires("spdlog/1.17.0", transitive_headers=True, transitive_libs=True)
         self.requires("fmt/12.1.0", transitive_headers=True, transitive_libs=True)
+        self.requires(
+            "nlohmann_json/3.11.3", transitive_headers=True, transitive_libs=True
+        )
+        self.requires("pugixml/1.14", transitive_headers=True, transitive_libs=True)
+
+    def build_requirements(self):
+        self.test_requires("catch2/3.8.0")
 
     def generate(self):
         deps = CMakeDeps(self)

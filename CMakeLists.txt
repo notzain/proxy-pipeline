@@ -24,3 +24,7 @@ proxy_discover_backends("${CMAKE_CURRENT_SOURCE_DIR}/backend")
 
 # Handlers (will combine across all discovered backends)
 add_subdirectory(handler/print_handler)
+
+# Tests
+enable_testing()
+add_subdirectory(test)

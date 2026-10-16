@@ -1,0 +1,80 @@
+#pragma once
+
+#include "core/serialization/Converter.hpp"
+#include "core/serialization/Value.hpp"
+#include "core/serialization/XmlFormat.hpp"
+
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace Core::Serialization {
+
+/**
+ * @brief Serializes a value of type T into an XML string using intermediate representation.
+ *
+ * @tparam T Type to serialize (POD with TypeTraits, container, optional, primitive).
+ */
+template <typename T>
+class XmlSerializer {
+public:
+    using Options = XmlOptions;
+
+    /**
+     * @brief Formats the value into an XML string.
+     *
+     * @param value The value to serialize.
+     * @param options Formatting options (root tag name, indentation, etc.).
+     * @return std::string Encoded XML string.
+     */
+    static std::string serialize(const T& value, const Options& options = { })
+    {
+        Value ir = toIntermediate(value);
+        return XmlFormat::encode(ir, options);
+    }
+
+    /**
+     * @brief Functor operator for convenient serializer instances.
+     */
+    std::string operator()(const T& value, const Options& options = { }) const
+    {
+        return serialize(value, options);
+    }
+};
+
+/**
+ * @brief Deserializes an XML string into a value of type T using intermediate representation.
+ *
+ * @tparam T Target type to deserialize into.
+ */
+template <typename T>
+class XmlDeserializer {
+public:
+    using Options = XmlOptions;
+
+    /**
+     * @brief Parses an XML string into the target type T.
+     *
+     * @param input XML string or view.
+     * @param options Parsing options (root tag name, etc.).
+     * @return std::optional<T> Deserialized object if parsing and mapping succeed, std::nullopt otherwise.
+     */
+    static std::optional<T> deserialize(std::string_view input, const Options& options = { })
+    {
+        auto ir = XmlFormat::decode(input, options);
+        if (!ir) {
+            return std::nullopt;
+        }
+        return fromIntermediate<T>(*ir);
+    }
+
+    /**
+     * @brief Functor operator for convenient deserializer instances.
+     */
+    std::optional<T> operator()(std::string_view input, const Options& options = { }) const
+    {
+        return deserialize(input, options);
+    }
+};
+
+} // namespace Core::Serialization
