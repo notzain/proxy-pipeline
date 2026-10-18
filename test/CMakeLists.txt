@@ -17,10 +17,12 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
 add_executable(proxy_tests
     ${TEST_SOURCES}
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/src/XmlVerificationHandler.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/order_validation_handler/src/OrderValidationHandler.cpp"
 )
 
 target_include_directories(proxy_tests PRIVATE
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/include"
+    "${CMAKE_SOURCE_DIR}/handler/order_validation_handler/include"
 )
 
 target_link_libraries(proxy_tests PRIVATE
