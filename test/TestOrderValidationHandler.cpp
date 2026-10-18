@@ -48,6 +48,14 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
         CHECK(handler.validateOrder(*parsed));
 
+        std::string validXmlDirect = validXml;
+        std::span<std::byte> spanDirect(reinterpret_cast<std::byte*>(validXmlDirect.data()), validXmlDirect.size());
+        auto parsedDirect = handler.parseOrderDirect(spanDirect);
+        REQUIRE(parsedDirect.has_value());
+        CHECK(parsedDirect->customer == "Alice Smith");
+        CHECK(parsedDirect->item == "Widget-Pro");
+        CHECK(parsedDirect->quantity == 42);
+
         handler.onMessageReceived("input_ch", span);
         REQUIRE(mockOutPtr->sentMessages().size() == 1);
         CHECK(mockOutPtr->sentMessages()[0] == validXml);
@@ -153,6 +161,13 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     BENCHMARK("Option 1: OrderView XML Deserialization (std::string_view)")
     {
         return handler.parseOrderView(span);
+    };
+
+    BENCHMARK("Option 3: OrderView Direct DOM XML Deserialization (pugixml direct)")
+    {
+        std::string xmlCopy = validXml;
+        std::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        return handler.parseOrderDirect(mutableSpan);
     };
 
     BENCHMARK("Baseline: Order Domain Validation (std::string)")

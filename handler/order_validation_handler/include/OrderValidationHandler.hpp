@@ -53,6 +53,15 @@ public:
     [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderView(std::span<const std::byte> xmlData) const;
 
     /**
+     * @brief Direct zero-copy DOM parser (Option 3 optimization).
+     * Parses XML directly in-place from pugixml nodes to OrderView, bypassing the intermediate Value IR tree.
+     *
+     * @param xmlData Mutable non-owning span of the XML buffer for in-place parsing.
+     * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderDirect(std::span<std::byte> xmlData) const;
+
+    /**
      * @brief Validates an Order instance against domain criteria.
      *
      * Criteria:
