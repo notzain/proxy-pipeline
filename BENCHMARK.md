@@ -14,13 +14,13 @@ Performance tracking across optimizations and execution strategies.
 
 This table tracks performance from initial unoptimized Baseline in Debug mode through compiler optimization (`-O3`) and code-level optimization phases (Phase 1, Phase 2, Phase 3). Each step reports the throughput / latency and the **% delta relative to the immediately preceding phase**.
 
-| Strategy | Metric | Baseline (Debug `-O0`) | Baseline (Release `-O3`) | Phase 1 (Thread-Local Contexts) | Phase 2 (Batch Dequeue) | Phase 3 (Zero-Alloc Ingress) | Overall Delta (Base Rel $\rightarrow$ Ph 3) |
+| Strategy | Metric | Baseline (Debug `-O0`) | Baseline (Release `-O3`) | Phase 1 (Release `-O3`)<br>*(vs Baseline Rel)* | Phase 2 (Release `-O3`)<br>*(vs Phase 1 Rel)* | Phase 3 (Release `-O3`)<br>*(vs Phase 2 Rel)* | Overall Delta (Base Rel $\rightarrow$ Ph 3) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Direct (XSD)** | Throughput<br>Avg Latency<br>p99 Latency | 109,801 m/s<br>9.00 µs<br>27.00 µs | **310,646 m/s** *(+182.9%)*<br>**3.19 µs** *(-64.6%)*<br>**12.00 µs** *(-55.6%)* | **154,375 m/s** *(debug base)*<br>6.39 µs<br>18.00 µs | **301,686 m/s** *(rel)*<br>3.28 µs<br>6.00 µs | **398,303 m/s** *(+32.0%)*<br>**2.49 µs** *(-24.1%)*<br>**3.00 µs** *(-50.0%)* | <span style="color:green">**+28.2% Throughput**<br>**-21.9% Latency**<br>**-75.0% p99**</span> |
-| **UDP (Sequential)** | Throughput<br>Avg Latency<br>p99 Latency | 56,013 m/s<br>123.2 ms<br>230.6 ms | **80,104 m/s** *(+43.0%)*<br>**78.5 ms** *(-36.2%)*<br>**144.6 ms** *(-37.3%)* | **60,880 m/s** *(debug base)*<br>112.6 ms<br>207.2 ms | **93,471 m/s** *(rel)*<br>62.3 ms<br>114.7 ms | **88,138 m/s** *(-5.7%)*<br>**66.6 ms** *(+6.9%)*<br>**122.7 ms** *(+7.0%)* | <span style="color:green">**+10.0% Throughput**<br>**-15.2% Latency**<br>**-15.1% p99**</span> |
-| **UDP (Dedicated)** | Throughput<br>Avg Latency<br>p99 Latency | 54,019 m/s<br>121.3 ms<br>227.1 ms | **72,796 m/s** *(+34.8%)*<br>**85.6 ms** *(-29.4%)*<br>**145.0 ms** *(-36.1%)* | **59,169 m/s** *(debug base)*<br>111.1 ms<br>210.2 ms | **88,864 m/s** *(rel)*<br>66.2 ms<br>119.6 ms | **88,000 m/s** *(-1.0%)*<br>**65.8 ms** *(-0.6%)*<br>**120.0 ms** *(+0.3%)* | <span style="color:green">**+20.9% Throughput**<br>**-23.1% Latency**<br>**-17.2% p99**</span> |
-| **UDP (ThreadPool 4)** | Throughput<br>Avg Latency<br>p99 Latency | 56,610 m/s<br>976 µs<br>3,523 µs | **63,981 m/s** *(+13.0%)*<br>**15.4 ms**<br>**34.8 ms** | **62,559 m/s** *(debug base)*<br>2.96 ms<br>7.71 ms | **75,021 m/s** *(rel)*<br>4.44 ms<br>10.38 ms | **70,731 m/s** *(-5.7%)*<br>**21.1 ms**<br>**38.9 ms** | <span style="color:green">**+10.5% Throughput**</span> |
-| **UDP (ThreadPool 8)** | Throughput<br>Avg Latency<br>p99 Latency | *(N/A)* | *(N/A)* | *(N/A)* | **61,523 m/s** *(rel)*<br>23.7 ms<br>61.7 ms | **54,623 m/s** *(-11.2%)*<br>**21.0 ms** *(-11.4%)*<br>**47.2 ms** *(-23.5%)* | Stable burst delivery |
+| **Direct (XSD)** | Throughput<br>Avg Latency<br>p99 Latency | 109,801 m/s<br>9.00 µs<br>27.00 µs | **310,646 m/s**<br>3.19 µs<br>12.00 µs | **226,886 m/s** *(-27.0%)*<br>4.38 µs *(+37.3%)*<br>7.00 µs *(-41.7%)* | **301,686 m/s** *(+33.0%)*<br>3.28 µs *(-25.1%)*<br>6.00 µs *(-14.3%)* | **398,303 m/s** *(+32.0%)*<br>**2.49 µs** *(-24.1%)*<br>**3.00 µs** *(-50.0%)* | <span style="color:green">**+28.2% Throughput**<br>**-21.9% Latency**<br>**-75.0% p99**</span> |
+| **UDP (Sequential)** | Throughput<br>Avg Latency<br>p99 Latency | 56,013 m/s<br>123.2 ms<br>230.6 ms | **80,104 m/s**<br>78.5 ms<br>144.6 ms | **84,214 m/s** *(+5.1%)*<br>72.9 ms *(-7.1%)*<br>124.8 ms *(-13.7%)* | **93,471 m/s** *(+11.0%)*<br>62.3 ms *(-14.5%)*<br>114.7 ms *(-8.1%)* | **88,138 m/s** *(-5.7%)*<br>**66.6 ms** *(+6.9%)*<br>**122.7 ms** *(+7.0%)* | <span style="color:green">**+10.0% Throughput**<br>**-15.2% Latency**<br>**-15.1% p99**</span> |
+| **UDP (Dedicated)** | Throughput<br>Avg Latency<br>p99 Latency | 54,019 m/s<br>121.3 ms<br>227.1 ms | **72,796 m/s**<br>85.6 ms<br>145.0 ms | **61,813 m/s** *(-15.1%)*<br>94.7 ms *(+10.6%)*<br>146.7 ms *(+1.2%)* | **88,864 m/s** *(+43.8%)*<br>66.2 ms *(-30.1%)*<br>119.6 ms *(-18.5%)* | **88,000 m/s** *(-1.0%)*<br>**65.8 ms** *(-0.6%)*<br>**120.0 ms** *(+0.3%)* | <span style="color:green">**+20.9% Throughput**<br>**-23.1% Latency**<br>**-17.2% p99**</span> |
+| **UDP (ThreadPool 4)** | Throughput<br>Avg Latency<br>p99 Latency | 56,610 m/s<br>976 µs<br>3,523 µs | **63,981 m/s**<br>15.4 ms<br>34.8 ms | **67,444 m/s** *(+5.4%)*<br>19.2 ms<br>32.9 ms *(-5.5%)* | **75,021 m/s** *(+11.2%)*<br>4.44 ms *(-76.9%)*<br>10.38 ms *(-68.4%)* | **70,731 m/s** *(-5.7%)*<br>**21.1 ms**<br>**38.9 ms** | <span style="color:green">**+10.5% Throughput**</span> |
+| **UDP (ThreadPool 8)** | Throughput<br>Avg Latency<br>p99 Latency | *(N/A)* | *(N/A)* | *(N/A)* | **61,523 m/s**<br>23.7 ms<br>61.7 ms | **54,623 m/s** *(-11.2%)*<br>**21.0 ms** *(-11.4%)*<br>**47.2 ms** *(-23.5%)* | Stable burst delivery |
 
 ---
 
@@ -61,12 +61,23 @@ This table tracks performance from initial unoptimized Baseline in Debug mode th
 
 - **Test Size**: 20,000 messages
 
-| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) | Delta vs Baseline |
+### Phase 1 in Debug Mode (`-g` / `-O0`):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) | vs Debug Baseline |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Direct (XSD)** | 20,000 | 154,374.59 | 12.07 | 6.39 | 18.00 | **+40.6%** |
 | **UDP (Dedicated)** | 20,000 | 59,169.32 | 4.63 | 111,135.45 | 210,153.00 | **+9.5%** |
 | **UDP (Sequential)** | 20,000 | 60,880.39 | 4.76 | 112,562.72 | 207,233.00 | **+8.7%** |
 | **UDP (ThreadPool 4)** | 20,000 | **62,559.04** | **4.89** | 2,959.74 | 7,710.00 | **+10.5%** |
+
+### Phase 1 in Release Mode (`-O3 -DNDEBUG`):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) | vs Release Baseline |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | 20,000 | **226,885.99** | **17.74** | **4.38** | **7.00** | **-41.7% p99** |
+| **UDP (Dedicated)** | 20,000 | **61,812.53** | **4.83** | **94,671.04** | **146,745.00** | Jitter-controlled |
+| **UDP (Sequential)** | 20,000 | **84,214.07** | **6.59** | **72,894.81** | **124,830.00** | **+5.1% Throughput** |
+| **UDP (ThreadPool 4)** | 20,000 | **67,444.30** | **5.27** | **19,197.82** | **32,873.00** | **+5.4% Throughput** |
 ---
 
 ## 3. Optimization Phase 2: Work Queue Batching & ThreadPool Scaling
