@@ -115,6 +115,77 @@ bool OrderValidationHandler::validateOrderView(const Proxy::Model::OrderView& or
     return true;
 }
 
+namespace {
+
+    constexpr auto makeCustomerCharTable()
+    {
+        std::array<bool, 256> table { };
+        for (unsigned char c = 'a'; c <= 'z'; ++c) {
+            table[c] = true;
+        }
+        for (unsigned char c = 'A'; c <= 'Z'; ++c) {
+            table[c] = true;
+        }
+        table[' '] = true;
+        table['-'] = true;
+        return table;
+    }
+
+    constexpr auto makeItemCharTable()
+    {
+        std::array<bool, 256> table { };
+        for (unsigned char c = 'a'; c <= 'z'; ++c) {
+            table[c] = true;
+        }
+        for (unsigned char c = 'A'; c <= 'Z'; ++c) {
+            table[c] = true;
+        }
+        for (unsigned char c = '0'; c <= '9'; ++c) {
+            table[c] = true;
+        }
+        table[' '] = true;
+        table['-'] = true;
+        table['_'] = true;
+        return table;
+    }
+
+    constexpr auto CustomerCharTable = makeCustomerCharTable();
+    constexpr auto ItemCharTable = makeItemCharTable();
+
+} // namespace
+
+bool OrderValidationHandler::validateOrderFast(const Proxy::Model::OrderView& order) const
+{
+    // Customer validation: length 2..50
+    if (order.customer.size() < 2 || order.customer.size() > 50) {
+        return false;
+    }
+
+    for (char ch : order.customer) {
+        if (!CustomerCharTable[static_cast<unsigned char>(ch)]) {
+            return false;
+        }
+    }
+
+    // Item validation: length 2..50
+    if (order.item.size() < 2 || order.item.size() > 50) {
+        return false;
+    }
+
+    for (char ch : order.item) {
+        if (!ItemCharTable[static_cast<unsigned char>(ch)]) {
+            return false;
+        }
+    }
+
+    // Quantity validation: 1..10000
+    if (order.quantity == 0 || order.quantity > 10000) {
+        return false;
+    }
+
+    return true;
+}
+
 void OrderValidationHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
 {
     auto order = parseOrder(buffer);

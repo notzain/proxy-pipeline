@@ -73,6 +73,15 @@ public:
      */
     [[nodiscard]] bool validateOrderView(const Proxy::Model::OrderView& order) const;
 
+    /**
+     * @brief Fast lookup-table domain validation (Option 2 optimization).
+     * Uses compile-time 256-byte bitmap tables instead of per-character standard ctype checks.
+     *
+     * @param order The order view to validate.
+     * @return true if valid according to rules, false otherwise.
+     */
+    [[nodiscard]] bool validateOrderFast(const Proxy::Model::OrderView& order) const;
+
 private:
     std::string m_outputChannelName;
 };

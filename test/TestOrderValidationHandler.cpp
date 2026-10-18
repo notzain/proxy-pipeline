@@ -106,6 +106,12 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         // Exceeds max limit (> 10,000)
         Proxy::Model::Order excessiveQty { .customer = "Alice", .item = "Gadget", .quantity = 10001 };
         CHECK_FALSE(handler.validateOrder(excessiveQty));
+
+        // Option 2 Fast validation behavior matches
+        Proxy::Model::OrderView validView { .customer = "Alice Smith", .item = "Widget-Pro", .quantity = 42 };
+        CHECK(handler.validateOrderFast(validView));
+        Proxy::Model::OrderView invalidView { .customer = "Alice123!", .item = "Widget", .quantity = 5 };
+        CHECK_FALSE(handler.validateOrderFast(invalidView));
     }
 
     SECTION("Handler discards messages that fail domain criteria")
@@ -159,9 +165,13 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
         return handler.validateOrderView(preParsedOrderView);
     };
 
+    BENCHMARK("Option 2: OrderView Fast Domain Validation (Bitmap Table)")
+    {
+        return handler.validateOrderFast(preParsedOrderView);
+    };
+
     BENCHMARK("Baseline: Order Full Ingress Pipeline")
     {
         handler.onMessageReceived("bench_in", span);
     };
 }
-

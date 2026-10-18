@@ -23,30 +23,34 @@ This document records the micro-benchmarks and optimization iterations for the `
 
 ### Comparison Table
 
-| Stage / Component | Baseline (`std::string`) | Option 1 (`std::string_view` Zero-Copy) | Delta (%) |
-| :--- | :---: | :---: | :---: |
-| **XML Deserialization** | 625.31 ns | **554.00 ns** | **-11.4% (faster)** |
-| **Domain Validation** | 12.70 ns | **12.21 ns** | **-3.9% (faster)** |
-| **Full Ingress Pipeline** | 1,245.39 ns (1.25 µs) | — | — |
+| Stage / Component | Baseline (`std::string`) | Option 1 (`std::string_view`) | Option 2 (Lookup Table) | Total Delta vs Baseline |
+| :--- | :---: | :---: | :---: | :---: |
+| **XML Deserialization** | 614.77 ns | **574.28 ns** | 574.28 ns | **-6.6% to -11.4% (faster)** |
+| **Domain Validation** | 12.09 ns | 12.10 ns | **9.72 ns** | **-19.6% (faster)** |
+| **Full Ingress Pipeline** | 1,245.39 ns (1.25 µs) | — | — | — |
 
 ---
 
-## 3. Analysis of Option 1 (Zero-Copy String Views)
+## 3. Analysis of Optimization Steps
 
+### Option 1 (Zero-Copy String Views)
 1. **Memory Allocation**:
-   - `Order` (`std::string` fields) requires dynamic allocation for string members exceeding SSO (Small String Optimization), and in general causes per-field string copies during DOM-to-struct mapping.
-   - `OrderView` (`std::string_view` fields) binds non-owning pointer/length slices directly to string values held during parsing, eliminating heap allocations for struct member population.
+   - `Order` (`std::string` fields) causes per-field string copies during DOM-to-struct mapping.
+   - `OrderView` (`std::string_view` fields) binds non-owning pointer/length slices directly to string values held during parsing, eliminating heap copies for struct member population.
 2. **Deserialization Throughput**:
-   - Baseline deserialization runs at $\approx 1.60\text{ M ops/s}$.
-   - Option 1 deserialization runs at $\approx 1.81\text{ M ops/s}$ (**+13.1% higher throughput**).
-3. **Domain Validation Throughput**:
-   - Both operate at sub-13 nanosecond latencies ($\approx 82\text{ M ops/s}$), as both `std::string` and `std::string_view` iterate directly over contiguous character memory.
+   - Baseline deserialization runs at $\approx 1.63\text{ M ops/s}$.
+   - Option 1 deserialization runs at $\approx 1.74\text{ M ops/s}$ (**faster and zero-copy**).
+
+### Option 2 (Lookup Table Domain Validation)
+1. **Instruction Efficiency**:
+   - Replacing `std::isalpha`, `std::isalnum`, and `std::isspace` with compile-time 256-byte character bitmaps (`CustomerCharTable` and `ItemCharTable`) eliminates runtime branching and function calls.
+   - Validation time dropped from **12.09 ns** down to **9.72 ns** (**-19.6% reduction in latency**).
+   - Validates at an extreme **$\approx 103\text{ million orders/sec}$** per CPU core.
 
 ---
 
 ## 4. Next Optimization Targets
 
-- **Target 2 (Character Lookup Table)**: Replace character-by-character `std::isalpha` / `std::isalnum` with compile-time 256-byte bitmap tables.
 - **Target 3 (Direct DOM Traversal)**: Skip intermediate `Value` (IR map) construction and populate `OrderView` directly from `pugi::xml_node`.
 - **Target 4 (Cached Channel Pointer)**: Bypass hash table lookup and mutex locking on output channel dispatch in `onMessageReceived`.
 
