@@ -113,6 +113,9 @@ cmake --build build
   - `src/`: Implementation files (`.cpp`) and private/internal headers (`.hpp`).
 - **Separation of Declarations & Implementations**:
   - All non-templated function and method implementations must reside in source files (`.cpp`). Headers (`.hpp`) are reserved for declarations only. Templated classes/functions are the only exception to this rule.
+- **Header Include Policy (Interface vs. Concrete Implementation)**:
+  - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::IHandler`, `Core::IExecutionStrategy`).
+  - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files; they must be included in source files (`.cpp`) only.
 - **Naming Conventions**:
   - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g., `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
   - **Namespaces**: Namespaces must always be **PascalCase** (e.g., `Backend`, `Core`, `Proxy`, `Proxy::Log`, `Proxy::Backend::File`). Note: formatting/layout is maintained by `clang-format`, while identifier casing is enforced via `.clang-tidy` (`readability-identifier-naming.NamespaceCase: CamelCase`).
