@@ -1,6 +1,6 @@
 #pragma once
 
-#include <charconv>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,35 +10,52 @@ namespace Backend {
 
 namespace Detail {
 
+    std::optional<std::string> parseString(std::string_view str);
+    std::optional<std::string_view> parseStringView(std::string_view str);
+    std::optional<bool> parseBool(std::string_view str);
+
+    std::optional<int8_t> parseInt8(std::string_view str);
+    std::optional<uint8_t> parseUint8(std::string_view str);
+    std::optional<int16_t> parseInt16(std::string_view str);
+    std::optional<uint16_t> parseUint16(std::string_view str);
+    std::optional<int32_t> parseInt32(std::string_view str);
+    std::optional<uint32_t> parseUint32(std::string_view str);
+    std::optional<int64_t> parseInt64(std::string_view str);
+    std::optional<uint64_t> parseUint64(std::string_view str);
+
+    std::optional<float> parseFloat(std::string_view str);
+    std::optional<double> parseDouble(std::string_view str);
+
     template <typename T>
     std::optional<T> parseValue(std::string_view str)
     {
         using CleanT = std::remove_cvref_t<T>;
         if constexpr (std::is_same_v<CleanT, std::string>) {
-            return std::string(str);
+            return parseString(str);
         } else if constexpr (std::is_same_v<CleanT, std::string_view>) {
-            return str;
+            return parseStringView(str);
         } else if constexpr (std::is_same_v<CleanT, bool>) {
-            if (str == "true" || str == "1" || str == "yes" || str == "on" || str == "TRUE") {
-                return true;
-            }
-            if (str == "false" || str == "0" || str == "no" || str == "off" || str == "FALSE") {
-                return false;
-            }
-            return std::nullopt;
-        } else if constexpr (std::is_integral_v<CleanT>) {
-            CleanT val { };
-            auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), val);
-            if (ec == std::errc()) {
-                return val;
-            }
-            return std::nullopt;
-        } else if constexpr (std::is_floating_point_v<CleanT>) {
-            try {
-                return static_cast<CleanT>(std::stod(std::string(str)));
-            } catch (...) {
-                return std::nullopt;
-            }
+            return parseBool(str);
+        } else if constexpr (std::is_same_v<CleanT, int8_t>) {
+            return parseInt8(str);
+        } else if constexpr (std::is_same_v<CleanT, uint8_t>) {
+            return parseUint8(str);
+        } else if constexpr (std::is_same_v<CleanT, int16_t>) {
+            return parseInt16(str);
+        } else if constexpr (std::is_same_v<CleanT, uint16_t>) {
+            return parseUint16(str);
+        } else if constexpr (std::is_same_v<CleanT, int32_t>) {
+            return parseInt32(str);
+        } else if constexpr (std::is_same_v<CleanT, uint32_t>) {
+            return parseUint32(str);
+        } else if constexpr (std::is_same_v<CleanT, int64_t>) {
+            return parseInt64(str);
+        } else if constexpr (std::is_same_v<CleanT, uint64_t>) {
+            return parseUint64(str);
+        } else if constexpr (std::is_same_v<CleanT, float>) {
+            return parseFloat(str);
+        } else if constexpr (std::is_same_v<CleanT, double>) {
+            return parseDouble(str);
         } else {
             static_assert(sizeof(CleanT) == 0, "Unsupported configuration value type");
         }

@@ -67,8 +67,40 @@ void printResultTable(const std::vector<Proxy::Benchmark::BenchmarkResult>& resu
 int main(int argc, char* argv[])
 {
     std::size_t numMessages = 10000;
-    if (argc > 1) {
-        numMessages = std::stoul(argv[1]);
+    std::size_t iterations = 1;
+    std::string targetStrategy = "all";
+
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            fmt::print("Usage: proxy_benchmark [options]\n");
+            fmt::print("Options:\n");
+            fmt::print("  --messages <N>        Number of messages to send (default: 10000)\n");
+            fmt::print("  --iterations <N>      Number of benchmark runs (default: 1)\n");
+            fmt::print("  --strategy <NAME>     Strategy to run: all, direct, dedicated, sequential, threadpool4, threadpool8 (default: all)\n");
+            fmt::print("  --help, -h            Show this help message\n");
+            return 0;
+        } else if (arg == "--messages" && i + 1 < argc) {
+            numMessages = std::stoul(argv[++i]);
+        } else if (arg == "--iterations" && i + 1 < argc) {
+            iterations = std::stoul(argv[++i]);
+        } else if (arg == "--strategy" && i + 1 < argc) {
+            targetStrategy = argv[++i];
+        } else if (arg.rfind("--messages=", 0) == 0) {
+            numMessages = std::stoul(std::string(arg.substr(11)));
+        } else if (arg.rfind("--iterations=", 0) == 0) {
+            iterations = std::stoul(std::string(arg.substr(13)));
+        } else if (arg.rfind("--strategy=", 0) == 0) {
+            targetStrategy = std::string(arg.substr(11));
+        } else {
+            // Positional fallback for backward compatibility: proxy_benchmark <messages>
+            try {
+                numMessages = std::stoul(argv[i]);
+            } catch (...) {
+                fmt::print(stderr, "Unknown option or invalid value: {}\n", arg);
+                return 1;
+            }
+        }
     }
 
     std::filesystem::path xsdPath = "/tmp/benchmark_order.xsd";
@@ -76,8 +108,8 @@ int main(int argc, char* argv[])
 
     std::vector<Proxy::Benchmark::BenchmarkResult> results;
 
-    // --- 1. Direct Pipeline / In-Memory Channel Verification Benchmark ---
-    {
+    // Helper lambda to run Direct benchmark
+    auto runDirectBenchmark = [&]() {
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running direct XML verification on {} messages...\n", numMessages);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "output");
 
@@ -121,7 +153,7 @@ int main(int argc, char* argv[])
         res.throughputMBps = (verified * validXmlMsg.size()) / (sec * 1024.0 * 1024.0);
 
         results.push_back(res);
-    }
+    };
 
     // Helper lambda to run Socket (UDP) benchmark with a specific execution strategy
     auto runSocketBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
@@ -227,11 +259,30 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     };
 
-    // Benchmark across execution strategies
-    runSocketBenchmark(Core::ExecutionModel::Dedicated, "UDP (Dedicated)");
-    runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
-    runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
-    runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
+    auto runSelected = [&](std::string_view strategy) {
+        if (strategy == "all" || strategy == "direct") {
+            runDirectBenchmark();
+        }
+        if (strategy == "all" || strategy == "dedicated") {
+            runSocketBenchmark(Core::ExecutionModel::Dedicated, "UDP (Dedicated)");
+        }
+        if (strategy == "all" || strategy == "sequential") {
+            runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
+        }
+        if (strategy == "all" || strategy == "threadpool4") {
+            runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
+        }
+        if (strategy == "all" || strategy == "threadpool8") {
+            runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
+        }
+    };
+
+    for (std::size_t it = 0; it < iterations; ++it) {
+        if (iterations > 1) {
+            fmt::print(fmt::emphasis::bold | fg(fmt::color::magenta), "\n--- Iteration {}/{} ---\n", it + 1, iterations);
+        }
+        runSelected(targetStrategy);
+    }
 
     // Print summary table
     printResultTable(results);
