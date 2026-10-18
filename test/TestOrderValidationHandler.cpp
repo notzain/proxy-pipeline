@@ -133,18 +133,35 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
         .quantity = 42
     };
 
-    BENCHMARK("Order XML Deserialization (parseOrder)")
+    Proxy::Model::OrderView preParsedOrderView {
+        .customer = "Alice Smith",
+        .item = "Widget-Pro",
+        .quantity = 42
+    };
+
+    BENCHMARK("Baseline: Order XML Deserialization (std::string)")
     {
         return handler.parseOrder(span);
     };
 
-    BENCHMARK("Order Domain Criteria Validation (validateOrder)")
+    BENCHMARK("Option 1: OrderView XML Deserialization (std::string_view)")
+    {
+        return handler.parseOrderView(span);
+    };
+
+    BENCHMARK("Baseline: Order Domain Validation (std::string)")
     {
         return handler.validateOrder(preParsedOrder);
     };
 
-    BENCHMARK("Order Full Ingress Pipeline (parse + validate + forward)")
+    BENCHMARK("Option 1: OrderView Domain Validation (std::string_view)")
+    {
+        return handler.validateOrderView(preParsedOrderView);
+    };
+
+    BENCHMARK("Baseline: Order Full Ingress Pipeline")
     {
         handler.onMessageReceived("bench_in", span);
     };
 }
+

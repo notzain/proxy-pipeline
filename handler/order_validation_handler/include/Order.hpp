@@ -17,6 +17,17 @@ struct Order {
     bool operator==(const Order& other) const = default;
 };
 
+/**
+ * @brief Non-owning zero-copy domain model representing an order payload.
+ */
+struct OrderView {
+    std::string_view customer;
+    std::string_view item;
+    std::uint32_t quantity { 0 };
+
+    bool operator==(const OrderView& other) const = default;
+};
+
 } // namespace Proxy::Model
 
 template <>
@@ -30,3 +41,13 @@ struct Core::Serialization::TypeTraits<Proxy::Model::Order> {
     }
 };
 
+template <>
+struct Core::Serialization::TypeTraits<Proxy::Model::OrderView> {
+    static constexpr auto fields()
+    {
+        return std::make_tuple(
+            Core::Serialization::field("customer", &Proxy::Model::OrderView::customer),
+            Core::Serialization::field("item", &Proxy::Model::OrderView::item),
+            Core::Serialization::field("quantity", &Proxy::Model::OrderView::quantity));
+    }
+};

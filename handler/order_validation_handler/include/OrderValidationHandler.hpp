@@ -45,6 +45,14 @@ public:
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrder(std::span<const std::byte> xmlData) const;
 
     /**
+     * @brief Deserializes an XML buffer into a zero-copy OrderView model (Option 1 optimization).
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt if deserialization fails.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderView(std::span<const std::byte> xmlData) const;
+
+    /**
      * @brief Validates an Order instance against domain criteria.
      *
      * Criteria:
@@ -57,9 +65,16 @@ public:
      */
     [[nodiscard]] bool validateOrder(const Proxy::Model::Order& order) const;
 
+    /**
+     * @brief Validates an OrderView instance against domain criteria without string allocations.
+     *
+     * @param order The zero-copy order view to validate.
+     * @return true if valid according to rules, false otherwise.
+     */
+    [[nodiscard]] bool validateOrderView(const Proxy::Model::OrderView& order) const;
+
 private:
     std::string m_outputChannelName;
 };
 
 } // namespace Proxy::Handler
-

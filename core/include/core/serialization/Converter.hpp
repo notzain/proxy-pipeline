@@ -241,6 +241,11 @@ std::optional<T> fromIntermediate(const Value& value)
             return *s;
         }
         return std::nullopt;
+    } else if constexpr (std::is_same_v<CleanT, std::string_view>) {
+        if (auto s = value.asString()) {
+            return std::string_view(*s);
+        }
+        return std::nullopt;
     } else if constexpr (Detail::isOptionalV<CleanT>) {
         using ValueType = typename CleanT::value_type;
         if (value.isNull()) {
