@@ -107,15 +107,23 @@ def generate_handler_config(
     lines.append("# Handler-specific settings")
 
     # Convenience shortcuts:
-    # input_channel -> dummy.channel / print.channel
+    # input_channel -> dummy.channel / print.channel / split.input_channel
     # output_channel -> dummy.channel
+    # output_channels -> split.output_channels
     if "input_channel" in handler_spec:
         in_ch = handler_spec["input_channel"]
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
+        lines.append(f"split.input_channel={in_ch}")
     if "output_channel" in handler_spec:
         out_ch = handler_spec["output_channel"]
         lines.append(f"dummy.channel={out_ch}")
+    if "output_channels" in handler_spec:
+        out_chs = handler_spec["output_channels"]
+        if isinstance(out_chs, list):
+            lines.append(f"split.output_channels={','.join(out_chs)}")
+        else:
+            lines.append(f"split.output_channels={out_chs}")
 
     # Direct config key-values inside handler spec
     params = handler_spec.get("config", {})

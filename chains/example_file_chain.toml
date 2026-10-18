@@ -1,27 +1,34 @@
-# Chain configuration for file backend
+# Chain configuration for file backend with SplitHandler
 backend = "file"
 
 [config]
 # Shared / backend-level configuration
 file.path = "/tmp/watch/default"
 log.console = true
-"channel.pipe_a.path" = "/tmp/watch/pipe_a"
+"channel.pipe_in.path" = "/tmp/watch/pipe_in"
+"channel.pipe_rec.path" = "/tmp/watch/pipe_rec"
+"channel.pipe_print.path" = "/tmp/watch/pipe_print"
 
 [[handlers]]
 name = "sender_1"
 type = "dummy_send"
-output_channel = "pipe_a"
+output_channel = "pipe_in"
 [handlers.config]
-"dummy.message" = "Hello through file pipe!"
+"dummy.message" = "Hello through file split pipe!"
 "dummy.delay_ms" = 500
+
+[[handlers]]
+name = "splitter_1"
+type = "split_handler"
+input_channel = "pipe_in"
+output_channels = ["pipe_rec", "pipe_print"]
 
 [[handlers]]
 name = "receiver_1"
 type = "dummy_receive"
-input_channel = "pipe_a"
+input_channel = "pipe_rec"
 
 [[handlers]]
 name = "printer_1"
 type = "print_handler"
-input_channel = "pipe_a"
-
+input_channel = "pipe_print"

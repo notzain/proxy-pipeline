@@ -115,3 +115,24 @@ TEST_CASE("IHandler multi-channel event loop with IMessageReceiver and IMessageS
     CHECK(rawOutChan->sentMessages[0] == "msgA");
     CHECK(rawOutChan->sentMessages[1] == "msgB");
 }
+
+TEST_CASE("IMessageSender sendAll broadcasts to all registered channels", "[channel][core]")
+{
+    Core::IMessageSender sender;
+    auto chanA = std::make_unique<MockOutputChannel>();
+    auto chanB = std::make_unique<MockOutputChannel>();
+    auto* rawA = chanA.get();
+    auto* rawB = chanB.get();
+
+    sender.registerOutputChannel("out_a", std::move(chanA));
+    sender.registerOutputChannel("out_b", std::move(chanB));
+
+    std::string msg = "Broadcast Message";
+    std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+
+    CHECK(sender.sendAll(byteSpan) == 2);
+    REQUIRE(rawA->sentMessages.size() == 1);
+    CHECK(rawA->sentMessages[0] == "Broadcast Message");
+    REQUIRE(rawB->sentMessages.size() == 1);
+    CHECK(rawB->sentMessages[0] == "Broadcast Message");
+}
