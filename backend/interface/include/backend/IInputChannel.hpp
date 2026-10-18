@@ -1,9 +1,7 @@
 #pragma once
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <cstring>
 #include <optional>
 #include <span>
 #include <vector>
@@ -40,16 +38,7 @@ public:
      * @param timeout Maximum duration to wait before returning 0.
      * @return std::size_t Number of bytes written into destination, or 0 on timeout/no message.
      */
-    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout)
-    {
-        auto msg = receive(timeout);
-        if (!msg.has_value() || msg->empty()) {
-            return 0;
-        }
-        std::size_t bytesToCopy = std::min(destination.size(), msg->size());
-        std::memcpy(destination.data(), msg->data(), bytesToCopy);
-        return bytesToCopy;
-    }
+    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout);
 };
 
 } // namespace Backend

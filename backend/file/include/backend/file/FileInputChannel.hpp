@@ -15,6 +15,7 @@ public:
     ~FileInputChannel() override = default;
 
     std::optional<Buffer> receive(Timeout timeout) override;
+    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
 
 private:
     std::filesystem::path m_watchDir;

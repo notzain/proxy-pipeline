@@ -31,6 +31,18 @@ public:
         return std::nullopt;
     }
 
+    std::size_t receiveInto(std::span<std::byte> destination, Timeout) override
+    {
+        std::lock_guard lock(m_mutex);
+        if (m_index < m_messages.size()) {
+            const auto& msg = m_messages[m_index++];
+            const auto bytesToCopy = std::min(destination.size(), msg.size());
+            std::memcpy(destination.data(), msg.data(), bytesToCopy);
+            return bytesToCopy;
+        }
+        return 0;
+    }
+
 private:
     std::mutex m_mutex;
     std::vector<std::string> m_messages;
