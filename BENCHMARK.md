@@ -3,9 +3,24 @@
 Performance tracking across optimizations and execution strategies.
 
 **Hardware & OS**: macOS (Apple Silicon / arm64)  
-**Compiler**: AppleClang / GCC (Debug with optimizations / C++20)  
+**Compiler**: GCC 16.2.0 (arm64)  
 **Message Size**: 82 bytes (Standard XML Order document)  
-**Schema**: `order.xsd` (3 elements: customer, item, quantity)
+**Schema**: `order.xsd` (customer, item, quantity)  
+**Workload**: 20,000 messages
+
+---
+
+## Executive Progression Table (20,000 Messages)
+
+This table tracks performance from initial unoptimized Baseline in Debug mode through compiler optimization (`-O3`) and code-level optimization phases (Phase 1, Phase 2, Phase 3). Each step reports the throughput / latency and the **% delta relative to the immediately preceding phase**.
+
+| Strategy | Metric | Baseline (Debug `-O0`) | Baseline (Release `-O3`) | Phase 1 (Thread-Local Contexts) | Phase 2 (Batch Dequeue) | Phase 3 (Zero-Alloc Ingress) | Overall Delta (Base Rel $\rightarrow$ Ph 3) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | Throughput<br>Avg Latency<br>p99 Latency | 109,801 m/s<br>9.00 µs<br>27.00 µs | **310,646 m/s** *(+182.9%)*<br>**3.19 µs** *(-64.6%)*<br>**12.00 µs** *(-55.6%)* | **154,375 m/s** *(debug base)*<br>6.39 µs<br>18.00 µs | **301,686 m/s** *(rel)*<br>3.28 µs<br>6.00 µs | **398,303 m/s** *(+32.0%)*<br>**2.49 µs** *(-24.1%)*<br>**3.00 µs** *(-50.0%)* | <span style="color:green">**+28.2% Throughput**<br>**-21.9% Latency**<br>**-75.0% p99**</span> |
+| **UDP (Sequential)** | Throughput<br>Avg Latency<br>p99 Latency | 56,013 m/s<br>123.2 ms<br>230.6 ms | **80,104 m/s** *(+43.0%)*<br>**78.5 ms** *(-36.2%)*<br>**144.6 ms** *(-37.3%)* | **60,880 m/s** *(debug base)*<br>112.6 ms<br>207.2 ms | **93,471 m/s** *(rel)*<br>62.3 ms<br>114.7 ms | **88,138 m/s** *(-5.7%)*<br>**66.6 ms** *(+6.9%)*<br>**122.7 ms** *(+7.0%)* | <span style="color:green">**+10.0% Throughput**<br>**-15.2% Latency**<br>**-15.1% p99**</span> |
+| **UDP (Dedicated)** | Throughput<br>Avg Latency<br>p99 Latency | 54,019 m/s<br>121.3 ms<br>227.1 ms | **72,796 m/s** *(+34.8%)*<br>**85.6 ms** *(-29.4%)*<br>**145.0 ms** *(-36.1%)* | **59,169 m/s** *(debug base)*<br>111.1 ms<br>210.2 ms | **88,864 m/s** *(rel)*<br>66.2 ms<br>119.6 ms | **88,000 m/s** *(-1.0%)*<br>**65.8 ms** *(-0.6%)*<br>**120.0 ms** *(+0.3%)* | <span style="color:green">**+20.9% Throughput**<br>**-23.1% Latency**<br>**-17.2% p99**</span> |
+| **UDP (ThreadPool 4)** | Throughput<br>Avg Latency<br>p99 Latency | 56,610 m/s<br>976 µs<br>3,523 µs | **63,981 m/s** *(+13.0%)*<br>**15.4 ms**<br>**34.8 ms** | **62,559 m/s** *(debug base)*<br>2.96 ms<br>7.71 ms | **75,021 m/s** *(rel)*<br>4.44 ms<br>10.38 ms | **70,731 m/s** *(-5.7%)*<br>**21.1 ms**<br>**38.9 ms** | <span style="color:green">**+10.5% Throughput**</span> |
+| **UDP (ThreadPool 8)** | Throughput<br>Avg Latency<br>p99 Latency | *(N/A)* | *(N/A)* | *(N/A)* | **61,523 m/s** *(rel)*<br>23.7 ms<br>61.7 ms | **54,623 m/s** *(-11.2%)*<br>**21.0 ms** *(-11.4%)*<br>**47.2 ms** *(-23.5%)* | Stable burst delivery |
 
 ---
 
