@@ -1,0 +1,42 @@
+# Chain configuration demonstrating MergeHandler (fan-in pattern)
+backend = "file"
+
+[config]
+# Shared / backend-level configuration
+file.path = "/tmp/watch/default"
+log.console = true
+"channel.file_producer_a.path" = "/tmp/watch/file_producer_a"
+"channel.file_producer_b.path" = "/tmp/watch/file_producer_b"
+"channel.file_merged_sink.path" = "/tmp/watch/file_merged_sink"
+
+# Sender A producing to file_producer_a
+[[handlers]]
+name = "sender_a"
+type = "dummy_send"
+output_channel = "file_producer_a"
+[handlers.config]
+"dummy.message" = "Message from Sender A"
+"dummy.delay_ms" = 600
+
+# Sender B producing to file_producer_b
+[[handlers]]
+name = "sender_b"
+type = "dummy_send"
+output_channel = "file_producer_b"
+[handlers.config]
+"dummy.message" = "Message from Sender B"
+"dummy.delay_ms" = 800
+
+# Merger combining messages from both producers into a single sink
+[[handlers]]
+name = "merger_1"
+type = "merge_handler"
+input_channels = ["file_producer_a", "file_producer_b"]
+output_channel = "file_merged_sink"
+
+# Receiver printing all merged messages
+[[handlers]]
+name = "collector_print"
+type = "print_handler"
+input_channel = "file_merged_sink"
+

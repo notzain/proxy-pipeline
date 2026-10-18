@@ -33,6 +33,7 @@ add_subdirectory(handler/print_handler)
 add_subdirectory(handler/dummy_send)
 add_subdirectory(handler/dummy_receive)
 add_subdirectory(handler/split_handler)
+add_subdirectory(handler/merge_handler)
 
 # Tests
 enable_testing()

@@ -136,3 +136,43 @@ TEST_CASE("IMessageSender sendAll broadcasts to all registered channels", "[chan
     REQUIRE(rawB->sentMessages.size() == 1);
     CHECK(rawB->sentMessages[0] == "Broadcast Message");
 }
+
+TEST_CASE("MergeHandler redirects multiple input channels to single output channel", "[channel][core]")
+{
+    class MockMergeHandler : public Core::IHandler, public Core::IMessageReceiver, public Core::IMessageSender {
+    public:
+        explicit MockMergeHandler(std::string outChannel)
+            : m_outChannel(std::move(outChannel))
+        {
+        }
+
+        void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
+        {
+            send(m_outChannel, buffer);
+            m_count++;
+            if (m_count >= 2) {
+                stop();
+            }
+        }
+
+    private:
+        std::string m_outChannel;
+        int m_count { 0 };
+    };
+
+    MockMergeHandler merge("merged_out");
+    auto inA = std::make_unique<MockInputChannel>(std::vector<std::string> { "input1" });
+    auto inB = std::make_unique<MockInputChannel>(std::vector<std::string> { "input2" });
+    auto outChan = std::make_unique<MockOutputChannel>();
+    auto* rawOut = outChan.get();
+
+    merge.registerInputChannel("in_a", std::move(inA));
+    merge.registerInputChannel("in_b", std::move(inB));
+    merge.registerOutputChannel("merged_out", std::move(outChan));
+
+    merge.start();
+
+    REQUIRE(rawOut->sentMessages.size() == 2);
+    CHECK(rawOut->sentMessages[0] == "input1");
+    CHECK(rawOut->sentMessages[1] == "input2");
+}

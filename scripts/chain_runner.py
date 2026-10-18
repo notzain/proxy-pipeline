@@ -108,16 +108,24 @@ def generate_handler_config(
 
     # Convenience shortcuts:
     # input_channel -> dummy.channel / print.channel / split.input_channel
-    # output_channel -> dummy.channel
+    # input_channels -> merge.input_channels
+    # output_channel -> dummy.channel / merge.output_channel
     # output_channels -> split.output_channels
     if "input_channel" in handler_spec:
         in_ch = handler_spec["input_channel"]
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
         lines.append(f"split.input_channel={in_ch}")
+    if "input_channels" in handler_spec:
+        in_chs = handler_spec["input_channels"]
+        if isinstance(in_chs, list):
+            lines.append(f"merge.input_channels={','.join(in_chs)}")
+        else:
+            lines.append(f"merge.input_channels={in_chs}")
     if "output_channel" in handler_spec:
         out_ch = handler_spec["output_channel"]
         lines.append(f"dummy.channel={out_ch}")
+        lines.append(f"merge.output_channel={out_ch}")
     if "output_channels" in handler_spec:
         out_chs = handler_spec["output_channels"]
         if isinstance(out_chs, list):
