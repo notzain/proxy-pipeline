@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/IHandler.hpp"
-#include "core/IMessageReceiver.hpp"
 #include <span>
 #include <string_view>
 
@@ -11,7 +10,7 @@ namespace Proxy::Handler {
  * @brief Handler that implements Core::IHandler and Core::IMessageReceiver,
  * printing any received messages to standard output.
  */
-class PrintHandler : public Core::IHandler, public Core::IMessageReceiver {
+class PrintHandler : public Core::IHandler {
 public:
     PrintHandler() = default;
     ~PrintHandler() override = default;

@@ -1,8 +1,10 @@
 #include "core/IHandler.hpp"
-#include "core/IMessageReceiver.hpp"
+#include "core/DedicatedThreadStrategy.hpp"
+#include "core/SequentialStrategy.hpp"
+#include "core/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
 #include <csignal>
-#include <thread>
+#include <mutex>
 
 namespace {
 // Global pointer to active handler instance for C signal dispatching
@@ -20,8 +22,21 @@ extern "C" void proxySignalHandler(int signal)
 
 namespace Core {
 
+ExecutionModel parseExecutionModel(std::string_view name)
+{
+    if (name == "sequential" || name == "single") {
+        return ExecutionModel::Sequential;
+    }
+    if (name == "thread_pool" || name == "pool") {
+        return ExecutionModel::ThreadPool;
+    }
+    return ExecutionModel::Dedicated;
+}
+
 IHandler::~IHandler()
 {
+    stop();
+    wait();
     unregisterSignalHandler();
 }
 
@@ -34,8 +49,97 @@ void IHandler::registerInputChannel(std::string_view channelName, std::unique_pt
     m_inputChannels.push_back(NamedInputChannel { std::string(channelName), std::move(channel) });
 }
 
+const std::vector<IHandler::NamedInputChannel>& IHandler::getInputChannels() const noexcept
+{
+    return m_inputChannels;
+}
+
+void IHandler::onMessageReceived(std::string_view, std::span<const std::byte>)
+{
+}
+
+void IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
+{
+    if (!channel) {
+        Proxy::Log::warn("[IHandler] Attempted to register null output channel '{}'", channelName);
+        return;
+    }
+    std::unique_lock lock(m_outputMutex);
+    m_outputChannels[std::string(channelName)] = std::move(channel);
+}
+
+bool IHandler::send(std::string_view channelName, std::span<const std::byte> message)
+{
+    std::shared_lock lock(m_outputMutex);
+    auto it = m_outputChannels.find(std::string(channelName));
+    if (it == m_outputChannels.end() || !it->second) {
+        Proxy::Log::error("[IHandler] Output channel '{}' not found", channelName);
+        return false;
+    }
+    return it->second->send(message);
+}
+
+std::size_t IHandler::sendAll(std::span<const std::byte> message)
+{
+    std::shared_lock lock(m_outputMutex);
+    std::size_t count = 0;
+    for (const auto& [name, channel] : m_outputChannels) {
+        if (channel && channel->send(message)) {
+            count++;
+        } else {
+            Proxy::Log::warn("[IHandler] Failed to forward message to channel '{}'", name);
+        }
+    }
+    return count;
+}
+
+bool IHandler::hasOutputChannel(std::string_view channelName) const noexcept
+{
+    std::shared_lock lock(m_outputMutex);
+    return m_outputChannels.find(std::string(channelName)) != m_outputChannels.end();
+}
+
+std::vector<std::string> IHandler::getOutputChannelNames() const
+{
+    std::shared_lock lock(m_outputMutex);
+    std::vector<std::string> names;
+    names.reserve(m_outputChannels.size());
+    for (const auto& [name, _] : m_outputChannels) {
+        names.push_back(name);
+    }
+    return names;
+}
+
 void IHandler::step()
 {
+}
+
+void IHandler::setExecutionModel(ExecutionModel model, std::size_t poolSize)
+{
+    switch (model) {
+    case ExecutionModel::Sequential:
+        m_strategy = std::make_unique<SequentialStrategy>();
+        break;
+    case ExecutionModel::ThreadPool:
+        m_strategy = std::make_unique<ThreadPoolStrategy>(poolSize);
+        break;
+    case ExecutionModel::Dedicated:
+    default:
+        m_strategy = std::make_unique<DedicatedThreadStrategy>();
+        break;
+    }
+}
+
+void IHandler::setExecutionStrategy(std::unique_ptr<IExecutionStrategy> strategy)
+{
+    m_strategy = std::move(strategy);
+}
+
+void IHandler::ensureStrategy()
+{
+    if (!m_strategy) {
+        m_strategy = std::make_unique<DedicatedThreadStrategy>();
+    }
 }
 
 void IHandler::registerSignalHandler()
@@ -56,47 +160,37 @@ void IHandler::unregisterSignalHandler()
 
 void IHandler::start()
 {
-    registerSignalHandler();
-    m_running.store(true, std::memory_order_release);
-    constexpr Timeout channelTimeout { 50 };
+    startAsync();
+    wait();
+}
 
-    auto* receiver = dynamic_cast<IMessageReceiver*>(this);
+void IHandler::startAsync()
+{
+    ensureStrategy();
+    registerSignalHandler();
 
     Proxy::Log::info("[IHandler] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...", m_inputChannels.size());
+    m_strategy->start(*this);
+}
 
-    while (m_running.load(std::memory_order_acquire)) {
-        if (!m_inputChannels.empty()) {
-            for (auto& namedChannel : m_inputChannels) {
-                if (!m_running.load(std::memory_order_acquire)) {
-                    break;
-                }
-                if (namedChannel.channel) {
-                    if (auto msg = namedChannel.channel->receive(channelTimeout); msg.has_value()) {
-                        if (receiver) {
-                            receiver->onMessageReceived(namedChannel.name, *msg);
-                        }
-                    }
-                }
-            }
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-
-        step();
+void IHandler::wait()
+{
+    if (m_strategy) {
+        m_strategy->wait();
     }
-
-    Proxy::Log::info("[IHandler] Event loop stopped.");
     unregisterSignalHandler();
 }
 
 void IHandler::stop()
 {
-    m_running.store(false, std::memory_order_release);
+    if (m_strategy) {
+        m_strategy->stop();
+    }
 }
 
 bool IHandler::isRunning() const noexcept
 {
-    return m_running.load(std::memory_order_acquire);
+    return m_strategy && m_strategy->isRunning();
 }
 
 } // namespace Core

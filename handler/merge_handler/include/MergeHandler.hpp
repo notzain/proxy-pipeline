@@ -1,8 +1,6 @@
 #pragma once
 
 #include "core/IHandler.hpp"
-#include "core/IMessageReceiver.hpp"
-#include "core/IMessageSender.hpp"
 #include <string>
 #include <string_view>
 
@@ -12,7 +10,7 @@ namespace Proxy::Handler {
  * @brief Merge / Fan-in handler that consumes messages from multiple input channels
  * and redirects each incoming message to a single output channel.
  */
-class MergeHandler : public Core::IHandler, public Core::IMessageReceiver, public Core::IMessageSender {
+class MergeHandler : public Core::IHandler {
 public:
     explicit MergeHandler(std::string outputChannelName);
     ~MergeHandler() override = default;
@@ -31,4 +29,3 @@ private:
 };
 
 } // namespace Proxy::Handler
-

@@ -1,23 +1,47 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
-#include <atomic>
+#include "backend/IOutputChannel.hpp"
+#include "core/IExecutionStrategy.hpp"
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Core {
 
 /**
- * @brief Base event loop for message handling components.
+ * @brief Concurrency and execution model for the handler event loop.
+ */
+enum class ExecutionModel {
+    Sequential, ///< Single-threaded round-robin polling.
+    Dedicated, ///< Dedicated thread per registered input channel.
+    ThreadPool ///< Dedicated input polling with worker thread pool for message dispatch.
+};
+
+/**
+ * @brief Parses an execution model enum from a string name.
  *
- * IHandler defines the message polling and execution loop. It manages
- * registered input channels, dispatches incoming messages to IMessageReceiver callbacks
- * (if implemented), and runs custom per-iteration work via step().
- * It also installs signal handling for graceful shutdown on SIGINT (Ctrl+C) and SIGTERM.
+ * @param name Model name (e.g. "sequential", "dedicated", "thread_pool").
+ * @return ExecutionModel Corresponding enum value, defaulting to Dedicated if unknown.
+ */
+ExecutionModel parseExecutionModel(std::string_view name);
+
+/**
+ * @brief Universal base handler managing input and output channels, message dispatch,
+ * and the execution lifecycle loop.
+ *
+ * IHandler provides:
+ * - Ingress: Registers IInputChannel instances, dispatches received messages via onMessageReceived().
+ * - Egress: Thread-safe registration of IOutputChannel instances, sending via send() and sendAll().
+ * - Background work: Periodic step() hook.
+ * - Runtime Execution Models: Configurable via setExecutionModel() (Sequential, Dedicated, ThreadPool).
+ * - Async lifecycle: start(), startAsync(), wait(), stop(), isRunning().
  */
 class IHandler {
 public:
@@ -36,13 +60,77 @@ public:
      */
     virtual ~IHandler();
 
+    // --- Input Channel Management (Ingress) ---
+
     /**
      * @brief Registers an input channel to be polled by the handler event loop.
      *
-     * @param channelName Name of the channel (used when dispatching to IMessageReceiver).
+     * @param channelName Name of the channel.
      * @param channel The input channel instance.
      */
     void registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
+
+    /**
+     * @brief Accessor for registered input channels.
+     *
+     * @return const std::vector<NamedInputChannel>& Reference to input channels.
+     */
+    [[nodiscard]] const std::vector<NamedInputChannel>& getInputChannels() const noexcept;
+
+    /**
+     * @brief Ingress callback invoked when a message has been received on an input channel.
+     *
+     * Subclasses interested in processing incoming messages override this.
+     * Default implementation is a no-op.
+     *
+     * @param channelName Name of the channel that received the message.
+     * @param buffer Non-owning view of the raw byte buffer received.
+     */
+    virtual void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer);
+
+    // --- Output Channel Management (Egress) ---
+
+    /**
+     * @brief Registers an output channel under a specific channel name in a thread-safe manner.
+     *
+     * @param channelName Name identifying the output channel.
+     * @param channel The output channel instance.
+     */
+    void registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
+
+    /**
+     * @brief Sends a message to a registered output channel in a thread-safe manner.
+     *
+     * @param channelName Name of the channel to send the message to.
+     * @param message View of the byte buffer to send.
+     * @return true If the channel was found and message sent successfully, false otherwise.
+     */
+    bool send(std::string_view channelName, std::span<const std::byte> message);
+
+    /**
+     * @brief Sends a message to all registered output channels in a thread-safe manner.
+     *
+     * @param message View of the byte buffer to send.
+     * @return std::size_t Number of output channels the message was successfully dispatched to.
+     */
+    std::size_t sendAll(std::span<const std::byte> message);
+
+    /**
+     * @brief Checks if an output channel is registered with the given name.
+     *
+     * @param channelName Name of the channel.
+     * @return true If registered, false otherwise.
+     */
+    [[nodiscard]] bool hasOutputChannel(std::string_view channelName) const noexcept;
+
+    /**
+     * @brief Returns a list of all registered output channel names.
+     *
+     * @return std::vector<std::string> Registered channel names.
+     */
+    [[nodiscard]] std::vector<std::string> getOutputChannelNames() const;
+
+    // --- Periodic Processing Hook ---
 
     /**
      * @brief Periodic step callback executed on each iteration of the event loop.
@@ -51,16 +139,46 @@ public:
      */
     virtual void step();
 
+    // --- Execution Strategy & Concurrency Configuration ---
+
     /**
-     * @brief Starts the message polling loop.
+     * @brief Sets the execution model using standard strategies.
      *
-     * Runs continuously until stop() is invoked or a shutdown signal (SIGINT/Ctrl+C) is received.
-     * Repeatedly polls all registered input channels, dispatches to IMessageReceiver, and calls step().
+     * @param model Desired execution model (Sequential, Dedicated, or ThreadPool).
+     * @param poolSize Worker thread count (only used when model is ThreadPool, 0 for hardware concurrency).
+     */
+    void setExecutionModel(ExecutionModel model, std::size_t poolSize = 0);
+
+    /**
+     * @brief Injects a custom execution strategy.
+     *
+     * @param strategy Custom implementation of IExecutionStrategy.
+     */
+    void setExecutionStrategy(std::unique_ptr<IExecutionStrategy> strategy);
+
+    // --- Lifecycle Execution Control ---
+
+    /**
+     * @brief Starts the message polling loop synchronously.
+     *
+     * Blocks the calling thread until stop() is invoked or a shutdown signal (SIGINT/SIGTERM) is received.
      */
     virtual void start();
 
     /**
-     * @brief Signals the handler loop to terminate.
+     * @brief Starts the message polling loop asynchronously without blocking.
+     *
+     * Launches the configured strategy in background thread(s) and returns immediately.
+     */
+    virtual void startAsync();
+
+    /**
+     * @brief Blocks until the handler and its execution strategy finish running.
+     */
+    virtual void wait();
+
+    /**
+     * @brief Signals the handler loop and its execution strategy to terminate.
      */
     virtual void stop();
 
@@ -73,11 +191,14 @@ public:
     [[nodiscard]] bool isRunning() const noexcept;
 
 protected:
-    std::atomic<bool> m_running { false };
     std::vector<NamedInputChannel> m_inputChannels;
+    mutable std::shared_mutex m_outputMutex;
+    std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
+    std::unique_ptr<IExecutionStrategy> m_strategy;
 
     void registerSignalHandler();
     void unregisterSignalHandler();
+    void ensureStrategy();
 };
 
 } // namespace Core

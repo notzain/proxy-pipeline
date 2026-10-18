@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/IHandler.hpp"
-#include "core/IMessageReceiver.hpp"
 #include <string>
 
 namespace Proxy::Handler {
@@ -9,7 +8,7 @@ namespace Proxy::Handler {
 /**
  * @brief Test handler that registers an input channel and prints received messages.
  */
-class DummyReceiveHandler : public Core::IHandler, public Core::IMessageReceiver {
+class DummyReceiveHandler : public Core::IHandler {
 public:
     DummyReceiveHandler() = default;
     ~DummyReceiveHandler() override = default;

@@ -1,8 +1,6 @@
 #pragma once
 
 #include "core/IHandler.hpp"
-#include "core/IMessageReceiver.hpp"
-#include "core/IMessageSender.hpp"
 #include <string_view>
 
 namespace Proxy::Handler {
@@ -11,7 +9,7 @@ namespace Proxy::Handler {
  * @brief Split / Fan-out handler that consumes messages from an input channel
  * and forwards each received message to all configured output channels.
  */
-class SplitHandler : public Core::IHandler, public Core::IMessageReceiver, public Core::IMessageSender {
+class SplitHandler : public Core::IHandler {
 public:
     SplitHandler() = default;
     ~SplitHandler() override = default;
@@ -27,3 +25,4 @@ public:
 };
 
 } // namespace Proxy::Handler
+

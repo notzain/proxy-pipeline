@@ -20,4 +20,3 @@ void MergeHandler::onMessageReceived(std::string_view channelName, std::span<con
 }
 
 } // namespace Proxy::Handler
-

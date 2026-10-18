@@ -71,4 +71,3 @@ int main(int argc, char* argv[])
     Proxy::Log::info("MergeHandler exiting cleanly.");
     return 0;
 }
-
