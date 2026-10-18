@@ -5,14 +5,14 @@ backend = "file"
 # Shared / backend-level configuration
 file.path = "/tmp/watch/default"
 log.console = true
-"channel.pipe_in.path" = "/tmp/watch/pipe_in"
-"channel.pipe_rec.path" = "/tmp/watch/pipe_rec"
-"channel.pipe_print.path" = "/tmp/watch/pipe_print"
+"channel.file_ingress_pipe.path" = "/tmp/watch/file_ingress_pipe"
+"channel.file_receiver_branch.path" = "/tmp/watch/file_receiver_branch"
+"channel.file_printer_branch.path" = "/tmp/watch/file_printer_branch"
 
 [[handlers]]
 name = "sender_1"
 type = "dummy_send"
-output_channel = "pipe_in"
+output_channel = "file_ingress_pipe"
 [handlers.config]
 "dummy.message" = "Hello through file split pipe!"
 "dummy.delay_ms" = 500
@@ -20,15 +20,15 @@ output_channel = "pipe_in"
 [[handlers]]
 name = "splitter_1"
 type = "split_handler"
-input_channel = "pipe_in"
-output_channels = ["pipe_rec", "pipe_print"]
+input_channel = "file_ingress_pipe"
+output_channels = ["file_receiver_branch", "file_printer_branch"]
 
 [[handlers]]
 name = "receiver_1"
 type = "dummy_receive"
-input_channel = "pipe_rec"
+input_channel = "file_receiver_branch"
 
 [[handlers]]
 name = "printer_1"
 type = "print_handler"
-input_channel = "pipe_print"
+input_channel = "file_printer_branch"
