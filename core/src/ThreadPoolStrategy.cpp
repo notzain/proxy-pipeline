@@ -34,8 +34,11 @@ void ThreadPoolStrategy::start(IHandler& handler)
     // 1. Launch pool worker threads
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
         m_workerThreads.emplace_back([this](std::stop_token stoken) {
+            std::vector<std::function<void()>> batch;
+            batch.reserve(16);
+
             while (!stoken.stop_requested()) {
-                std::function<void()> task;
+                batch.clear();
                 {
                     std::unique_lock lock(m_queueMutex);
                     m_queueCv.wait(lock, [this, &stoken] {
@@ -46,14 +49,17 @@ void ThreadPoolStrategy::start(IHandler& handler)
                         break;
                     }
 
-                    if (!m_taskQueue.empty()) {
-                        task = std::move(m_taskQueue.front());
+                    // Drain up to 16 tasks per lock acquisition
+                    while (!m_taskQueue.empty() && batch.size() < 16) {
+                        batch.push_back(std::move(m_taskQueue.front()));
                         m_taskQueue.pop();
                     }
                 }
 
-                if (task) {
-                    task();
+                for (auto& task : batch) {
+                    if (task) {
+                        task();
+                    }
                 }
             }
         });

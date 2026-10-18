@@ -231,6 +231,7 @@ int main(int argc, char* argv[])
     runSocketBenchmark(Core::ExecutionModel::Dedicated, "UDP (Dedicated)");
     runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
     runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
+    runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
 
     // Print summary table
     printResultTable(results);

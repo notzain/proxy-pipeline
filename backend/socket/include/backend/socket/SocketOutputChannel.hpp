@@ -21,7 +21,7 @@ public:
 private:
     std::string m_destHost;
     std::uint16_t m_destPort;
-    sockaddr_in m_destAddr {};
+    sockaddr_in m_destAddr { };
     int m_socketFd { -1 };
 
     void closeSocket();
