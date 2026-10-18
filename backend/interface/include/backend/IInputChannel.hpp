@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstring>
 #include <optional>
 #include <span>
 #include <vector>
@@ -28,6 +30,26 @@ public:
      * @return std::optional<Buffer> Buffer containing received data, or std::nullopt on timeout.
      */
     virtual std::optional<Buffer> receive(Timeout timeout) = 0;
+
+    /**
+     * @brief Polls the input channel and reads data directly into a provided buffer without heap allocation.
+     *
+     * Default implementation falls back to receive(timeout) and copies into destination.
+     *
+     * @param destination Non-owning pre-allocated memory span to receive data into.
+     * @param timeout Maximum duration to wait before returning 0.
+     * @return std::size_t Number of bytes written into destination, or 0 on timeout/no message.
+     */
+    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout)
+    {
+        auto msg = receive(timeout);
+        if (!msg.has_value() || msg->empty()) {
+            return 0;
+        }
+        std::size_t bytesToCopy = std::min(destination.size(), msg->size());
+        std::memcpy(destination.data(), msg->data(), bytesToCopy);
+        return bytesToCopy;
+    }
 };
 
 } // namespace Backend

@@ -67,12 +67,12 @@ void SocketInputChannel::openAndBindSocket()
     Proxy::Log::info("[SocketInputChannel] Listening on UDP {}:{}", m_host, m_port);
 }
 
-std::optional<::Backend::IInputChannel::Buffer> SocketInputChannel::receive(Timeout timeout)
+std::size_t SocketInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return std::nullopt;
+            return 0;
         }
     }
 
@@ -84,27 +84,35 @@ std::optional<::Backend::IInputChannel::Buffer> SocketInputChannel::receive(Time
     int ret = ::poll(&pfd, 1, timeoutMs);
 
     if (ret > 0 && (pfd.revents & POLLIN)) {
-        thread_local std::array<std::byte, 65535> scratch;
         sockaddr_in clientAddr { };
         socklen_t clientLen = sizeof(clientAddr);
 
         ssize_t bytesRead = ::recvfrom(
             m_socketFd,
-            reinterpret_cast<char*>(scratch.data()),
-            scratch.size(),
+            reinterpret_cast<char*>(destination.data()),
+            destination.size(),
             0,
             reinterpret_cast<sockaddr*>(&clientAddr),
             &clientLen);
 
         if (bytesRead > 0) {
-            Buffer buffer(scratch.begin(), scratch.begin() + bytesRead);
             char clientIp[INET_ADDRSTRLEN];
             ::inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
             Proxy::Log::debug("[SocketInputChannel] Received {} bytes from {}:{}", bytesRead, clientIp, ntohs(clientAddr.sin_port));
-            return buffer;
+            return static_cast<std::size_t>(bytesRead);
         }
     }
 
+    return 0;
+}
+
+std::optional<::Backend::IInputChannel::Buffer> SocketInputChannel::receive(Timeout timeout)
+{
+    thread_local std::array<std::byte, 65535> scratch;
+    std::size_t bytesRead = receiveInto(scratch, timeout);
+    if (bytesRead > 0) {
+        return Buffer(scratch.begin(), scratch.begin() + bytesRead);
+    }
     return std::nullopt;
 }
 

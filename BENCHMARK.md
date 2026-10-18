@@ -89,3 +89,36 @@ Performance tracking across optimizations and execution strategies.
 | **UDP (ThreadPool 8)**| 50,000 | **62,985.22** | **4.93** | **86,966.09** | **154,239.00** | **100% (0 drops)** |
 
 ---
+
+## 5. Optimization Phase 3: Zero-Allocation Ingress (`receiveInto`) & Typed Task Queue
+
+- **Changes**:
+  1. **Direct Span Ingress (`IInputChannel::receiveInto`)**: Introduced `receiveInto(std::span<std::byte> dest, Timeout timeout)` avoiding per-message `Buffer` (`std::vector<std::byte>`) heap construction on ingress.
+  2. **`SocketInputChannel::receiveInto`**: Sockets read straight into pre-allocated memory without any intermediate allocations.
+  3. **Zero-Heap Event Loops**: `DedicatedThreadStrategy` and `SequentialStrategy` now stream directly into `handler.onMessageReceived(name, span)` using a reusable `thread_local` buffer.
+  4. **Typed `MessageTask` Struct in `ThreadPoolStrategy`**: Replaced heap-allocated `std::function<void()>` task closures with a lightweight POD struct (`std::string channelName`, `vector<std::byte> buffer`).
+
+### Results (20,000 Messages, Release `-O3`):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | 20,000 | **398,303.23** | **31.15** | **2.49** | **3.00** |
+| **UDP (Dedicated)** | 20,000 | **87,999.89** | **6.88** | **65,841.40** | **119,980.00** |
+| **UDP (Sequential)** | 20,000 | **88,137.57** | **6.89** | **66,584.36** | **122,686.00** |
+| **UDP (ThreadPool 4)**| 20,000 | **70,730.61** | **5.53** | **21,106.44** | **38,944.00** |
+| **UDP (ThreadPool 8)**| 20,000 | **54,622.72** | **4.27** | **21,021.48** | **47,245.00** |
+
+---
+
+### Stress Test (100,000 Messages Massive Burst, Release `-O3`):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) | Delivery Rate |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | 100,000 | **422,765.05** | **33.06** | **2.34** | **3.00** | **100% (0 drops)** |
+| **UDP (ThreadPool 8)**| 100,000 | **52,092.07** | **4.07** | **18,560.59** | **80,788.00** | **100% (0 drops)** |
+| **UDP (ThreadPool 4)**| 100,000 | **44,540.81** | **3.48** | **20,265.73** | **155,640.00** | **100% (0 drops)** |
+
+> [!NOTE]
+> Even under a massive **100,000-packet burst**, both `ThreadPool 4` and `ThreadPool 8` achieved a **100% packet delivery rate (0 drops)** because the zero-allocation ingress path kept the kernel UDP socket buffers thoroughly drained.
+
+---

@@ -1,7 +1,9 @@
 #include "core/SequentialStrategy.hpp"
 #include "core/IHandler.hpp"
 #include "log/Log.hpp"
+#include <array>
 #include <chrono>
+#include <span>
 #include <thread>
 
 namespace Core {
@@ -30,8 +32,9 @@ void SequentialStrategy::start(IHandler& handler)
                         break;
                     }
                     if (namedChannel.channel) {
-                        if (auto msg = namedChannel.channel->receive(channelTimeout); msg.has_value()) {
-                            handler.onMessageReceived(namedChannel.name, *msg);
+                        thread_local std::array<std::byte, 65535> rxBuffer;
+                        if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
+                            handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
                         }
                     }
                 }

@@ -38,7 +38,12 @@ private:
     std::size_t m_numWorkerThreads;
     std::atomic<bool> m_running { false };
 
-    std::queue<std::function<void()>> m_taskQueue;
+    struct MessageTask {
+        std::string channelName;
+        std::vector<std::byte> buffer;
+    };
+
+    std::queue<MessageTask> m_taskQueue;
     std::mutex m_queueMutex;
     std::condition_variable m_queueCv;
 

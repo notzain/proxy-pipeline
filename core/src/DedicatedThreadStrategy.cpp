@@ -1,7 +1,9 @@
 #include "core/DedicatedThreadStrategy.hpp"
 #include "core/IHandler.hpp"
 #include "log/Log.hpp"
+#include <array>
 #include <chrono>
+#include <span>
 
 namespace Core {
 
@@ -24,10 +26,11 @@ void DedicatedThreadStrategy::start(IHandler& handler)
     for (const auto& namedChannel : channels) {
         m_workerThreads.emplace_back([this, &handler, &namedChannel, channelTimeout](std::stop_token stoken) {
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", namedChannel.name);
+            thread_local std::array<std::byte, 65535> rxBuffer;
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (namedChannel.channel) {
-                    if (auto msg = namedChannel.channel->receive(channelTimeout); msg.has_value()) {
-                        handler.onMessageReceived(namedChannel.name, *msg);
+                    if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
+                        handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
                     }
                 }
             }

@@ -1,7 +1,9 @@
 #include "core/ThreadPoolStrategy.hpp"
 #include "core/IHandler.hpp"
 #include "log/Log.hpp"
+#include <array>
 #include <chrono>
+#include <span>
 
 namespace Core {
 
@@ -33,8 +35,8 @@ void ThreadPoolStrategy::start(IHandler& handler)
 
     // 1. Launch pool worker threads
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
-        m_workerThreads.emplace_back([this](std::stop_token stoken) {
-            std::vector<std::function<void()>> batch;
+        m_workerThreads.emplace_back([this, &handler](std::stop_token stoken) {
+            std::vector<MessageTask> batch;
             batch.reserve(16);
 
             while (!stoken.stop_requested()) {
@@ -57,9 +59,7 @@ void ThreadPoolStrategy::start(IHandler& handler)
                 }
 
                 for (auto& task : batch) {
-                    if (task) {
-                        task();
-                    }
+                    handler.onMessageReceived(task.channelName, task.buffer);
                 }
             }
         });
@@ -67,15 +67,16 @@ void ThreadPoolStrategy::start(IHandler& handler)
 
     // 2. Launch channel poller threads to enqueue message tasks
     for (const auto& namedChannel : channels) {
-        m_channelThreads.emplace_back([this, &handler, &namedChannel, channelTimeout](std::stop_token stoken) {
+        m_channelThreads.emplace_back([this, &namedChannel, channelTimeout](std::stop_token stoken) {
+            thread_local std::array<std::byte, 65535> rxBuffer;
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (namedChannel.channel) {
-                    if (auto msg = namedChannel.channel->receive(channelTimeout); msg.has_value()) {
+                    if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
                         {
                             std::unique_lock lock(m_queueMutex);
-                            m_taskQueue.push([&handler, channelName = namedChannel.name, buffer = std::move(*msg)]() {
-                                handler.onMessageReceived(channelName, buffer);
-                            });
+                            m_taskQueue.push(MessageTask {
+                                namedChannel.name,
+                                std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + bytes) });
                         }
                         m_queueCv.notify_one();
                     }
