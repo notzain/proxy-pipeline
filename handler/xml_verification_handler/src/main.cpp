@@ -60,4 +60,3 @@ int main(int argc, char* argv[])
     Proxy::Log::info("XmlVerificationHandler exiting cleanly.");
     return 0;
 }
-

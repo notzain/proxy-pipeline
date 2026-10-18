@@ -38,6 +38,18 @@ void SocketOutputChannel::openSocket()
         Proxy::Log::error("[SocketOutputChannel] Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
+
+    int sndbuf = 4 * 1024 * 1024; // 4MB send buffer for high-throughput bursts
+    ::setsockopt(m_socketFd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+
+    std::memset(&m_destAddr, 0, sizeof(m_destAddr));
+    m_destAddr.sin_family = AF_INET;
+    m_destAddr.sin_port = htons(m_destPort);
+
+    if (::inet_pton(AF_INET, m_destHost.c_str(), &m_destAddr.sin_addr) <= 0) {
+        Proxy::Log::error("[SocketOutputChannel] Invalid destination IP address: {}", m_destHost);
+    }
+
     Proxy::Log::info("[SocketOutputChannel] Target configured for UDP {}:{}", m_destHost, m_destPort);
 }
 
@@ -50,22 +62,13 @@ bool SocketOutputChannel::send(std::span<const std::byte> message)
         }
     }
 
-    sockaddr_in destAddr { };
-    destAddr.sin_family = AF_INET;
-    destAddr.sin_port = htons(m_destPort);
-
-    if (::inet_pton(AF_INET, m_destHost.c_str(), &destAddr.sin_addr) <= 0) {
-        Proxy::Log::error("[SocketOutputChannel] Invalid destination IP address: {}", m_destHost);
-        return false;
-    }
-
     ssize_t sent = ::sendto(
         m_socketFd,
         reinterpret_cast<const char*>(message.data()),
         message.size(),
         0,
-        reinterpret_cast<const sockaddr*>(&destAddr),
-        sizeof(destAddr));
+        reinterpret_cast<const sockaddr*>(&m_destAddr),
+        sizeof(m_destAddr));
 
     if (sent < 0) {
         Proxy::Log::error("[SocketOutputChannel] Failed to send {} bytes to {}:{} ({})", message.size(), m_destHost, m_destPort, std::strerror(errno));

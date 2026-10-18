@@ -39,25 +39,12 @@ public:
             return;
         }
 
-        m_validCtxt = xmlSchemaNewValidCtxt(m_schema);
-        if (!m_validCtxt) {
-            Proxy::Log::error("[XmlVerificationHandler] Failed to create schema validation context for '{}'", schemaPath.string());
-            return;
-        }
-
-        // Suppress default libxml2 stdout/stderr noise
-        xmlSchemaSetValidErrors(m_validCtxt, xmlSilentErrorCallback, xmlSilentWarningCallback, nullptr);
-
         m_loaded = true;
         Proxy::Log::info("[XmlVerificationHandler] Loaded and compiled XSD schema: {}", schemaPath.string());
     }
 
     ~XmlSchemaValidator()
     {
-        if (m_validCtxt) {
-            xmlSchemaFreeValidCtxt(m_validCtxt);
-            m_validCtxt = nullptr;
-        }
         if (m_schema) {
             xmlSchemaFree(m_schema);
             m_schema = nullptr;
@@ -91,10 +78,33 @@ public:
             return false;
         }
 
-        std::lock_guard lock(m_mutex);
+        // Thread-local validation context pool: eliminates all mutex contention across threads
+        thread_local struct ThreadLocalValidCtxt {
+            xmlSchemaPtr cachedSchema { nullptr };
+            xmlSchemaValidCtxtPtr ctxt { nullptr };
+
+            ~ThreadLocalValidCtxt()
+            {
+                if (ctxt) {
+                    xmlSchemaFreeValidCtxt(ctxt);
+                }
+            }
+        } tlCtxt;
+
+        if (tlCtxt.cachedSchema != m_schema || !tlCtxt.ctxt) {
+            if (tlCtxt.ctxt) {
+                xmlSchemaFreeValidCtxt(tlCtxt.ctxt);
+            }
+            tlCtxt.ctxt = xmlSchemaNewValidCtxt(m_schema);
+            tlCtxt.cachedSchema = m_schema;
+            if (tlCtxt.ctxt) {
+                xmlSchemaSetValidErrors(tlCtxt.ctxt, xmlSilentErrorCallback, xmlSilentWarningCallback, nullptr);
+            }
+        }
+
         int result = -1;
-        if (m_validCtxt) {
-            result = xmlSchemaValidateDoc(m_validCtxt, doc);
+        if (tlCtxt.ctxt) {
+            result = xmlSchemaValidateDoc(tlCtxt.ctxt, doc);
         }
         xmlFreeDoc(doc);
 
@@ -103,8 +113,6 @@ public:
 
 private:
     xmlSchemaPtr m_schema { nullptr };
-    xmlSchemaValidCtxtPtr m_validCtxt { nullptr };
-    mutable std::mutex m_mutex;
     bool m_loaded { false };
 };
 
@@ -142,4 +150,3 @@ void XmlVerificationHandler::onMessageReceived(std::string_view channelName, std
 }
 
 } // namespace Proxy::Handler
-

@@ -70,6 +70,5 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
     CHECK(handler.validate(validSpan));
     CHECK_FALSE(handler.validate(invalidSpan));
     CHECK_FALSE(handler.validate(malformedSpan));
-    CHECK_FALSE(handler.validate({}));
+    CHECK_FALSE(handler.validate({ }));
 }
-
