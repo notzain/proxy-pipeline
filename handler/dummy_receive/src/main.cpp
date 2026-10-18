@@ -21,18 +21,12 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    std::string channelName = config.getOr<std::string>("dummy.channel", "test_channel");
-
-    auto inputChannel = backend->createInputChannel(channelName, config);
-    if (!inputChannel) {
-        Proxy::Log::error("Failed to create input channel '{}'", channelName);
+    Proxy::Handler::DummyReceiveHandler handler;
+    if (!handler.configure(config, *backend)) {
         return 1;
     }
 
-    Proxy::Handler::DummyReceiveHandler handler;
-    handler.registerInputChannel(channelName, std::move(inputChannel));
-
-    Proxy::Log::info("DummyReceive initialized (channel='{}'). Starting event loop...", channelName);
+    Proxy::Log::info("DummyReceive initialized successfully. Starting event loop...");
     handler.start();
 
     Proxy::Log::info("DummyReceive exiting cleanly.");

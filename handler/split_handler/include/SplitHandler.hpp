@@ -15,6 +15,15 @@ public:
     ~SplitHandler() override = default;
 
     /**
+     * @brief Configures SplitHandler and creates the input channel and all output channels via the backend.
+     *
+     * @param config Configuration store.
+     * @param backend Backend instance.
+     * @return true If channel creation succeeded, false otherwise.
+     */
+    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+
+    /**
      * @brief Callback invoked when a message is received on an input channel.
      * Forwards the received message buffer to all registered output channels.
      *
@@ -22,6 +31,11 @@ public:
      * @param buffer Raw message byte buffer.
      */
     void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
+
+private:
+    std::string m_inputChannelName;
+    ::Backend::IInputChannel* m_inputChannel { nullptr };
+    std::vector<::Backend::IOutputChannel*> m_outputChannelsList;
 };
 
 } // namespace Proxy::Handler

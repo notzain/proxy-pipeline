@@ -23,6 +23,8 @@ class XmlSchemaValidator;
  */
 class XmlVerificationHandler : public Core::IHandler {
 public:
+    XmlVerificationHandler();
+
     /**
      * @brief Constructs an XmlVerificationHandler with a schema file and output channel.
      *
@@ -32,6 +34,16 @@ public:
     XmlVerificationHandler(std::filesystem::path schemaPath, std::string outputChannelName);
 
     ~XmlVerificationHandler() override;
+
+    /**
+     * @brief Configures XmlVerificationHandler, loads schema from 'xml.xsd_path',
+     * and creates input and output channels via the backend.
+     *
+     * @param config Configuration store.
+     * @param backend Backend instance.
+     * @return true If configuration, schema loading, and channel initialization succeeded, false otherwise.
+     */
+    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Ingress callback for incoming messages.
@@ -59,8 +71,11 @@ public:
 
 private:
     std::filesystem::path m_schemaPath;
+    std::string m_inputChannelName;
     std::string m_outputChannelName;
     std::unique_ptr<XmlSchemaValidator> m_validator;
+    ::Backend::IInputChannel* m_inputChannel { nullptr };
+    ::Backend::IOutputChannel* m_outputChannel { nullptr };
 };
 
 } // namespace Proxy::Handler

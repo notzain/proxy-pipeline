@@ -11,8 +11,18 @@ namespace Proxy::Handler {
  */
 class DummySendHandler : public Core::IHandler {
 public:
+    DummySendHandler() = default;
     DummySendHandler(std::string channelName, std::string messageText, std::chrono::milliseconds delay);
     ~DummySendHandler() override = default;
+
+    /**
+     * @brief Configures DummySendHandler and creates the output channel via the backend.
+     *
+     * @param config Configuration store.
+     * @param backend Backend instance.
+     * @return true If output channel creation succeeded, false otherwise.
+     */
+    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Periodic step callback executed by IHandler's event loop.
@@ -23,8 +33,9 @@ public:
 private:
     std::string m_channelName;
     std::string m_messageText;
-    std::chrono::milliseconds m_delay;
-    std::chrono::steady_clock::time_point m_lastSendTime;
+    std::chrono::milliseconds m_delay { 1000 };
+    std::chrono::steady_clock::time_point m_lastSendTime { std::chrono::steady_clock::now() };
+    ::Backend::IOutputChannel* m_outputChannel { nullptr };
 };
 
 } // namespace Proxy::Handler

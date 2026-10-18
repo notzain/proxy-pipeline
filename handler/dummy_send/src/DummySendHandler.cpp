@@ -1,4 +1,6 @@
 #include "DummySendHandler.hpp"
+#include "backend/IBackend.hpp"
+#include "core/Configuration.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
@@ -12,6 +14,24 @@ DummySendHandler::DummySendHandler(std::string channelName, std::string messageT
 {
 }
 
+bool DummySendHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+{
+    m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
+    m_messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");
+    int delayMs = config.getOr<int>("dummy.delay_ms", 1000);
+    m_delay = std::chrono::milliseconds(delayMs);
+    m_lastSendTime = std::chrono::steady_clock::now() - m_delay;
+
+    auto outChannel = backend.createOutputChannel(m_channelName, config);
+    if (!outChannel) {
+        Proxy::Log::error("[DummySend] Failed to create output channel '{}'", m_channelName);
+        return false;
+    }
+
+    m_outputChannel = registerOutputChannel(m_channelName, std::move(outChannel));
+    return true;
+}
+
 void DummySendHandler::step()
 {
     auto now = std::chrono::steady_clock::now();
@@ -23,7 +43,11 @@ void DummySendHandler::step()
             m_messageText.size());
 
         Proxy::Log::info("[DummySend] Sending message to channel '{}': {}", m_channelName, m_messageText);
-        send(m_channelName, byteSpan);
+        if (m_outputChannel) {
+            m_outputChannel->send(byteSpan);
+        } else {
+            send(m_channelName, byteSpan);
+        }
     }
 }
 

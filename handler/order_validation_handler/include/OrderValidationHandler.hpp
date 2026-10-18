@@ -18,6 +18,8 @@ namespace Proxy::Handler {
  */
 class OrderValidationHandler : public Core::IHandler {
 public:
+    OrderValidationHandler() = default;
+
     /**
      * @brief Constructs an OrderValidationHandler with an output channel name.
      *
@@ -26,6 +28,15 @@ public:
     explicit OrderValidationHandler(std::string outputChannelName);
 
     ~OrderValidationHandler() override;
+
+    /**
+     * @brief Configures OrderValidationHandler and creates input and output channels via the backend.
+     *
+     * @param config Configuration store.
+     * @param backend Backend instance.
+     * @return true If configuration and channel initialization succeeded, false otherwise.
+     */
+    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Ingress callback for incoming messages.
@@ -102,8 +113,10 @@ public:
     void onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer);
 
 private:
+    std::string m_inputChannelName;
     std::string m_outputChannelName;
-    Backend::IOutputChannel* m_cachedOutputChannel { nullptr };
+    ::Backend::IInputChannel* m_inputChannel { nullptr };
+    ::Backend::IOutputChannel* m_cachedOutputChannel { nullptr };
 };
 
 } // namespace Proxy::Handler

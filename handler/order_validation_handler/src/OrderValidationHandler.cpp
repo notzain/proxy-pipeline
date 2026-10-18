@@ -1,4 +1,6 @@
 #include "OrderValidationHandler.hpp"
+#include "backend/IBackend.hpp"
+#include "core/Configuration.hpp"
 #include "core/serialization/XmlSerializer.hpp"
 #include "log/Log.hpp"
 
@@ -15,6 +17,28 @@ OrderValidationHandler::OrderValidationHandler(std::string outputChannelName)
 }
 
 OrderValidationHandler::~OrderValidationHandler() = default;
+
+bool OrderValidationHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+{
+    m_inputChannelName = config.getOr<std::string>("order.input_channel", config.getOr<std::string>("channel.input", "order_in"));
+    m_outputChannelName = config.getOr<std::string>("order.output_channel", config.getOr<std::string>("channel.output", "order_out"));
+
+    auto inChannel = backend.createInputChannel(m_inputChannelName, config);
+    if (!inChannel) {
+        Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", m_inputChannelName);
+        return false;
+    }
+    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
+
+    auto outChannel = backend.createOutputChannel(m_outputChannelName, config);
+    if (!outChannel) {
+        Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", m_outputChannelName);
+        return false;
+    }
+    m_cachedOutputChannel = registerOutputChannel(m_outputChannelName, std::move(outChannel));
+
+    return true;
+}
 
 std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(std::span<const std::byte> xmlData) const
 {

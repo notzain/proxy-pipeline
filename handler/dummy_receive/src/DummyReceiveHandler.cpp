@@ -1,9 +1,23 @@
 #include "DummyReceiveHandler.hpp"
+#include "backend/IBackend.hpp"
+#include "core/Configuration.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
 
 namespace Proxy::Handler {
+
+bool DummyReceiveHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+{
+    m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
+    auto inChannel = backend.createInputChannel(m_channelName, config);
+    if (!inChannel) {
+        Proxy::Log::error("[DummyReceive] Failed to create input channel '{}'", m_channelName);
+        return false;
+    }
+    m_inputChannel = registerInputChannel(m_channelName, std::move(inChannel));
+    return true;
+}
 
 void DummyReceiveHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
 {

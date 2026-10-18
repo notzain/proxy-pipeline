@@ -13,7 +13,13 @@
 #include <unordered_map>
 #include <vector>
 
+namespace Backend {
+class IConfig;
+class IBackend;
+} // namespace Backend
+
 namespace Core {
+class Configuration;
 
 /**
  * @brief Concurrency and execution model for the handler event loop.
@@ -37,6 +43,7 @@ ExecutionModel parseExecutionModel(std::string_view name);
  * and the execution lifecycle loop.
  *
  * IHandler provides:
+ * - Configuration & Channel Binding: configure() creates and binds backend channels.
  * - Ingress: Registers IInputChannel instances, dispatches received messages via onMessageReceived().
  * - Egress: Thread-safe registration of IOutputChannel instances, sending via send() and sendAll().
  * - Background work: Periodic step() hook.
@@ -60,6 +67,18 @@ public:
      */
     virtual ~IHandler();
 
+    /**
+     * @brief Configures the handler from a Configuration store and initializes channels using the provided backend.
+     *
+     * Subclasses override this method to read handler-specific keys, create their input/output
+     * channels via the backend, and store direct handles to channels.
+     *
+     * @param config Strongly-typed key-value configuration.
+     * @param backend Underlying transport backend for creating channels.
+     * @return true If configuration and channel initialization succeeded, false otherwise.
+     */
+    virtual bool configure(const Configuration& config, ::Backend::IBackend& backend);
+
     // --- Input Channel Management (Ingress) ---
 
     /**
@@ -67,8 +86,9 @@ public:
      *
      * @param channelName Name of the channel.
      * @param channel The input channel instance.
+     * @return ::Backend::IInputChannel* Non-owning pointer to the registered channel.
      */
-    void registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
+    ::Backend::IInputChannel* registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Accessor for registered input channels.
@@ -95,8 +115,9 @@ public:
      *
      * @param channelName Name identifying the output channel.
      * @param channel The output channel instance.
+     * @return ::Backend::IOutputChannel* Non-owning pointer to the registered channel.
      */
-    void registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
+    ::Backend::IOutputChannel* registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
 
     /**
      * @brief Sends a message to a registered output channel in a thread-safe manner.

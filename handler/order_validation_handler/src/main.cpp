@@ -21,32 +21,14 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    std::string inChannelName = config.getOr<std::string>("order.input_channel", config.getOr<std::string>("channel.input", "order_in"));
-    std::string outChannelName = config.getOr<std::string>("order.output_channel", config.getOr<std::string>("channel.output", "order_out"));
-
-    auto inputChannel = backend->createInputChannel(inChannelName, config);
-    if (!inputChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", inChannelName);
+    Proxy::Handler::OrderValidationHandler handler;
+    if (!handler.configure(config, *backend)) {
         return 1;
     }
 
-    auto outputChannel = backend->createOutputChannel(outChannelName, config);
-    if (!outputChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", outChannelName);
-        return 1;
-    }
-
-    Proxy::Handler::OrderValidationHandler handler(outChannelName);
-
-    handler.registerInputChannel(inChannelName, std::move(inputChannel));
-    handler.registerOutputChannel(outChannelName, std::move(outputChannel));
-
-    Proxy::Log::info("OrderValidationHandler initialized (input='{}', output='{}'). Starting event loop...",
-        inChannelName, outChannelName);
-
+    Proxy::Log::info("OrderValidationHandler initialized successfully. Starting event loop...");
     handler.start();
 
     Proxy::Log::info("OrderValidationHandler exiting cleanly.");
     return 0;
 }
-

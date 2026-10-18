@@ -22,20 +22,12 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    std::string channelName = config.getOr<std::string>("dummy.channel", "test_channel");
-    std::string messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");
-    int delayMs = config.getOr<int>("dummy.delay_ms", 1000);
-
-    auto outputChannel = backend->createOutputChannel(channelName, config);
-    if (!outputChannel) {
-        Proxy::Log::error("Failed to create output channel '{}'", channelName);
+    Proxy::Handler::DummySendHandler handler;
+    if (!handler.configure(config, *backend)) {
         return 1;
     }
 
-    Proxy::Handler::DummySendHandler handler(channelName, messageText, std::chrono::milliseconds(delayMs));
-    handler.registerOutputChannel(channelName, std::move(outputChannel));
-
-    Proxy::Log::info("DummySend initialized (channel='{}', delay={}ms). Starting event loop...", channelName, delayMs);
+    Proxy::Log::info("DummySend initialized successfully. Starting event loop...");
     handler.start();
 
     Proxy::Log::info("DummySend exiting cleanly.");

@@ -12,8 +12,18 @@ namespace Proxy::Handler {
  */
 class MergeHandler : public Core::IHandler {
 public:
+    MergeHandler() = default;
     explicit MergeHandler(std::string outputChannelName);
     ~MergeHandler() override = default;
+
+    /**
+     * @brief Configures MergeHandler and creates input channels and the output channel via the backend.
+     *
+     * @param config Configuration store.
+     * @param backend Backend instance.
+     * @return true If channel creation succeeded, false otherwise.
+     */
+    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Callback invoked when a message arrives on any registered input channel.
@@ -26,6 +36,8 @@ public:
 
 private:
     std::string m_outputChannelName;
+    ::Backend::IOutputChannel* m_outputChannel { nullptr };
+    std::vector<::Backend::IInputChannel*> m_inputChannelsList;
 };
 
 } // namespace Proxy::Handler
