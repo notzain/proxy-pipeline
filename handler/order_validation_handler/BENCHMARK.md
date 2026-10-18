@@ -23,10 +23,10 @@ This document records the micro-benchmarks and optimization iterations for the `
 
 ### Comparison Table
 
-| Stage / Component | Baseline (`std::string`) | Option 1 (`std::string_view`) | Option 2 (Lookup Table) | Total Delta vs Baseline |
+| Stage / Component | Baseline (`std::string`) | Option 1 (`std::string_view`) | Option 2 (Bitmap Table) | Total $\Delta$ (Baseline $\to$ Optimized) |
 | :--- | :---: | :---: | :---: | :---: |
-| **XML Deserialization** | 614.77 ns | **574.28 ns** | 574.28 ns | **-6.6% to -11.4% (faster)** |
-| **Domain Validation** | 12.09 ns | 12.10 ns | **9.72 ns** | **-19.6% (faster)** |
+| **XML Deserialization** | 614.77 ns | **574.28 ns** (-6.6%) | 574.28 ns (0.0%) | **-6.6%** |
+| **Domain Validation** | 12.09 ns | 12.10 ns (+0.1%) | **9.72 ns** (-19.7%) | **-19.6%** |
 | **Full Ingress Pipeline** | 1,245.39 ns (1.25 µs) | — | — | — |
 
 ---
