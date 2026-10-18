@@ -74,6 +74,9 @@ Guidelines and conventions for AI agents and developers working on this project.
   git ls-files '*.cpp' '*.hpp' '*.cc' '*.h' | xargs clang-format -i
   ```
 - **Tooling Constraint**: Never invoke `clangd` directly in background scripts or commands. Rely on compiler diagnostics and `clang-format` for code layout.
+- **Git Commit Workflow**:
+  - Always create a **Conventional Commit** (`feat:`, `fix:`, `refactor:`, `chore:`, etc.) immediately after each change is accepted/verified.
+  - Structure commit messages with a clear summary line, followed by bulleted details of the changes made.
 
 ---
 
