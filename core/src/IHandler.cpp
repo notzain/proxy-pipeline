@@ -1,6 +1,6 @@
 #include "core/IHandler.hpp"
+#include "log/Log.hpp"
 #include <csignal>
-#include <spdlog/spdlog.h>
 
 namespace {
 // Global pointer to active handler instance for C signal dispatching
@@ -45,7 +45,7 @@ void IHandler::start()
     m_running.store(true, std::memory_order_release);
     constexpr Timeout defaultTimeout { 100 };
 
-    spdlog::info("[IHandler] Event loop started (listening for SIGINT/Ctrl+C)...");
+    Proxy::Log::info("[IHandler] Event loop started (listening for SIGINT/Ctrl+C)...");
 
     while (m_running.load(std::memory_order_acquire)) {
         if (auto message = nextMessage(defaultTimeout); message.has_value()) {
@@ -53,7 +53,7 @@ void IHandler::start()
         }
     }
 
-    spdlog::info("[IHandler] Event loop stopped.");
+    Proxy::Log::info("[IHandler] Event loop stopped.");
     unregisterSignalHandler();
 }
 

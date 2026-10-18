@@ -2,12 +2,21 @@
 ProxyBackends
 -------------
 
-Provides functions to automatically discover available Proxy backends
+Provides functions to automatically discover available Proxy backends via Conan
 and generate handler executables for each backend.
 
 Functions:
-  proxy_discover_backends(<dir> [TARGET_OUT_VAR <out_var>] [NAME_OUT_VAR <out_var>])
-    Scans subdirectories in <dir> containing CMakeLists.txt and registers/adds them.
+  proxy_discover_backends()
+    Loads backends discovered via the Conan 2 dependency graph (ConanBackends.cmake).
+    Replaces filesystem subdirectory scanning.
+
+  proxy_register_backend(<target_name> <backend_name>)
+    Registers a backend target and short name for handler generation.
+
+  proxy_register_conan_backend(<backend_name> <conan_target> <pkg_name>)
+    Called by ConanBackends.cmake to register each Conan-discovered backend.
+    If the backend source exists in-tree under backend/<backend_name>, it adds the subdirectory.
+    Otherwise, it finds and links the external Conan package.
 
   proxy_add_handler_all_backends(<handler_base_name> SOURCES ... [INCLUDE_DIRS ...])
     For each registered backend, creates an executable named:
@@ -39,22 +48,43 @@ function(proxy_register_backend target_name backend_name)
   set_property(GLOBAL APPEND PROPERTY PROXY_BACKEND_NAMES "${backend_name}")
 endfunction()
 
-function(proxy_discover_backends backend_root_dir)
-  file(GLOB entries RELATIVE "${backend_root_dir}" "${backend_root_dir}/*")
-  foreach(entry IN LISTS entries)
-    if(entry STREQUAL "interface")
-      continue()
+function(proxy_register_conan_backend backend_name conan_target pkg_name)
+  # Check if in-tree source directory exists under backend/<backend_name>
+  set(in_tree_dir "${CMAKE_SOURCE_DIR}/backend/${backend_name}")
+  set(in_tree_target "backend-${backend_name}")
+
+  if(EXISTS "${in_tree_dir}/CMakeLists.txt")
+    if(NOT TARGET "${in_tree_target}")
+      add_subdirectory("${in_tree_dir}")
     endif()
-    set(entry_path "${backend_root_dir}/${entry}")
-    if(IS_DIRECTORY "${entry_path}" AND EXISTS "${entry_path}/CMakeLists.txt")
-      add_subdirectory("${entry_path}")
-      # Target follows convention backend-<name>
-      set(expected_target "backend-${entry}")
-      if(TARGET "${expected_target}")
-        proxy_register_backend("${expected_target}" "${entry}")
-      endif()
+    proxy_register_backend("${in_tree_target}" "${backend_name}")
+  else()
+    # External backend package from Conan
+    if(NOT TARGET "${conan_target}")
+      find_package(${pkg_name} REQUIRED)
     endif()
-  endforeach()
+    proxy_register_backend("${conan_target}" "${backend_name}")
+  endif()
+endfunction()
+
+function(proxy_discover_backends)
+  get_property(conan_generators_dir GLOBAL PROPERTY CONAN_GENERATORS_FOLDER)
+
+  set(conan_backends_file "")
+  if(conan_generators_dir AND EXISTS "${conan_generators_dir}/ConanBackends.cmake")
+    set(conan_backends_file "${conan_generators_dir}/ConanBackends.cmake")
+  elseif(EXISTS "${CMAKE_BINARY_DIR}/conan/build/Debug/generators/ConanBackends.cmake")
+    set(conan_backends_file "${CMAKE_BINARY_DIR}/conan/build/Debug/generators/ConanBackends.cmake")
+  elseif(EXISTS "${CMAKE_BINARY_DIR}/conan/build/Release/generators/ConanBackends.cmake")
+    set(conan_backends_file "${CMAKE_BINARY_DIR}/conan/build/Release/generators/ConanBackends.cmake")
+  endif()
+
+  if(conan_backends_file)
+    message(STATUS "Loading backends discovered via Conan: ${conan_backends_file}")
+    include("${conan_backends_file}")
+  else()
+    message(FATAL_ERROR "No backends discovered via Conan! Could not find ConanBackends.cmake.")
+  endif()
 endfunction()
 
 function(proxy_add_handler_all_backends handler_base_name)

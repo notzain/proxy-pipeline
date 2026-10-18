@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 4.0)
 project(core LANGUAGES CXX)
 
-find_package(spdlog REQUIRED)
+if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
+  find_package(proxylog REQUIRED)
+endif()
 find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(pugixml REQUIRED)
@@ -25,7 +27,7 @@ target_include_directories(core
 target_link_libraries(core
     PUBLIC
         backend-interface
-        spdlog::spdlog
+        proxylog::proxylog
         fmt::fmt
         nlohmann_json::nlohmann_json
         pugixml::pugixml

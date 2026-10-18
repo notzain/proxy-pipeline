@@ -1,7 +1,8 @@
 #include "backend/file/FileBackend.hpp"
+#include "log/Log.hpp"
 #include <chrono>
 #include <fstream>
-#include <spdlog/spdlog.h>
+#include <memory>
 #include <thread>
 #include <utility>
 
@@ -11,9 +12,13 @@ void FileBackend::configure(const ::Backend::IConfig& config)
 {
     m_watchDirectory = config.getOr<std::string>("file.path", "./watch");
 
+    std::string logPath = config.getOr<std::string>("file.log", "proxy.log");
+    bool logConsole = config.getOr<bool>("log.console", true);
+    Proxy::Log::init(std::make_unique<Proxy::Log::FileLogSink>(logPath, logConsole));
+
     std::error_code ec;
     std::filesystem::create_directories(m_watchDirectory, ec);
-    spdlog::info("[FileBackend] Watching directory: {}", m_watchDirectory.string());
+    Proxy::Log::info("[FileBackend] Watching directory: {}", m_watchDirectory.string());
 }
 
 std::optional<::Backend::IBackend::Buffer> FileBackend::nextMessage(Timeout timeout)
@@ -42,9 +47,9 @@ std::optional<::Backend::IBackend::Buffer> FileBackend::nextMessage(Timeout time
                         std::error_code rmEc;
                         std::filesystem::remove(filePath, rmEc);
                         if (rmEc) {
-                            spdlog::warn("[FileBackend] Could not delete processed file {}: {}", filePath.string(), rmEc.message());
+                            Proxy::Log::warn("[FileBackend] Could not delete processed file {}: {}", filePath.string(), rmEc.message());
                         } else {
-                            spdlog::debug("[FileBackend] Read and deleted processed file {}", filePath.string());
+                            Proxy::Log::debug("[FileBackend] Read and deleted processed file {}", filePath.string());
                         }
 
                         return buffer;
@@ -58,7 +63,7 @@ std::optional<::Backend::IBackend::Buffer> FileBackend::nextMessage(Timeout time
             break;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     return std::nullopt;

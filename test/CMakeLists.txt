@@ -3,6 +3,10 @@ project(ProxyTests LANGUAGES CXX)
 
 find_package(Catch2 3 REQUIRED)
 
+if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
+  find_package(proxylog REQUIRED)
+endif()
+
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
@@ -12,6 +16,7 @@ add_executable(proxy_tests ${TEST_SOURCES})
 
 target_link_libraries(proxy_tests PRIVATE
     core
+    proxylog::proxylog
     Catch2::Catch2WithMain
 )
 

@@ -25,7 +25,10 @@ class CoreConan(ConanFile):
         cmake_layout(self)
 
     def requirements(self):
-        self.requires("spdlog/1.17.0", transitive_headers=True, transitive_libs=True)
+        self.requires(
+            "backend-interface/0.1.0", transitive_headers=True, transitive_libs=True
+        )
+        self.requires("proxylog/0.1.0", transitive_headers=True, transitive_libs=True)
         self.requires("fmt/12.1.0", transitive_headers=True, transitive_libs=True)
         self.requires(
             "nlohmann_json/3.11.3", transitive_headers=True, transitive_libs=True

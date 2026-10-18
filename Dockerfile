@@ -20,8 +20,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /workspace
 
 # Copy dependency manifests first for maximum Docker layer caching
-COPY conanfile.txt .
+COPY conanfile.py .
+COPY log/conanfile.py log/
 COPY core/conanfile.py core/
+COPY backend/interface/conanfile.py backend/interface/
 COPY backend/socket/conanfile.py backend/socket/
 COPY backend/file/conanfile.py backend/file/
 
@@ -30,6 +32,13 @@ RUN conan profile detect --force
 
 # Copy complete source code
 COPY . .
+
+# Export subproject recipes to local Conan cache for dependency resolution
+RUN conan export log && \
+    conan export backend/interface && \
+    conan export backend/file && \
+    conan export backend/socket && \
+    conan export core
 
 # Build all targets in Release mode
 RUN cmake -B build -S . -G Ninja \

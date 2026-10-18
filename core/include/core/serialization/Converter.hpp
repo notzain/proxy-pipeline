@@ -5,7 +5,6 @@
 
 #include <array>
 #include <charconv>
-#include <concepts>
 #include <map>
 #include <optional>
 #include <sstream>

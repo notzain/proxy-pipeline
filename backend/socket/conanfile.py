@@ -1,5 +1,8 @@
+import os
+
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
+from conan.tools.files import copy
 
 
 class BackendSocketConan(ConanFile):
@@ -25,7 +28,8 @@ class BackendSocketConan(ConanFile):
         cmake_layout(self)
 
     def requirements(self):
-        self.requires("core/0.1.0", transitive_headers=True, transitive_libs=True)
+        self.requires("backend-interface/0.1.0", transitive_headers=True)
+        self.requires("proxylog/0.1.0")
 
     def generate(self):
         deps = CMakeDeps(self)
@@ -39,8 +43,33 @@ class BackendSocketConan(ConanFile):
         cmake.build()
 
     def package(self):
-        cmake = CMake(self)
-        cmake.install()
+        copy(
+            self,
+            "*",
+            src=os.path.join(self.source_folder, "include"),
+            dst=os.path.join(self.package_folder, "include"),
+        )
+        copy(
+            self,
+            "*.a",
+            src=self.build_folder,
+            dst=os.path.join(self.package_folder, "lib"),
+            keep_path=False,
+        )
+        copy(
+            self,
+            "*.dylib",
+            src=self.build_folder,
+            dst=os.path.join(self.package_folder, "lib"),
+            keep_path=False,
+        )
+        copy(
+            self,
+            "*.so",
+            src=self.build_folder,
+            dst=os.path.join(self.package_folder, "lib"),
+            keep_path=False,
+        )
 
     def package_info(self):
         self.cpp_info.libs = ["backend-socket"]
@@ -48,3 +77,5 @@ class BackendSocketConan(ConanFile):
         self.cpp_info.set_property(
             "cmake_target_name", "backend-socket::backend-socket"
         )
+        self.cpp_info.set_property("proxy_component", "backend")
+        self.cpp_info.set_property("backend_name", "socket")

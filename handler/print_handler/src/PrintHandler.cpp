@@ -1,7 +1,7 @@
 #include "PrintHandler.hpp"
+#include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <utility>
 
@@ -27,8 +27,8 @@ void PrintHandler::onMessageReceived(std::span<const std::byte> buffer)
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    spdlog::info("[PrintHandler] Received message ({} bytes): {}", buffer.size(), textFormatted);
-    spdlog::debug("[PrintHandler] Hex dump: {}", hexFormatted);
+    Proxy::Log::info("[PrintHandler] Received message ({} bytes): {}", buffer.size(), textFormatted);
+    Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
 }
 
 std::optional<Core::IHandler::Buffer> PrintHandler::nextMessage(Timeout timeout)

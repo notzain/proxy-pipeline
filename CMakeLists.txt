@@ -16,14 +16,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(ProxyBackends)
 
+# Universal logging library (ProxyLog)
+add_subdirectory(log)
+
 # Backend interface library
 add_subdirectory(backend/interface)
 
-# Core domain library (depends on backend-interface)
+# Core domain library (depends on backend-interface and proxylog)
 add_subdirectory(core)
 
-# Automatically discover all backends under backend/
-proxy_discover_backends("${CMAKE_CURRENT_SOURCE_DIR}/backend")
+# Discover backends through Conan dependency graph
+proxy_discover_backends()
 
 # Handlers (will combine across all discovered backends)
 add_subdirectory(handler/print_handler)
