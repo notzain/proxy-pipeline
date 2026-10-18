@@ -24,3 +24,7 @@ CMakeCache.txt
 cmake_install.cmake
 Makefile
 compile_commands.json
+
+# Logs and runtime artifacts
+*.log
+watch/

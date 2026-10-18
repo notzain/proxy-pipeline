@@ -63,7 +63,7 @@ TEST_CASE("Proxy::Log level management", "[log]")
 
 TEST_CASE("Proxy::Log file logging initialization and writes via FileLogSink", "[log]")
 {
-    const std::filesystem::path testLogDir = std::filesystem::temp_directory_path() / "proxylog_test";
+    const std::filesystem::path testLogDir = std::filesystem::path("/tmp") / "proxylog_test";
     const std::filesystem::path testLogFile = testLogDir / "test_run.log";
 
     std::error_code ec;

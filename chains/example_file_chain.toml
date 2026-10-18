@@ -1,0 +1,27 @@
+# Chain configuration for file backend
+backend = "file"
+
+[config]
+# Shared / backend-level configuration
+file.path = "/tmp/watch/default"
+log.console = true
+"channel.pipe_a.path" = "/tmp/watch/pipe_a"
+
+[[handlers]]
+name = "sender_1"
+type = "dummy_send"
+output_channel = "pipe_a"
+[handlers.config]
+"dummy.message" = "Hello through file pipe!"
+"dummy.delay_ms" = 500
+
+[[handlers]]
+name = "receiver_1"
+type = "dummy_receive"
+input_channel = "pipe_a"
+
+[[handlers]]
+name = "printer_1"
+type = "print_handler"
+input_channel = "pipe_a"
+

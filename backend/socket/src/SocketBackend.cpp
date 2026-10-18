@@ -1,63 +1,17 @@
 #include "backend/socket/SocketBackend.hpp"
+#include "backend/socket/SocketInputChannel.hpp"
+#include "backend/socket/SocketOutputChannel.hpp"
 #include "log/Log.hpp"
-#include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
+#include "log/SocketLogSink.hpp"
+#include <fmt/core.h>
 #include <memory>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <utility>
 
 namespace Proxy::Backend::Socket {
 
 SocketBackend::SocketBackend() = default;
 
-SocketBackend::~SocketBackend()
-{
-    closeSocket();
-}
-
-void SocketBackend::closeSocket()
-{
-    if (m_socketFd >= 0) {
-        ::close(m_socketFd);
-        m_socketFd = -1;
-    }
-}
-
-void SocketBackend::openAndBindSocket()
-{
-    closeSocket();
-
-    m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_socketFd < 0) {
-        Proxy::Log::error("[SocketBackend] Failed to create UDP socket: {}", std::strerror(errno));
-        return;
-    }
-
-    int reuse = 1;
-    ::setsockopt(m_socketFd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-
-    sockaddr_in addr { };
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(m_port);
-
-    if (m_host == "0.0.0.0" || m_host.empty()) {
-        addr.sin_addr.s_addr = INADDR_ANY;
-    } else {
-        ::inet_pton(AF_INET, m_host.c_str(), &addr.sin_addr);
-    }
-
-    if (::bind(m_socketFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        Proxy::Log::error("[SocketBackend] Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
-        closeSocket();
-        return;
-    }
-
-    Proxy::Log::info("[SocketBackend] Listening on UDP {}:{}", m_host, m_port);
-}
+SocketBackend::~SocketBackend() = default;
 
 void SocketBackend::configure(const ::Backend::IConfig& config)
 {
@@ -68,49 +22,28 @@ void SocketBackend::configure(const ::Backend::IConfig& config)
     std::uint16_t logPort = config.getOr<std::uint16_t>("socket.log_port", 9090);
     bool logConsole = config.getOr<bool>("log.console", true);
     Proxy::Log::init(std::make_unique<Proxy::Log::SocketLogSink>(logHost, logPort, logConsole));
-
-    openAndBindSocket();
 }
 
-std::optional<::Backend::IBackend::Buffer> SocketBackend::nextMessage(Timeout timeout)
+std::unique_ptr<::Backend::IInputChannel> SocketBackend::createInputChannel(std::string_view name, const ::Backend::IConfig& config)
 {
-    if (m_socketFd < 0) {
-        openAndBindSocket();
-        if (m_socketFd < 0) {
-            return std::nullopt;
-        }
-    }
+    std::string hostKey = fmt::format("channel.{}.host", name);
+    std::string portKey = fmt::format("channel.{}.port", name);
 
-    pollfd pfd { };
-    pfd.fd = m_socketFd;
-    pfd.events = POLLIN;
+    std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.host", "0.0.0.0"));
+    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.port", 8080));
 
-    int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
-    int ret = ::poll(&pfd, 1, timeoutMs);
+    return std::make_unique<SocketInputChannel>(std::move(host), port);
+}
 
-    if (ret > 0 && (pfd.revents & POLLIN)) {
-        Buffer buffer(65535);
-        sockaddr_in clientAddr { };
-        socklen_t clientLen = sizeof(clientAddr);
+std::unique_ptr<::Backend::IOutputChannel> SocketBackend::createOutputChannel(std::string_view name, const ::Backend::IConfig& config)
+{
+    std::string hostKey = fmt::format("channel.{}.dest_host", name);
+    std::string portKey = fmt::format("channel.{}.dest_port", name);
 
-        ssize_t bytesRead = ::recvfrom(
-            m_socketFd,
-            reinterpret_cast<char*>(buffer.data()),
-            buffer.size(),
-            0,
-            reinterpret_cast<sockaddr*>(&clientAddr),
-            &clientLen);
+    std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.dest_host", "127.0.0.1"));
+    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.dest_port", 8080));
 
-        if (bytesRead > 0) {
-            buffer.resize(static_cast<std::size_t>(bytesRead));
-            char clientIp[INET_ADDRSTRLEN];
-            ::inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
-            Proxy::Log::debug("[SocketBackend] Received {} bytes from {}:{}", bytesRead, clientIp, ntohs(clientAddr.sin_port));
-            return buffer;
-        }
-    }
-
-    return std::nullopt;
+    return std::make_unique<SocketOutputChannel>(std::move(host), port);
 }
 
 } // namespace Proxy::Backend::Socket

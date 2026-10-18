@@ -24,7 +24,7 @@ namespace Core::Serialization {
  * @return std::string Serialized string representation.
  */
 template <typename Format, typename T>
-std::string serialize(const T& value, const typename Format::Options& options = {})
+std::string serialize(const T& value, const typename Format::Options& options = { })
 {
     Value ir = toIntermediate(value);
     return Format::encode(ir, options);
@@ -39,7 +39,7 @@ std::string serialize(const T& value, const typename Format::Options& options = 
  * @return std::optional<T> Deserialized value if successful, std::nullopt otherwise.
  */
 template <typename Format, typename T>
-std::optional<T> deserialize(std::string_view input, const typename Format::Options& options = {})
+std::optional<T> deserialize(std::string_view input, const typename Format::Options& options = { })
 {
     auto ir = Format::decode(input, options);
     if (!ir) {

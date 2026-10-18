@@ -22,9 +22,17 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    Proxy::Handler::PrintHandler handler(std::move(backend));
+    std::string channelName = config.getOr<std::string>("print.channel", "default");
+    auto inputChannel = backend->createInputChannel(channelName, config);
+    if (!inputChannel) {
+        Proxy::Log::error("Failed to create input channel '{}'", channelName);
+        return 1;
+    }
 
-    Proxy::Log::info("PrintHandler initialized successfully.");
+    Proxy::Handler::PrintHandler handler;
+    handler.registerInputChannel(channelName, std::move(inputChannel));
+
+    Proxy::Log::info("PrintHandler initialized successfully (channel='{}').", channelName);
     // Start the event loop (handles SIGINT / Ctrl+C to cleanly stop)
     handler.start();
 

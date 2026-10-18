@@ -1,26 +1,35 @@
 #pragma once
 
+#include "backend/IInputChannel.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <optional>
-#include <span>
+#include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Core {
 
 /**
- * @brief Interface and base event loop for message handling components.
+ * @brief Base event loop for message handling components.
  *
- * IHandler defines the message lifecycle hooks (reception and retrieval)
- * as well as a managed loop for polling incoming messages until stopped.
- * It also installs signal handling for graceful shutdown on SIGINT (Ctrl+C)
- * and SIGTERM.
+ * IHandler defines the message polling and execution loop. It manages
+ * registered input channels, dispatches incoming messages to IMessageReceiver callbacks
+ * (if implemented), and runs custom per-iteration work via step().
+ * It also installs signal handling for graceful shutdown on SIGINT (Ctrl+C) and SIGTERM.
  */
 class IHandler {
 public:
-    using Buffer = std::vector<std::byte>;
     using Timeout = std::chrono::milliseconds;
+
+    /**
+     * @brief Structure representing a registered input channel with its identifying name.
+     */
+    struct NamedInputChannel {
+        std::string name;
+        std::unique_ptr<::Backend::IInputChannel> channel;
+    };
 
     /**
      * @brief Virtual destructor for safe polymorphic deletion.
@@ -28,27 +37,25 @@ public:
     virtual ~IHandler();
 
     /**
-     * @brief Callback invoked when a message has been successfully retrieved.
+     * @brief Registers an input channel to be polled by the handler event loop.
      *
-     * @param buffer Non-owning view of the raw byte buffer received.
+     * @param channelName Name of the channel (used when dispatching to IMessageReceiver).
+     * @param channel The input channel instance.
      */
-    virtual void onMessageReceived(std::span<const std::byte> buffer) = 0;
+    void registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
-     * @brief Retrieves the next available message within the given timeout.
+     * @brief Periodic step callback executed on each iteration of the event loop.
      *
-     * In default implementations, this may delegate to a linked backend or source.
-     *
-     * @param timeout Maximum duration to wait for a message before returning.
-     * @return std::optional<Buffer> Containing the buffer if a message was received, or std::nullopt on timeout.
+     * Handlers that need to perform background work, periodic sending, etc., can override this.
      */
-    virtual std::optional<Buffer> nextMessage(Timeout timeout) = 0;
+    virtual void step();
 
     /**
      * @brief Starts the message polling loop.
      *
      * Runs continuously until stop() is invoked or a shutdown signal (SIGINT/Ctrl+C) is received.
-     * Repeatedly polls nextMessage() and dispatches valid messages to onMessageReceived().
+     * Repeatedly polls all registered input channels, dispatches to IMessageReceiver, and calls step().
      */
     virtual void start();
 
@@ -67,6 +74,7 @@ public:
 
 protected:
     std::atomic<bool> m_running { false };
+    std::vector<NamedInputChannel> m_inputChannels;
 
     void registerSignalHandler();
     void unregisterSignalHandler();

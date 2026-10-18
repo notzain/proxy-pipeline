@@ -3,16 +3,10 @@
 #include <cctype>
 #include <fmt/core.h>
 #include <string>
-#include <utility>
 
 namespace Proxy::Handler {
 
-PrintHandler::PrintHandler(std::unique_ptr<::Backend::IBackend> backend)
-    : m_backend(std::move(backend))
-{
-}
-
-void PrintHandler::onMessageReceived(std::span<const std::byte> buffer)
+void PrintHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
 {
     std::string textFormatted;
     std::string hexFormatted;
@@ -27,16 +21,8 @@ void PrintHandler::onMessageReceived(std::span<const std::byte> buffer)
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    Proxy::Log::info("[PrintHandler] Received message ({} bytes): {}", buffer.size(), textFormatted);
+    Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, buffer.size(), textFormatted);
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
-}
-
-std::optional<Core::IHandler::Buffer> PrintHandler::nextMessage(Timeout timeout)
-{
-    if (m_backend) {
-        return m_backend->nextMessage(timeout);
-    }
-    return std::nullopt;
 }
 
 } // namespace Proxy::Handler

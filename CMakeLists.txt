@@ -30,6 +30,8 @@ proxy_discover_backends()
 
 # Handlers (will combine across all discovered backends)
 add_subdirectory(handler/print_handler)
+add_subdirectory(handler/dummy_send)
+add_subdirectory(handler/dummy_receive)
 
 # Tests
 enable_testing()

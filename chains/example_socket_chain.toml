@@ -1,0 +1,24 @@
+# Chain configuration for socket backend
+backend = "socket"
+
+[config]
+# Shared socket configuration
+log.console = true
+"channel.pipe_udp.host" = "127.0.0.1"
+"channel.pipe_udp.port" = 9123
+"channel.pipe_udp.dest_host" = "127.0.0.1"
+"channel.pipe_udp.dest_port" = 9123
+
+[[handlers]]
+name = "sender_udp"
+type = "dummy_send"
+output_channel = "pipe_udp"
+[handlers.config]
+"dummy.message" = "Hello through UDP socket!"
+"dummy.delay_ms" = 500
+
+[[handlers]]
+name = "receiver_udp"
+type = "dummy_receive"
+input_channel = "pipe_udp"
+

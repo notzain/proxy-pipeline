@@ -1,25 +1,21 @@
 #pragma once
 
 #include "backend/IConfig.hpp"
-#include <chrono>
-#include <cstddef>
+#include "backend/IInputChannel.hpp"
+#include "backend/IOutputChannel.hpp"
 #include <memory>
-#include <optional>
-#include <vector>
+#include <string_view>
 
 namespace Backend {
 
 /**
  * @brief Interface representing a message transport backend.
  *
- * Backends are responsible for receiving/ingesting incoming messages from
- * their respective sources (files, UDP sockets, etc.).
+ * Backends are responsible for configuring transport settings via an abstract
+ * IConfig store and creating typed input and output channels.
  */
 class IBackend {
 public:
-    using Buffer = std::vector<std::byte>;
-    using Timeout = std::chrono::milliseconds;
-
     /**
      * @brief Virtual destructor for polymorphic cleanup.
      */
@@ -33,12 +29,22 @@ public:
     virtual void configure(const IConfig& config) = 0;
 
     /**
-     * @brief Polls the underlying transport for the next available message.
+     * @brief Creates an input channel for message ingestion.
      *
-     * @param timeout Maximum duration to wait before giving up.
-     * @return std::optional<Buffer> Buffer containing received data, or std::nullopt on timeout.
+     * @param name Name or identifier of the channel (used to resolve config keys).
+     * @param config Strongly-typed key-value configuration store.
+     * @return std::unique_ptr<IInputChannel> Created input channel, or nullptr on failure.
      */
-    virtual std::optional<Buffer> nextMessage(Timeout timeout) = 0;
+    virtual std::unique_ptr<IInputChannel> createInputChannel(std::string_view name, const IConfig& config) = 0;
+
+    /**
+     * @brief Creates an output channel for message transmission.
+     *
+     * @param name Name or identifier of the channel (used to resolve config keys).
+     * @param config Strongly-typed key-value configuration store.
+     * @return std::unique_ptr<IOutputChannel> Created output channel, or nullptr on failure.
+     */
+    virtual std::unique_ptr<IOutputChannel> createOutputChannel(std::string_view name, const IConfig& config) = 0;
 };
 
 /**

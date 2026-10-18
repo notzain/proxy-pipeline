@@ -1,7 +1,10 @@
 #pragma once
 
 #include "backend/IBackend.hpp"
+#include "backend/file/FileInputChannel.hpp"
+#include "backend/file/FileOutputChannel.hpp"
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace Proxy::Backend::File {
@@ -9,9 +12,7 @@ namespace Proxy::Backend::File {
 /**
  * @brief File-based transport backend implementing Backend::IBackend.
  *
- * Implements a file watcher over the configured directory path ("file.path").
- * When a new file is detected, it is read into memory, passed as a message,
- * and then deleted immediately so no state tracking across runs is required.
+ * Configures file transport settings and instantiates FileInputChannel and FileOutputChannel.
  */
 class FileBackend : public ::Backend::IBackend {
 public:
@@ -30,16 +31,21 @@ public:
     void configure(const ::Backend::IConfig& config) override;
 
     /**
-     * @brief Polls the watched directory for any new file within the timeout.
-     * Reads the file contents and deletes the file before returning.
+     * @brief Creates an input channel watching a directory configured for this channel.
      *
-     * @param timeout Maximum wait duration.
-     * @return std::optional<Buffer> Buffer containing the read file's content, or std::nullopt.
+     * Checks "channel.<name>.path", falling back to "file.path" or "/tmp/watch/<name>".
      */
-    std::optional<Buffer> nextMessage(Timeout timeout) override;
+    std::unique_ptr<::Backend::IInputChannel> createInputChannel(std::string_view name, const ::Backend::IConfig& config) override;
+
+    /**
+     * @brief Creates an output channel writing files into a directory configured for this channel.
+     *
+     * Checks "channel.<name>.path", falling back to "file.path" or "/tmp/watch/<name>".
+     */
+    std::unique_ptr<::Backend::IOutputChannel> createOutputChannel(std::string_view name, const ::Backend::IConfig& config) override;
 
 private:
-    std::filesystem::path m_watchDirectory { "./watch" };
+    std::filesystem::path m_watchDirectory { "/tmp/watch" };
 };
 
 } // namespace Proxy::Backend::File

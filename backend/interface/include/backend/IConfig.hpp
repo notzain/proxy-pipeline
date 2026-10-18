@@ -27,7 +27,7 @@ namespace Detail {
             }
             return std::nullopt;
         } else if constexpr (std::is_integral_v<CleanT>) {
-            CleanT val {};
+            CleanT val { };
             auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), val);
             if (ec == std::errc()) {
                 return val;

@@ -1,6 +1,8 @@
 #include "core/IHandler.hpp"
+#include "core/IMessageReceiver.hpp"
 #include "log/Log.hpp"
 #include <csignal>
+#include <thread>
 
 namespace {
 // Global pointer to active handler instance for C signal dispatching
@@ -23,6 +25,19 @@ IHandler::~IHandler()
     unregisterSignalHandler();
 }
 
+void IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
+{
+    if (!channel) {
+        Proxy::Log::warn("[IHandler] Attempted to register null input channel '{}'", channelName);
+        return;
+    }
+    m_inputChannels.push_back(NamedInputChannel { std::string(channelName), std::move(channel) });
+}
+
+void IHandler::step()
+{
+}
+
 void IHandler::registerSignalHandler()
 {
     g_activeHandler.store(this, std::memory_order_release);
@@ -43,14 +58,31 @@ void IHandler::start()
 {
     registerSignalHandler();
     m_running.store(true, std::memory_order_release);
-    constexpr Timeout defaultTimeout { 100 };
+    constexpr Timeout channelTimeout { 50 };
 
-    Proxy::Log::info("[IHandler] Event loop started (listening for SIGINT/Ctrl+C)...");
+    auto* receiver = dynamic_cast<IMessageReceiver*>(this);
+
+    Proxy::Log::info("[IHandler] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...", m_inputChannels.size());
 
     while (m_running.load(std::memory_order_acquire)) {
-        if (auto message = nextMessage(defaultTimeout); message.has_value()) {
-            onMessageReceived(*message);
+        if (!m_inputChannels.empty()) {
+            for (auto& namedChannel : m_inputChannels) {
+                if (!m_running.load(std::memory_order_acquire)) {
+                    break;
+                }
+                if (namedChannel.channel) {
+                    if (auto msg = namedChannel.channel->receive(channelTimeout); msg.has_value()) {
+                        if (receiver) {
+                            receiver->onMessageReceived(namedChannel.name, *msg);
+                        }
+                    }
+                }
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
+        step();
     }
 
     Proxy::Log::info("[IHandler] Event loop stopped.");

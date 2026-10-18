@@ -1,7 +1,9 @@
 #pragma once
 
 #include "backend/IBackend.hpp"
-#include <cstdint>
+#include "backend/socket/SocketInputChannel.hpp"
+#include "backend/socket/SocketOutputChannel.hpp"
+#include <memory>
 #include <string>
 
 namespace Proxy::Backend::Socket {
@@ -9,8 +11,7 @@ namespace Proxy::Backend::Socket {
 /**
  * @brief Socket-based transport backend implementing Backend::IBackend.
  *
- * Listens on a UDP socket configured through IConfig ("socket.host", "socket.port").
- * Emits incoming datagram packet payloads as messages.
+ * Configures UDP transport settings and instantiates SocketInputChannel and SocketOutputChannel.
  */
 class SocketBackend : public ::Backend::IBackend {
 public:
@@ -22,27 +23,25 @@ public:
     ~SocketBackend() override;
 
     /**
-     * @brief Configures socket parameters ("socket.host", "socket.port") and binds the UDP socket.
+     * @brief Configures socket parameters and initializes socket logging.
      *
      * @param config Strongly-typed key-value configuration.
      */
     void configure(const ::Backend::IConfig& config) override;
 
     /**
-     * @brief Polls the UDP socket for incoming datagrams within the given timeout.
-     *
-     * @param timeout Maximum duration to wait for socket data.
-     * @return std::optional<Buffer> Buffer containing received datagram payload, or std::nullopt.
+     * @brief Creates an input channel bound to configured host and port.
      */
-    std::optional<Buffer> nextMessage(Timeout timeout) override;
+    std::unique_ptr<::Backend::IInputChannel> createInputChannel(std::string_view name, const ::Backend::IConfig& config) override;
+
+    /**
+     * @brief Creates an output channel sending to configured destination host and port.
+     */
+    std::unique_ptr<::Backend::IOutputChannel> createOutputChannel(std::string_view name, const ::Backend::IConfig& config) override;
 
 private:
     std::string m_host { "0.0.0.0" };
     std::uint16_t m_port { 8080 };
-    int m_socketFd { -1 };
-
-    void closeSocket();
-    void openAndBindSocket();
 };
 
 } // namespace Proxy::Backend::Socket

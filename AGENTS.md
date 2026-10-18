@@ -150,17 +150,24 @@ cmake --build build
     - Consumers include `"log/Log.hpp"` and call `Proxy::Log::{trace, debug, info, warn, error, critical}` using string views or `fmt`-compatible formatting expressions.
   - `backend/interface` (`backend-interface` target):
     - `IConfig`: Abstract configuration interface providing strongly-typed templated getters (`get<T>(key)`, `getOr<T>(key, default)`).
-    - `IBackend`: Underlying transport interface for message retrieval (`nextMessage(timeout)`), configured via `configure(const IConfig&)`. Declares `std::unique_ptr<IBackend> createBackend()`.
+    - `IInputChannel`: Abstract interface for receiving messages (`receive(timeout)`).
+    - `IOutputChannel`: Abstract interface for transmitting messages (`send(span<byte>)`).
+    - `IBackend`: Underlying transport interface configuring channels (`createInputChannel(name, config)`, `createOutputChannel(name, config)`), configured via `configure(const IConfig&)`. Declares `std::unique_ptr<IBackend> createBackend()`.
   - `backend/*`: Concrete transport implementations of `Backend::IBackend`:
     - Depend on `backend-interface` and `proxylog` (no dependency on `core`).
-    - `backend-file`: Implements `FileBackend` watching a directory specified by `"file.path"`. Newly detected files are read and passed as messages, then deleted immediately. In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::FileLogSink>(logPath, logConsole))`.
-    - `backend-socket`: Implements `SocketBackend` listening on a UDP socket specified by `"socket.host"` and `"socket.port"`, emitting received datagram payloads as messages (receive-only). In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::SocketLogSink>(logHost, logPort, logConsole))`.
+    - `backend-file`: Implements `FileBackend`, `FileInputChannel`, and `FileOutputChannel` watching/writing directory paths configured via `channel.<name>.path` or `file.path`. In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::FileLogSink>(logPath, logConsole))`.
+    - `backend-socket`: Implements `SocketBackend`, `SocketInputChannel` (UDP listening/recvfrom), and `SocketOutputChannel` (UDP sending/sendto) configured via `channel.<name>.host`, `channel.<name>.port`, `channel.<name>.dest_host`, `channel.<name>.dest_port` or `socket.*`. In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::SocketLogSink>(logHost, logPort, logConsole))`.
     - Backends implement default constructors, `configure(const IConfig&)`, and define the factory function `Backend::createBackend()`. Backends never depend on specific handlers.
   - `core`: Defines foundational domain classes and serializers (depends on `backend-interface` and `proxylog`):
-    - `IHandler`: Message processing lifecycle and polling event loop (`onMessageReceived(buffer)`, `nextMessage(timeout)`, `start()`, `stop()`).
+    - `IHandler`: Message processing lifecycle and polling event loop. Manages one or more registered `IInputChannel` instances, polls them in `start()`, dispatches incoming messages to `IMessageReceiver::onMessageReceived(channelName, buffer)`, and executes periodic work via `step()`.
+    - `IMessageReceiver`: Abstract interface for receiving messages (`onMessageReceived(channelName, buffer)`).
+    - `IMessageSender`: Channel manager and sender interface for transmitting messages (`registerOutputChannel(name, channel)`, `send(name, buffer)`).
     - `Configuration`: Key-value configuration store loaded from file (`Configuration::fromFile(path)`), implementing `Backend::IConfig`.
     - `Serialization`: Strongly-typed, trait-based JSON (`JsonSerializer<T>`, `JsonDeserializer<T>`) and XML (`XmlSerializer<T>`, `XmlDeserializer<T>`) serialization through an intermediate representation (`Value`), supporting PODs, attributes, and standard containers without inheritance or macros.
-  - `handler/*`: Concrete handlers and application executables. Handlers inherit from `IHandler` and accept `std::unique_ptr<Backend::IBackend>`. Handler source files **must not** contain backend `#ifdef`s or include any concrete backend headers.
+  - `handler/*`: Concrete handlers and application executables. Handlers inherit from `IHandler`, optionally `IMessageReceiver` and/or `IMessageSender`. Handler source files **must not** contain backend `#ifdef`s or include any concrete backend headers.
+    - `print_handler`: Implements `PrintHandler` printing received messages.
+    - `dummy_send`: Implements `DummySendHandler` registering an output channel and sending configured text blobs with a delay.
+    - `dummy_receive`: Implements `DummyReceiveHandler` registering an input channel and printing received messages.
 - **Multi-Backend Handler Generation & Conan Discovery (`ProxyBackends.cmake`)**:
   - The CMake module `cmake/ProxyBackends.cmake` provides:
     - `proxy_discover_backends()`: Discovers available backends directly through the Conan 2 dependency graph (`ConanBackends.cmake` generated by `conanfile.py`) instead of filesystem directory scanning. For in-tree backends, it adds the subdirectories automatically; for external backends, it links the Conan target.
@@ -180,3 +187,20 @@ cmake --build build
   - Or package a single handler: `./scripts/build-oci.sh print_handler_socket`.
 - **CI/CD Automation (GitLab CI)**:
   - Automated via [`.gitlab-ci.yml`](file:///Users/zainahmad/Workspace/Proxy/.gitlab-ci.yml) using dynamic child pipeline generation driven by `manifest.json` and `child-pipeline.yml`.
+
+---
+
+## 10. Handler Chain Orchestration (`scripts/chain_runner.py`)
+
+- **Role**: Launches and coordinates arbitrary chains of handler executables across any configured backend using a single declarative configuration file (`.toml` or `.json`).
+- **Configuration Layout (`chains/*.toml` or `chains/*.json`)**:
+  - `backend`: The transport backend shared by the chain (`"file"`, `"socket"`, etc.).
+  - `config`: Global / backend transport configuration (e.g. channel directory paths or UDP hosts and ports).
+  - `handlers`: List of handlers declaring their `type` (e.g. `dummy_send`, `dummy_receive`, `print_handler`), unique instance `name`, channel bindings (`input_channel`, `output_channel`), and handler-specific `config` parameters.
+- **Execution**:
+  ```bash
+  ./scripts/chain_runner.py chains/example_file_chain.toml
+  # or with custom build binary path:
+  ./scripts/chain_runner.py chains/example_socket_chain.toml --bin-dir ./build/gcc16-debug/bin
+  ```
+- **Lifecycle**: Automatically coordinates SIGINT / Ctrl+C across all active processes in the chain for clean, graceful shutdowns.
