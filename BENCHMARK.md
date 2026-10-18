@@ -17,12 +17,23 @@ Performance tracking across optimizations and execution strategies.
   - `SocketInputChannel` allocates a fresh 64 KB `Buffer(65535)` on every `receive()` call.
   - Per-message forward logging set to `debug`.
 
+### Baseline in Debug Mode (`-g` / `-O0`):
+
 | Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Direct (XSD)** | 20,000 | 109,800.82 | 8.59 | 9.00 | 27.00 |
 | **UDP (Dedicated)** | 20,000 | 54,018.72 | 4.22 | 121,345.46 | 227,086.00 |
 | **UDP (Sequential)** | 20,000 | 56,012.84 | 4.38 | 123,167.21 | 230,638.00 |
 | **UDP (ThreadPool 4)** | 20,000 | 56,609.59 | 4.43 | 976.44 | 3,523.00 |
+
+### Baseline in Release Mode (`-O3 -DNDEBUG`):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | 20,000 | **310,645.83** | **24.29** | **3.19** | **12.00** |
+| **UDP (Dedicated)** | 20,000 | **72,796.36** | **5.69** | **85,632.72** | **145,049.00** |
+| **UDP (Sequential)** | 20,000 | **80,104.14** | **6.26** | **78,546.58** | **144,572.00** |
+| **UDP (ThreadPool 4)** | 20,000 | **63,981.37** | **5.00** | **15,388.90** | **34,821.00** |
 
 ---
 
