@@ -64,6 +64,14 @@ public:
     [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderView(std::span<const std::byte> xmlData) const;
 
     /**
+     * @brief Deserializes a mutable XML buffer in-place into OrderView using Core::Serialization IR traits.
+     *
+     * @param xmlData Mutable non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt if deserialization fails.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderViewInPlace(std::span<std::byte> xmlData) const;
+
+    /**
      * @brief Direct zero-copy DOM parser (Option 3 optimization).
      * Parses XML directly in-place from pugixml nodes to OrderView, bypassing the intermediate Value IR tree.
      *
@@ -71,6 +79,54 @@ public:
      * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderDirect(std::span<std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order using libxml2 DOM API.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2(std::span<const std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order using Apache Xerces-C DOM API.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXerces(std::span<const std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order using libxml2 xmlReader streaming cursor API.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reader(std::span<const std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order using Apache Xerces-C SAX2 parser.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesSax(std::span<const std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order reusing a thread-local libxml2 parser context.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reused(std::span<const std::byte> xmlData) const;
+
+    /**
+     * @brief Parses XML buffer to Order reusing a thread-local Xerces DOM parser instance and document pool.
+     *
+     * @param xmlData Non-owning span of the XML buffer.
+     * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
+     */
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesReused(std::span<const std::byte> xmlData) const;
 
     /**
      * @brief Validates an Order instance against domain criteria.

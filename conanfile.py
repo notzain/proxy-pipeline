@@ -18,6 +18,8 @@ class ProxyConan(ConanFile):
     default_options = {
         "backend_file": True,
         "backend_socket": True,
+        "xerces-c/*:network": False,
+        "xerces-c/*:transcoder": "iconv",
     }
 
     def layout(self):
@@ -30,6 +32,7 @@ class ProxyConan(ConanFile):
         self.requires("nlohmann_json/3.11.3")
         self.requires("pugixml/1.14")
         self.requires("libxml2/2.13.6")
+        self.requires("xerces-c/3.3.0")
         self.requires("catch2/3.8.0")
 
         # Backends discovered / required via Conan

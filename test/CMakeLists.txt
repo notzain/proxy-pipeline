@@ -8,6 +8,7 @@ if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
 endif()
 
 find_package(libxml2 REQUIRED)
+find_package(XercesC REQUIRED)
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
@@ -29,6 +30,7 @@ target_link_libraries(proxy_tests PRIVATE
     core
     proxylog::proxylog
     LibXml2::LibXml2
+    XercesC::XercesC
     Catch2::Catch2WithMain
 )
 

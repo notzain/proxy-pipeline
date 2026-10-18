@@ -69,6 +69,23 @@ public:
     }
 
     /**
+     * @brief Parses a mutable XML buffer in-place into the target type T without copying.
+     *
+     * @param data Pointer to mutable XML buffer.
+     * @param size Size in bytes.
+     * @param options Parsing options (root tag name, etc.).
+     * @return std::optional<T> Deserialized object if parsing and mapping succeed, std::nullopt otherwise.
+     */
+    static std::optional<T> deserializeInPlace(void* data, std::size_t size, const Options& options = { })
+    {
+        auto ir = XmlFormat::decodeInPlace(data, size, options);
+        if (!ir) {
+            return std::nullopt;
+        }
+        return fromIntermediate<T>(*ir);
+    }
+
+    /**
      * @brief Functor operator for convenient deserializer instances.
      */
     std::optional<T> operator()(std::string_view input, const Options& options = { }) const

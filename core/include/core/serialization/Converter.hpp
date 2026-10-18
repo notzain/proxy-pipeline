@@ -237,15 +237,12 @@ std::optional<T> fromIntermediate(const Value& value)
         }
         return static_cast<CleanT>(*dval);
     } else if constexpr (std::is_same_v<CleanT, std::string>) {
-        if (auto s = value.asString()) {
-            return *s;
+        if (auto sv = value.asStringView()) {
+            return std::string(*sv);
         }
         return std::nullopt;
     } else if constexpr (std::is_same_v<CleanT, std::string_view>) {
-        if (auto s = value.asString()) {
-            return std::string_view(*s);
-        }
-        return std::nullopt;
+        return value.asStringView();
     } else if constexpr (Detail::isOptionalV<CleanT>) {
         using ValueType = typename CleanT::value_type;
         if (value.isNull()) {

@@ -25,9 +25,25 @@ This document records the micro-benchmarks and optimization iterations for the `
 
 | Stage / Component | Baseline (`std::string`) | Option 1 (`std::string_view`) | Option 2 (Bitmap Table) | Option 3 (Direct DOM) | Option 4 (Cached Channel + Fast Ingress) | Total $\Delta$ (Baseline $\to$ Optimized) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **XML Deserialization** | 628.48 ns | 562.11 ns (-10.6%) | 562.11 ns (0.0%) | **175.22 ns** (-68.8%) | 175.22 ns (0.0%) | **-72.1%** |
-| **Domain Validation** | 11.84 ns | 12.64 ns (+6.8%) | **9.39 ns** (-25.7%) | 9.39 ns (0.0%) | 9.39 ns (0.0%) | **-20.7%** |
-| **Full Ingress Pipeline** | 1,049.48 ns (1.05 µs) | — | — | — | **209.07 ns** (-80.1%) | **-80.1%** |
+| **XML Deserialization** | 613.09 ns | 607.32 ns (-0.9%) | 607.32 ns (0.0%) | **192.98 ns** (-68.2%) | 192.98 ns (0.0%) | **-68.5%** |
+| **Domain Validation** | 13.64 ns | 12.75 ns (-6.5%) | **9.37 ns** (-26.5%) | 9.37 ns (0.0%) | 9.37 ns (0.0%) | **-31.3%** |
+| **Full Ingress Pipeline** | 1,024.96 ns (1.02 µs) | — | — | — | **244.41 ns** (-76.2%) | **-76.2%** |
+
+### XML Engine Comparison: `pugixml` vs `libxml2` vs `xerces-c`
+
+Side-by-side micro-benchmark of XML parsing and DOM / SAX traversal into the C++ `Order` model across parser reuse and streaming strategies:
+
+| XML Engine | Parser Strategy | Mean Latency | Throughput (ops/sec) | vs. `pugixml` Direct |
+| :--- | :--- | :---: | :---: | :---: |
+| **`pugixml` (Direct In-Place)** | Direct DOM (`load_buffer_inplace`) into `OrderView` | **196.31 ns** | **$\approx 5,094,000$ ops/s** | **Baseline ($1.0\times$)** |
+| **`pugixml` (In-Place IR Traits)** | `load_buffer_inplace` + zero-copy `Value` (`std::string_view`) into `OrderView` | **477.51 ns** | **$\approx 2,094,000$ ops/s** | **$2.4\times$ slower** |
+| **`pugixml` (IR Trait Deserializer)** | Copying `load_buffer` + heap `Value` (`std::string`) into `Order` | 547.96 ns | $\approx 1,825,000$ ops/s | $2.8\times$ slower |
+| **`libxml2` (Reused Context DOM)** | Thread-local `xmlParserCtxtPtr` + `xmlCtxtReadMemory` into `Order` | **1,392.18 ns** (1.39 µs) | **$\approx 718,300$ ops/s** | **$7.1\times$ slower** |
+| **`libxml2` (Direct DOM)** | `xmlReadMemory` + direct text node access into `Order` | **1,883.00 ns** (1.88 µs) | $\approx 531,100$ ops/s | $9.6\times$ slower |
+| **`libxml2` (Streaming Cursor)** | `xmlReaderForMemory` + cursor step into `Order` | **1,899.87 ns** (1.90 µs) | $\approx 526,400$ ops/s | $9.7\times$ slower |
+| **`xerces-c` (Reused Parser DOM)** | Thread-local `XercesDOMParser` + `resetDocumentPool()` into `Order` | **5,823.00 ns** (5.82 µs) | **$\approx 171,700$ ops/s** | **$29.7\times$ slower** |
+| **`xerces-c` (SAX2 Event-Driven)** | `SAX2XMLReader` + `DefaultHandler` callbacks into `Order` | **7,028.00 ns** (7.03 µs) | $\approx 142,300$ ops/s | $35.8\times$ slower |
+| **`xerces-c` (Direct DOM)** | `MemBufInputSource` + `XercesDOMParser` + UTF-16 transcode into `Order` | **9,191.50 ns** (9.19 µs) | $\approx 108,800$ ops/s | $46.8\times$ slower |
 
 ---
 

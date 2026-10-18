@@ -29,6 +29,7 @@ public:
         std::uint64_t,
         double,
         std::string,
+        std::string_view,
         ArrayType,
         ObjectType>;
 
@@ -93,12 +94,12 @@ public:
     }
 
     Value(std::string_view v)
-        : m_data(std::string(v))
+        : m_data(v)
     {
     }
 
     Value(const char* v)
-        : m_data(std::string(v ? v : ""))
+        : m_data(v ? std::string_view(v) : std::string_view(""))
     {
     }
 
@@ -118,7 +119,7 @@ public:
     [[nodiscard]] bool isUInt() const noexcept { return std::holds_alternative<std::uint64_t>(m_data); }
     [[nodiscard]] bool isDouble() const noexcept { return std::holds_alternative<double>(m_data); }
     [[nodiscard]] bool isNumber() const noexcept { return isInt() || isUInt() || isDouble(); }
-    [[nodiscard]] bool isString() const noexcept { return std::holds_alternative<std::string>(m_data); }
+    [[nodiscard]] bool isString() const noexcept { return std::holds_alternative<std::string>(m_data) || std::holds_alternative<std::string_view>(m_data); }
     [[nodiscard]] bool isArray() const noexcept { return std::holds_alternative<ArrayType>(m_data); }
     [[nodiscard]] bool isObject() const noexcept { return std::holds_alternative<ObjectType>(m_data); }
 
@@ -178,6 +179,17 @@ public:
     [[nodiscard]] const std::string* asString() const noexcept
     {
         return std::get_if<std::string>(&m_data);
+    }
+
+    [[nodiscard]] std::optional<std::string_view> asStringView() const noexcept
+    {
+        if (auto* sv = std::get_if<std::string_view>(&m_data)) {
+            return *sv;
+        }
+        if (auto* s = std::get_if<std::string>(&m_data)) {
+            return std::string_view(*s);
+        }
+        return std::nullopt;
     }
 
     [[nodiscard]] const ArrayType* asArray() const noexcept

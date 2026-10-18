@@ -48,13 +48,57 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
         CHECK(handler.validateOrder(*parsed));
 
-        std::string validXmlDirect = validXml;
+        std::string validXmlDirect = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
         std::span<std::byte> spanDirect(reinterpret_cast<std::byte*>(validXmlDirect.data()), validXmlDirect.size());
         auto parsedDirect = handler.parseOrderDirect(spanDirect);
         REQUIRE(parsedDirect.has_value());
         CHECK(parsedDirect->customer == "Alice Smith");
         CHECK(parsedDirect->item == "Widget-Pro");
         CHECK(parsedDirect->quantity == 42);
+
+        std::string validXmlInPlace = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
+        std::span<std::byte> spanInPlace(reinterpret_cast<std::byte*>(validXmlInPlace.data()), validXmlInPlace.size());
+        auto parsedInPlace = handler.parseOrderViewInPlace(spanInPlace);
+        REQUIRE(parsedInPlace.has_value());
+        CHECK(parsedInPlace->customer == "Alice Smith");
+        CHECK(parsedInPlace->item == "Widget-Pro");
+        CHECK(parsedInPlace->quantity == 42);
+
+        auto parsedLibXml2 = handler.parseOrderLibXml2(span);
+        REQUIRE(parsedLibXml2.has_value());
+        CHECK(parsedLibXml2->customer == "Alice Smith");
+        CHECK(parsedLibXml2->item == "Widget-Pro");
+        CHECK(parsedLibXml2->quantity == 42);
+
+        auto parsedLibXml2Reader = handler.parseOrderLibXml2Reader(span);
+        REQUIRE(parsedLibXml2Reader.has_value());
+        CHECK(parsedLibXml2Reader->customer == "Alice Smith");
+        CHECK(parsedLibXml2Reader->item == "Widget-Pro");
+        CHECK(parsedLibXml2Reader->quantity == 42);
+
+        auto parsedLibXml2Reused = handler.parseOrderLibXml2Reused(span);
+        REQUIRE(parsedLibXml2Reused.has_value());
+        CHECK(parsedLibXml2Reused->customer == "Alice Smith");
+        CHECK(parsedLibXml2Reused->item == "Widget-Pro");
+        CHECK(parsedLibXml2Reused->quantity == 42);
+
+        auto parsedXerces = handler.parseOrderXerces(span);
+        REQUIRE(parsedXerces.has_value());
+        CHECK(parsedXerces->customer == "Alice Smith");
+        CHECK(parsedXerces->item == "Widget-Pro");
+        CHECK(parsedXerces->quantity == 42);
+
+        auto parsedXercesReused = handler.parseOrderXercesReused(span);
+        REQUIRE(parsedXercesReused.has_value());
+        CHECK(parsedXercesReused->customer == "Alice Smith");
+        CHECK(parsedXercesReused->item == "Widget-Pro");
+        CHECK(parsedXercesReused->quantity == 42);
+
+        auto parsedXercesSax = handler.parseOrderXercesSax(span);
+        REQUIRE(parsedXercesSax.has_value());
+        CHECK(parsedXercesSax->customer == "Alice Smith");
+        CHECK(parsedXercesSax->item == "Widget-Pro");
+        CHECK(parsedXercesSax->quantity == 42);
 
         handler.onMessageReceived("input_ch", span);
         REQUIRE(mockOutPtr->sentMessages().size() == 1);
@@ -177,11 +221,48 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
         return handler.parseOrderView(span);
     };
 
+    BENCHMARK("Option 1b: OrderView XML Deserialization (In-Place IR Traits)")
+    {
+        std::string xmlCopy = validXml;
+        std::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        return handler.parseOrderViewInPlace(mutableSpan);
+    };
+
     BENCHMARK("Option 3: OrderView Direct DOM XML Deserialization (pugixml direct)")
     {
         std::string xmlCopy = validXml;
         std::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
         return handler.parseOrderDirect(mutableSpan);
+    };
+
+    BENCHMARK("LibXml2: Order Direct DOM XML Deserialization (libxml2 direct)")
+    {
+        return handler.parseOrderLibXml2(span);
+    };
+
+    BENCHMARK("LibXml2: Order Streaming Cursor XML Deserialization (xmlReader)")
+    {
+        return handler.parseOrderLibXml2Reader(span);
+    };
+
+    BENCHMARK("LibXml2: Order Reused Ctxt XML Deserialization (libxml2 reused)")
+    {
+        return handler.parseOrderLibXml2Reused(span);
+    };
+
+    BENCHMARK("Xerces-C: Order Direct DOM XML Deserialization (xerces-c direct)")
+    {
+        return handler.parseOrderXerces(span);
+    };
+
+    BENCHMARK("Xerces-C: Order Reused Parser XML Deserialization (xerces-c reused)")
+    {
+        return handler.parseOrderXercesReused(span);
+    };
+
+    BENCHMARK("Xerces-C: Order SAX2 Event-Driven XML Deserialization (xerces-c sax2)")
+    {
+        return handler.parseOrderXercesSax(span);
     };
 
     BENCHMARK("Baseline: Order Domain Validation (std::string)")
