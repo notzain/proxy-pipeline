@@ -129,6 +129,20 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
         handler.onMessageReceived("input_ch", span);
         CHECK(mockOutPtr->sentMessages().empty());
+
+        std::string invalidOrderXmlDirect = invalidOrderXml;
+        std::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(invalidOrderXmlDirect.data()), invalidOrderXmlDirect.size());
+        handler.onMessageReceivedFast("input_ch", mutableSpan);
+        CHECK(mockOutPtr->sentMessages().empty());
+    }
+
+    SECTION("Handler forwards messages that pass on onMessageReceivedFast")
+    {
+        std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
+        std::span<std::byte> span(reinterpret_cast<std::byte*>(validXml.data()), validXml.size());
+
+        handler.onMessageReceivedFast("input_ch", span);
+        CHECK(mockOutPtr->sentMessages().size() == 1);
     }
 }
 
@@ -188,5 +202,12 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     BENCHMARK("Baseline: Order Full Ingress Pipeline")
     {
         handler.onMessageReceived("bench_in", span);
+    };
+
+    BENCHMARK("Option 4: Order Full Ingress Pipeline Fast (Cached Channel & In-Place Direct DOM)")
+    {
+        std::string xmlCopy = validXml;
+        std::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        handler.onMessageReceivedFast("bench_in", mutableSpan);
     };
 }

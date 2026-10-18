@@ -256,4 +256,36 @@ void OrderValidationHandler::onMessageReceived(std::string_view channelName, std
     }
 }
 
+void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer)
+{
+    auto order = parseOrderDirect(buffer);
+    if (!order.has_value()) {
+        Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to OrderView. Discarding.",
+            channelName, buffer.size());
+        return;
+    }
+
+    if (!validateOrderFast(*order)) {
+        Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed fast domain validation. Discarding.",
+            order->customer, order->item, order->quantity);
+        return;
+    }
+
+    if (!m_cachedOutputChannel) {
+        std::shared_lock lock(m_outputMutex);
+        auto it = m_outputChannels.find(m_outputChannelName);
+        if (it != m_outputChannels.end()) {
+            m_cachedOutputChannel = it->second.get();
+        }
+    }
+
+    if (m_cachedOutputChannel) {
+        if (!m_cachedOutputChannel->send(buffer)) {
+            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
+        }
+    } else {
+        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found", m_outputChannelName);
+    }
+}
+
 } // namespace Proxy::Handler

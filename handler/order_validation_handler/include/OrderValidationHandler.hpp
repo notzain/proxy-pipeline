@@ -91,8 +91,19 @@ public:
      */
     [[nodiscard]] bool validateOrderFast(const Proxy::Model::OrderView& order) const;
 
+    /**
+     * @brief Fast ingress message processing (Option 4 optimization).
+     * Integrates direct in-place DOM parsing (Option 3), bitmap table validation (Option 2),
+     * and cached output channel lookup to bypass map lookup and lock contention.
+     *
+     * @param channelName Name of the channel that received the message.
+     * @param buffer Mutable byte buffer of the message payload for in-place parsing.
+     */
+    void onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer);
+
 private:
     std::string m_outputChannelName;
+    Backend::IOutputChannel* m_cachedOutputChannel { nullptr };
 };
 
 } // namespace Proxy::Handler
