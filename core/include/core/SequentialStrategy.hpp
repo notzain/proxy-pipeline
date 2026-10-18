@@ -2,13 +2,14 @@
 
 #include "core/IExecutionStrategy.hpp"
 #include <atomic>
+#include <thread>
 
 namespace Core {
 
 /**
  * @brief Single-threaded round-robin execution strategy.
  *
- * Iterates through registered input channels sequentially in the calling thread,
+ * Iterates through registered input channels sequentially in a worker thread,
  * polling each with a small timeout, dispatching messages, and invoking step().
  */
 class SequentialStrategy : public IExecutionStrategy {
@@ -23,6 +24,7 @@ public:
 
 private:
     std::atomic<bool> m_running { false };
+    std::jthread m_workerThread;
 };
 
 } // namespace Core

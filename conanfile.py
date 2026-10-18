@@ -29,6 +29,7 @@ class ProxyConan(ConanFile):
         self.requires("fmt/12.1.0")
         self.requires("nlohmann_json/3.11.3")
         self.requires("pugixml/1.14")
+        self.requires("libxml2/2.13.6")
         self.requires("catch2/3.8.0")
 
         # Backends discovered / required via Conan

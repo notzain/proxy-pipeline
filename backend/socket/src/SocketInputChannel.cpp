@@ -44,6 +44,9 @@ void SocketInputChannel::openAndBindSocket()
     int reuse = 1;
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
+    int rcvbuf = 4 * 1024 * 1024; // 4MB receive buffer for high-throughput bursts
+    ::setsockopt(m_socketFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+
     sockaddr_in addr { };
     addr.sin_family = AF_INET;
     addr.sin_port = htons(m_port);

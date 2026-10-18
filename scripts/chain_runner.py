@@ -116,6 +116,7 @@ def generate_handler_config(
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
         lines.append(f"split.input_channel={in_ch}")
+        lines.append(f"xml.input_channel={in_ch}")
     if "input_channels" in handler_spec:
         in_chs = handler_spec["input_channels"]
         if isinstance(in_chs, list):
@@ -126,6 +127,7 @@ def generate_handler_config(
         out_ch = handler_spec["output_channel"]
         lines.append(f"dummy.channel={out_ch}")
         lines.append(f"merge.output_channel={out_ch}")
+        lines.append(f"xml.output_channel={out_ch}")
     if "output_channels" in handler_spec:
         out_chs = handler_spec["output_channels"]
         if isinstance(out_chs, list):

@@ -34,10 +34,12 @@ add_subdirectory(handler/dummy_send)
 add_subdirectory(handler/dummy_receive)
 add_subdirectory(handler/split_handler)
 add_subdirectory(handler/merge_handler)
+add_subdirectory(handler/xml_verification_handler)
 
-# Tests
+# Tests and Benchmarks
 enable_testing()
 add_subdirectory(test)
+add_subdirectory(benchmark)
 
 # Export manifest of all generated handler targets for CI/Docker packaging
 proxy_export_targets_manifest("${CMAKE_BINARY_DIR}/manifest.json")

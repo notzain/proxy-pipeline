@@ -88,7 +88,7 @@ function(proxy_discover_backends)
 endfunction()
 
 function(proxy_add_handler_all_backends handler_base_name)
-  cmake_parse_arguments(ARG "" "" "SOURCES;INCLUDE_DIRS" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "SOURCES;INCLUDE_DIRS;EXTRA_LIBS" ${ARGN})
 
   get_property(backend_targets GLOBAL PROPERTY PROXY_BACKEND_TARGETS)
   get_property(backend_names GLOBAL PROPERTY PROXY_BACKEND_NAMES)
@@ -111,7 +111,7 @@ function(proxy_add_handler_all_backends handler_base_name)
       target_include_directories(${target_exec} PRIVATE ${ARG_INCLUDE_DIRS})
     endif()
 
-    target_link_libraries(${target_exec} PRIVATE core ${backend_target})
+    target_link_libraries(${target_exec} PRIVATE core ${backend_target} ${ARG_EXTRA_LIBS})
     target_compile_features(${target_exec} PRIVATE cxx_std_20)
 
     # Output binary named with suffix in bin folder

@@ -1,0 +1,32 @@
+# Chain configuration demonstrating XmlVerificationHandler (schema validation & filtering)
+backend = "file"
+
+[config]
+file.path = "/tmp/watch/default"
+log.console = true
+"channel.orders_raw.path" = "/tmp/watch/orders_raw"
+"channel.orders_verified.path" = "/tmp/watch/orders_verified"
+
+# Sender producing valid XML orders
+[[handlers]]
+name = "order_sender"
+type = "dummy_send"
+output_channel = "orders_raw"
+[handlers.config]
+"dummy.message" = "<order><customer>Alice</customer><item>Widget</item><quantity>5</quantity></order>"
+"dummy.delay_ms" = 60000
+
+# XML Verification Handler checking against order.xsd
+[[handlers]]
+name = "xml_validator"
+type = "xml_verification_handler"
+input_channel = "orders_raw"
+output_channel = "orders_verified"
+[handlers.config]
+"xml.xsd_path" = "chains/order.xsd"
+
+# Printer displaying only verified valid XML orders
+[[handlers]]
+name = "verified_order_printer"
+type = "print_handler"
+input_channel = "orders_verified"
