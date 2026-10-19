@@ -63,4 +63,3 @@ std::span<const std::byte> MessageTask::payload() const noexcept
 }
 
 } // namespace Core
-

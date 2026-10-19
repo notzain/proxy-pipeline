@@ -43,6 +43,36 @@ public:
         return 0;
     }
 
+    std::size_t receiveBatch(
+        std::span<const std::span<std::byte>> destinations,
+        std::span<std::size_t> outSizes,
+        Timeout) override
+    {
+        std::lock_guard lock(m_mutex);
+        if (destinations.empty() || outSizes.size() < destinations.size()) {
+            return 0;
+        }
+        std::size_t count = 0;
+        while (count < destinations.size() && m_index < m_messages.size()) {
+            const auto& msg = m_messages[m_index];
+            // If the message exceeds the destination buffer slot, do not consume it in batch:
+            // leave it for full-MTU fallback receiveInto, or if it's the first message, signal saturation
+            if (msg.size() > destinations[count].size()) {
+                // Peek/truncate into buffer to signal saturation without popping from queue
+                std::memcpy(destinations[count].data(), msg.data(), destinations[count].size());
+                outSizes[count] = destinations[count].size();
+                // Do not pop m_index: fallback receiveInto will read the full message
+                ++count;
+                break;
+            }
+            std::memcpy(destinations[count].data(), msg.data(), msg.size());
+            outSizes[count] = msg.size();
+            m_index++;
+            ++count;
+        }
+        return count;
+    }
+
 private:
     std::mutex m_mutex;
     std::vector<std::string> m_messages;
@@ -256,4 +286,117 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
 
     std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), received);
     CHECK(receivedStr == testMsg);
+}
+
+TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channel][uds][batch]")
+{
+    const std::string sockPath = "/tmp/test_proxy_uds_batch.sock";
+    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+
+    constexpr std::size_t numMessages = 5;
+    std::vector<std::string> sentMessages;
+    for (std::size_t i = 0; i < numMessages; ++i) {
+        std::string msg = fmt::format("Batch Message #{}", i);
+        sentMessages.push_back(msg);
+        std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+        REQUIRE(outChannel.send(sendSpan));
+    }
+
+    std::array<std::array<std::byte, 256>, numMessages> buffers;
+    std::array<std::span<std::byte>, numMessages> destSpans;
+    for (std::size_t i = 0; i < numMessages; ++i) {
+        destSpans[i] = std::span<std::byte>(buffers[i].data(), buffers[i].size());
+    }
+    std::array<std::size_t, numMessages> outSizes { };
+
+    std::size_t drained = inChannel.receiveBatch(
+        std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
+        outSizes,
+        std::chrono::milliseconds(500));
+
+    REQUIRE(drained == numMessages);
+    for (std::size_t i = 0; i < numMessages; ++i) {
+        REQUIRE(outSizes[i] == sentMessages[i].size());
+        std::string receivedStr(reinterpret_cast<const char*>(buffers[i].data()), outSizes[i]);
+        CHECK(receivedStr == sentMessages[i]);
+    }
+}
+
+TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes", "[channel][core][jumbo]")
+{
+    class JumboVerifyHandler : public Core::IHandler {
+    public:
+        void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
+        {
+            std::lock_guard lock(m_mutex);
+            lastReceivedChannel = std::string(channelName);
+            lastReceivedSize = buffer.size();
+            lastReceivedPayload = std::string(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+            m_count++;
+            if (buffer.size() > 2048) {
+                stop();
+            }
+        }
+
+        std::mutex m_mutex;
+        std::string lastReceivedChannel;
+        std::size_t lastReceivedSize { 0 };
+        std::string lastReceivedPayload;
+
+    private:
+        int m_count { 0 };
+    };
+
+    SECTION("ThreadPool execution model receives oversized 4096-byte packet")
+    {
+        JumboVerifyHandler handler;
+        handler.setExecutionModel(Core::ExecutionModel::ThreadPool, 2);
+
+        // Generate a 4096-byte payload (exceeds 2048-byte default batch slot)
+        std::string jumboPayload(4096, 'X');
+        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+
+        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.startAsync();
+        handler.wait();
+
+        REQUIRE(handler.lastReceivedChannel == "jumbo_in");
+        REQUIRE(handler.lastReceivedSize == 4096);
+        CHECK(handler.lastReceivedPayload == jumboPayload);
+    }
+
+    SECTION("Dedicated thread model receives oversized 8192-byte packet")
+    {
+        JumboVerifyHandler handler;
+        handler.setExecutionModel(Core::ExecutionModel::Dedicated);
+
+        std::string jumboPayload(8192, 'Y');
+        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+
+        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.startAsync();
+        handler.wait();
+
+        REQUIRE(handler.lastReceivedChannel == "jumbo_in");
+        REQUIRE(handler.lastReceivedSize == 8192);
+        CHECK(handler.lastReceivedPayload == jumboPayload);
+    }
+
+    SECTION("Sequential model receives oversized 4096-byte packet")
+    {
+        JumboVerifyHandler handler;
+        handler.setExecutionModel(Core::ExecutionModel::Sequential);
+
+        std::string jumboPayload(4096, 'Z');
+        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+
+        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.startAsync();
+        handler.wait();
+
+        REQUIRE(handler.lastReceivedChannel == "jumbo_in");
+        REQUIRE(handler.lastReceivedSize == 4096);
+        CHECK(handler.lastReceivedPayload == jumboPayload);
+    }
 }

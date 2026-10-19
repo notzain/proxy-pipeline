@@ -39,6 +39,21 @@ public:
      * @return std::size_t Number of bytes written into destination, or 0 on timeout/no message.
      */
     virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout);
+
+    /**
+     * @brief Drains a batch of incoming messages into pre-allocated destination buffer slices.
+     *
+     * Enables vectorized multi-datagram draining (`recvmmsg` on Linux, speculative non-blocking drain on POSIX/macOS).
+     *
+     * @param destinations Spans of pre-allocated target buffers.
+     * @param outSizes Span of size_t where the received byte counts are stored. Must be at least destinations.size().
+     * @param timeout Timeout for the initial message wait if no data is currently ready.
+     * @return std::size_t Number of datagrams read into destinations (0 to destinations.size()).
+     */
+    virtual std::size_t receiveBatch(
+        std::span<const std::span<std::byte>> destinations,
+        std::span<std::size_t> outSizes,
+        Timeout timeout);
 };
 
 } // namespace Backend

@@ -83,6 +83,68 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
     return bytesRead;
 }
 
+std::size_t IoUringSocketPoller::receiveBatch(
+    int socketFd,
+    std::span<const std::span<std::byte>> destinations,
+    std::span<std::size_t> outSizes,
+    Timeout timeout)
+{
+    if (socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
+        return 0;
+    }
+
+    std::size_t count = 0;
+    const std::size_t maxBatch = destinations.size();
+
+    // Speculative non-blocking drain
+    while (count < maxBatch) {
+        ssize_t bytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destinations[count].data()),
+            destinations[count].size(),
+            MSG_DONTWAIT,
+            nullptr,
+            nullptr);
+
+        if (bytes > 0) {
+            outSizes[count++] = static_cast<std::size_t>(bytes);
+        } else {
+            break;
+        }
+    }
+
+    if (count > 0 || timeout.count() == 0) {
+        return count;
+    }
+
+    // Wait for the first packet via io_uring
+    std::size_t firstBytes = receive(socketFd, destinations[0], timeout);
+    if (firstBytes == 0) {
+        return 0;
+    }
+    outSizes[0] = firstBytes;
+    count = 1;
+
+    // Drain remaining ready datagrams
+    while (count < maxBatch) {
+        ssize_t bytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destinations[count].data()),
+            destinations[count].size(),
+            MSG_DONTWAIT,
+            nullptr,
+            nullptr);
+
+        if (bytes > 0) {
+            outSizes[count++] = static_cast<std::size_t>(bytes);
+        } else {
+            break;
+        }
+    }
+
+    return count;
+}
+
 } // namespace Backend
 
 #endif // __linux__

@@ -89,6 +89,75 @@ std::size_t KqueueSocketPoller::receive(int socketFd, std::span<std::byte> desti
     return 0;
 }
 
+std::size_t KqueueSocketPoller::receiveBatch(
+    int socketFd,
+    std::span<const std::span<std::byte>> destinations,
+    std::span<std::size_t> outSizes,
+    Timeout timeout)
+{
+    if (m_kqueueFd < 0 || socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
+        return 0;
+    }
+
+    std::size_t count = 0;
+    const std::size_t maxBatch = destinations.size();
+
+    // Speculatively drain ready datagrams non-blocking without kevent syscall
+    while (count < maxBatch) {
+        ssize_t bytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destinations[count].data()),
+            destinations[count].size(),
+            MSG_DONTWAIT,
+            nullptr,
+            nullptr);
+
+        if (bytes > 0) {
+            outSizes[count++] = static_cast<std::size_t>(bytes);
+        } else {
+            break;
+        }
+    }
+
+    if (count > 0 || timeout.count() == 0) {
+        return count;
+    }
+
+    // Wait via kevent for readability
+    registerSocket(socketFd);
+
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
+    struct timespec ts { };
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+
+    struct kevent events[8] { };
+    int nEvents = ::kevent(m_kqueueFd, nullptr, 0, events, 8, &ts);
+
+    if (nEvents <= 0) {
+        return 0;
+    }
+
+    // Drain ready datagrams now that socket is readable
+    while (count < maxBatch) {
+        ssize_t bytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destinations[count].data()),
+            destinations[count].size(),
+            MSG_DONTWAIT,
+            nullptr,
+            nullptr);
+
+        if (bytes > 0) {
+            outSizes[count++] = static_cast<std::size_t>(bytes);
+        } else {
+            break;
+        }
+    }
+
+    return count;
+}
+
 } // namespace Backend
 
 #endif // __APPLE__ || BSD

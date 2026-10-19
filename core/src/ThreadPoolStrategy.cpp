@@ -62,8 +62,7 @@ void ThreadPoolStrategy::start(IHandler& handler)
                         }
                         handler.onBatchReceived(chName, std::span<const std::span<const std::byte>>(batchSpans.data(), spanCount));
                         batchStart = batchEnd;
-                    }
-                }, stoken);
+                    } }, stoken);
             }
         });
     }
@@ -71,72 +70,41 @@ void ThreadPoolStrategy::start(IHandler& handler)
     // 2. Launch channel poller threads to enqueue message tasks
     for (const auto& namedChannel : channels) {
         m_channelThreads.emplace_back([this, &namedChannel, channelTimeout](std::stop_token stoken) {
-            thread_local std::array<std::byte, 65535> rxBuffer;
-
-            std::array<std::array<std::byte, 2048>, 16> batchBuffers;
-            std::array<std::size_t, 16> batchSizes;
-            std::size_t batchCount = 0;
-
             auto enqueueTasks = [&stoken](QueueType& targetQueue, std::string_view chName,
                                     std::span<const std::span<const std::byte>> payloads) {
-                targetQueue.pushBatch(payloads.size(), [&chName, payloads](MessageTask& slot, std::size_t idx) {
-                    slot.assign(chName, payloads[idx]);
-                }, stoken);
+                targetQueue.pushBatch(payloads.size(), [&chName, payloads](MessageTask& slot, std::size_t idx) { slot.assign(chName, payloads[idx]); }, stoken);
             };
+
+            std::array<std::array<std::byte, 2048>, 16> batchBuffers;
+            std::array<std::span<std::byte>, 16> destSpans;
+            for (std::size_t i = 0; i < 16; ++i) {
+                destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
+            }
+            std::array<std::size_t, 16> batchSizes;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!namedChannel.channel) {
                     continue;
                 }
 
-                batchCount = 0;
-
-                // Initial receive with timeout to yield if idle
-                std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout);
-                if (bytes == 0) {
-                    continue;
-                }
-
-                if (bytes <= batchBuffers[0].size()) {
-                    std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), bytes);
-                    batchSizes[batchCount++] = bytes;
-                } else {
-                    const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
-                    auto& targetQueue = *m_workerQueues[targetWorker];
-                    std::array<std::span<const std::byte>, 1> singleSpan = { std::span<const std::byte>(rxBuffer.data(), bytes) };
-                    enqueueTasks(targetQueue, namedChannel.name, singleSpan);
-                    continue;
-                }
-
-                // Drain subsequent ready packets without waiting (timeout 0) up to batch limit of 16
-                constexpr IHandler::Timeout zeroTimeout { 0 };
-                while (batchCount < 16 && !stoken.stop_requested()) {
-                    std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
-                    if (nextBytes == 0) {
-                        break;
-                    }
-                    if (nextBytes <= batchBuffers[0].size()) {
-                        std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), nextBytes);
-                        batchSizes[batchCount++] = nextBytes;
-                    } else {
-                        // Push current batch first, then dispatch large packet
-                        const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
-                        auto& targetQueue = *m_workerQueues[targetWorker];
-
-                        std::array<std::span<const std::byte>, 17> combinedSpans;
-                        for (std::size_t idx = 0; idx < batchCount; ++idx) {
-                            combinedSpans[idx] = std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]);
-                        }
-                        combinedSpans[batchCount] = std::span<const std::byte>(rxBuffer.data(), nextBytes);
-                        enqueueTasks(targetQueue, namedChannel.name, std::span<const std::span<const std::byte>>(combinedSpans.data(), batchCount + 1));
-
-                        batchCount = 0;
-                        break;
-                    }
-                }
+                std::size_t batchCount = namedChannel.channel->receiveBatch(
+                    std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
+                    batchSizes,
+                    channelTimeout);
 
                 if (batchCount == 0) {
                     continue;
+                }
+
+                // If any slot filled the full 2048-byte buffer, check if an oversized jumbo packet was received
+                // and route via receiveInto full-MTU fallback if needed
+                static thread_local std::array<std::byte, 65535> jumboBuffer;
+                bool hasOversized = false;
+                for (std::size_t idx = 0; idx < batchCount; ++idx) {
+                    if (batchSizes[idx] == batchBuffers[idx].size()) {
+                        hasOversized = true;
+                        break;
+                    }
                 }
 
                 // Target worker queue using round-robin distribution
@@ -148,6 +116,16 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     spans[idx] = std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]);
                 }
                 enqueueTasks(targetQueue, namedChannel.name, std::span<const std::span<const std::byte>>(spans.data(), batchCount));
+
+                if (hasOversized) {
+                    // Check if an oversized datagram is waiting in queue
+                    constexpr IHandler::Timeout zeroTimeout { 0 };
+                    std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuffer, zeroTimeout);
+                    if (jumboBytes > 0) {
+                        std::array<std::span<const std::byte>, 1> jumboSpan = { std::span<const std::byte>(jumboBuffer.data(), jumboBytes) };
+                        enqueueTasks(targetQueue, namedChannel.name, jumboSpan);
+                    }
+                }
             }
         });
     }

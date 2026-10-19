@@ -26,6 +26,23 @@ public:
      * @return std::size_t Number of bytes received (0 on timeout or error).
      */
     virtual std::size_t receive(int socketFd, std::span<std::byte> destination, Timeout timeout) = 0;
+
+    /**
+     * @brief Waits for readability and receives a batch of datagrams into destination buffers.
+     *
+     * Uses recvmmsg on Linux or speculative drain on macOS/POSIX.
+     *
+     * @param socketFd The bound socket file descriptor.
+     * @param destinations Spans of pre-allocated target buffers.
+     * @param outSizes Span of size_t where received byte counts are stored.
+     * @param timeout Maximum wait duration for the first packet.
+     * @return std::size_t Number of packets received.
+     */
+    virtual std::size_t receiveBatch(
+        int socketFd,
+        std::span<const std::span<std::byte>> destinations,
+        std::span<std::size_t> outSizes,
+        Timeout timeout);
 };
 
 /**

@@ -15,4 +15,32 @@ std::size_t IInputChannel::receiveInto(std::span<std::byte> destination, Timeout
     return bytesToCopy;
 }
 
+std::size_t IInputChannel::receiveBatch(
+    std::span<const std::span<std::byte>> destinations,
+    std::span<std::size_t> outSizes,
+    Timeout timeout)
+{
+    if (destinations.empty() || outSizes.size() < destinations.size()) {
+        return 0;
+    }
+
+    std::size_t firstBytes = receiveInto(destinations[0], timeout);
+    if (firstBytes == 0) {
+        return 0;
+    }
+    outSizes[0] = firstBytes;
+    std::size_t count = 1;
+
+    constexpr Timeout zeroTimeout { 0 };
+    while (count < destinations.size()) {
+        std::size_t nextBytes = receiveInto(destinations[count], zeroTimeout);
+        if (nextBytes == 0) {
+            break;
+        }
+        outSizes[count] = nextBytes;
+        ++count;
+    }
+    return count;
+}
+
 } // namespace Backend

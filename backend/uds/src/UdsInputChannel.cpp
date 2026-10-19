@@ -95,6 +95,25 @@ std::size_t UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeo
     return 0;
 }
 
+std::size_t UdsInputChannel::receiveBatch(
+    std::span<const std::span<std::byte>> destinations,
+    std::span<std::size_t> outSizes,
+    Timeout timeout)
+{
+    if (m_socketFd < 0) {
+        openAndBindSocket();
+        if (m_socketFd < 0) {
+            return 0;
+        }
+    }
+
+    if (m_poller) {
+        return m_poller->receiveBatch(m_socketFd, destinations, outSizes, timeout);
+    }
+
+    return 0;
+}
+
 std::optional<::Backend::IInputChannel::Buffer> UdsInputChannel::receive(Timeout timeout)
 {
     thread_local std::array<std::byte, 65535> scratch;
