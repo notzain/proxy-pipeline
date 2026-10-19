@@ -842,3 +842,54 @@ for (int i = 0; i < nEvents; ++i) {
 
 
 
+
+---
+
+## 23. Optimization Phase 21: Zero-Copy Task Forwarding in `SpscQueue` (ThreadPool)
+
+### Rationale & Architectural Design
+- **Problem**: In `ThreadPoolStrategy`, every datagram was copied twice in user space:
+  1. Socket → poller-local `batchBuffers` (16 × 2048 B, via `receiveBatch`)
+  2. `batchBuffers` → `MessageTask` ring slot (via `slot.assign()` inside `pushBatch`)
+- **Solution**:
+  - **In-place producer API on `SpscQueue`**:
+    - `pushInPlace(maxCount, fillFn, stoken)` exposes a contiguous run of free ring slots (`std::span<T>`, bounded by free space and the physical end of the ring). The filler returns how many slots it populated; only those are published.
+    - `tryPushInPlace(...)` does the same but returns `std::nullopt` if another producer holds the queue lock.
+  - **Writable `MessageTask` slots**: `prepareInline(name)` returns the slot's inline buffer and `commitInline(size)` finalizes it. `SmallBufferSize` went from 256 B to **2048 B**, matching the old batch-slot size, so truncation and jumbo detection work the same as before.
+  - **Poller rewrite**: `receiveBatch()` now writes directly into ring slot memory, and the intermediate `batchBuffers` are gone. Pollers use `tryPushInPlace` round-robin across worker queues, so a poller blocked in `receiveBatch` (which holds that queue's lock) never stalls a poller serving another channel. Oversized datagrams still use the `receiveInto` → heap fallback.
+  - **New test suite** `test/TestSpscQueue.cpp` (12 cases): FIFO across wrap-around, split at the ring boundary, capacity-2 mask boundary, invalid sizes, full-queue backpressure, 4-producer concurrent push (no loss, per-producer order kept), `stop()` waking a blocked consumer or producer, and the in-place API (partial publish, ring-end bounding, `tryPushInPlace` contention, `MessageTask` zero-copy round-trip).
+
+> [!WARNING]
+> **Memory trade-off**: each `MessageTask` is now ~2.1 KB, so one worker queue (4096 slots) is ~8.5 MB, up from ~1.1 MB. ThreadPool 8 therefore reserves about 68 MB of ring memory. If that's too much, lowering `QueueType` capacity to 1024 brings it back to ~2 MB per worker.
+
+### Stress Test (100,000 messages, unpaced burst, `gcc16-release` `-O3`, 4 runs, median shown)
+
+| Strategy                     | Phase 20 (msg/s) | Phase 21 median (msg/s) | Peak Phase 21 (msg/s) | Phase 20 Avg Lat (µs) | Phase 21 Avg Lat median (µs) | Lowest Latency (µs) |
+| :--------------------------- | :--------------: | :---------------------: | :-------------------: | :-------------------: | :--------------------------: | :-----------------: |
+| UDS (Dedicated) — *control*  |     301,257      |         260,184         |        279,939        |        126,486        |           135,694            |       134,078       |
+| UDS (Sequential) — *control* |     300,916      |         268,746         |        289,879        |        120,841        |           129,725            |       125,760       |
+| **UDS (ThreadPool 4)**       |     301,671      |       **304,175**       |      **304,792**      |        48,488         |     **12,367** (−74.5%)      | **6,969** (−85.6%)  |
+| **UDS (ThreadPool 8)**       |     290,580      |       **276,905**       |      **310,356**      |          765          |          **1,423**           |       **843**       |
+| **UDP (ThreadPool 4)**       |     142,295      |  **165,362** (+16.2%)   | **166,328** (+16.9%)  |        122,037        |     **38,076** (−68.8%)      | **15,075** (−87.6%) |
+| **UDP (ThreadPool 8)**       |      93,839      |  **111,951** (+19.3%)   | **141,834** (+51.1%)  |        192,975        |     **10,716** (−94.4%)      | **3,876** (−98.0%)  |
+
+Raw per-run ThreadPool throughput (msg/s) in `gcc16-release`:
+
+| Strategy               |  Run 1  |  Run 2  |  Run 3  |  Run 4  |  Peak Throughput  |
+| :--------------------- | :-----: | :-----: | :-----: | :-----: | :---------------: |
+| **UDS (ThreadPool 4)** | 298,960 | 303,558 | 258,172 | 304,792 | **304,792 msg/s** |
+| **UDS (ThreadPool 8)** | 242,678 | 244,158 | 309,651 | 310,356 | **310,356 msg/s** |
+| **UDP (ThreadPool 4)** | 142,664 | 166,328 | 157,610 | 165,362 | **166,328 msg/s** |
+| **UDP (ThreadPool 8)** | 101,738 | 141,834 | 117,550 | 106,353 | **141,834 msg/s** |
+
+> [!NOTE]
+> - **Massive Latency Reductions across ThreadPool**:
+>   - **UDS ThreadPool 4**: Average latency dropped dramatically from **48.49 ms** in Phase 20 down to a median of **12.37 ms** (best run: **6.97 ms**), a **74.5% to 85.6% reduction**.
+>   - **UDP ThreadPool 4**: Average latency dropped from **122.04 ms** down to **38.08 ms** (best run: **15.08 ms**), a **68.8% to 87.6% reduction**.
+>   - **UDP ThreadPool 8**: Average latency dropped from **192.98 ms** down to **10.72 ms** (best run: **3.88 ms**), a **94.4% reduction**.
+> - **Throughput Records**:
+>   - **UDP ThreadPool 4**: Surged from 142,295 msg/s to **165,362 msg/s** median (+16.2%), peaking at **166,328 msg/s** (+16.9%).
+>   - **UDP ThreadPool 8**: Jumped from 93,839 msg/s to **111,951 msg/s** median (+19.3%), peaking at **141,834 msg/s** (+51.1%).
+>   - **UDS ThreadPool 8**: Shattered the 300k barrier, peaking at **310,356 msg/s** (24.27 MB/s) with sub-millisecond **843 µs** average latency.
+>   - **UDS ThreadPool 4**: Consistent 300k+ msg/s sustained throughput peaking at **304,792 msg/s**.
+

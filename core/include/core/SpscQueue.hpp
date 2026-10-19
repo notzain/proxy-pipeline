@@ -1,14 +1,17 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <type_traits>
+#include <utility>
 
 namespace Core {
 
@@ -93,6 +96,42 @@ public:
     }
 
     /**
+     * @brief Exposes a contiguous run of free ring slots for in-place (zero-copy) population.
+     *
+     * Blocks until at least one slot is free. The filler receives a writable span of up to
+     * maxCount contiguous slots (bounded by free space and the physical end of the ring) and
+     * returns how many of them it actually populated; only that many are published.
+     *
+     * @tparam FillFn Callable invoked as `std::size_t fn(std::span<T> slots)`.
+     * @param maxCount Maximum number of slots to expose.
+     * @param fillFn Function writing directly into ring slots.
+     * @param stoken Cooperative cancellation token.
+     * @return Number of elements published (0 if stopped or nothing filled).
+     */
+    template <typename FillFn>
+    std::size_t pushInPlace(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken = { })
+    {
+        std::unique_lock lock(m_producerMutex);
+        return pushInPlaceLocked(maxCount, std::forward<FillFn>(fillFn), stoken);
+    }
+
+    /**
+     * @brief Non-blocking variant of pushInPlace() regarding the producer lock.
+     *
+     * Returns std::nullopt immediately if another producer currently holds the queue,
+     * allowing callers to try a different queue instead of stalling.
+     */
+    template <typename FillFn>
+    std::optional<std::size_t> tryPushInPlace(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken = { })
+    {
+        std::unique_lock lock(m_producerMutex, std::try_to_lock);
+        if (!lock.owns_lock()) {
+            return std::nullopt;
+        }
+        return pushInPlaceLocked(maxCount, std::forward<FillFn>(fillFn), stoken);
+    }
+
+    /**
      * @brief Drains up to maxCount elements from the ring buffer into a consumer callback.
      *
      * The callback is passed a contiguous std::span of elements directly inside the ring buffer.
@@ -169,6 +208,44 @@ public:
     }
 
 private:
+    template <typename FillFn>
+    std::size_t pushInPlaceLocked(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken)
+    {
+        if (maxCount == 0) {
+            return 0;
+        }
+
+        const std::size_t currentTail = m_tail.load(std::memory_order_relaxed);
+        std::size_t freeSlots = 0;
+        while (!stoken.stop_requested()) {
+            freeSlots = Capacity - (currentTail - m_head.load(std::memory_order_acquire));
+            if (freeSlots > 0) {
+                break;
+            }
+            std::uint32_t currentVer = m_headVersion.load(std::memory_order_acquire);
+            if (Capacity - (currentTail - m_head.load(std::memory_order_acquire)) == 0) {
+                m_headVersion.wait(currentVer, std::memory_order_relaxed);
+            }
+        }
+        if (stoken.stop_requested() || freeSlots == 0) {
+            return 0;
+        }
+
+        const std::size_t ringIndex = currentTail & Mask;
+        const std::size_t span = std::min({ maxCount, freeSlots, Capacity - ringIndex });
+
+        std::size_t filled = fillFn(std::span<T>(&m_ring[ringIndex], span));
+        filled = std::min(filled, span);
+        if (filled == 0) {
+            return 0;
+        }
+
+        m_tail.store(currentTail + filled, std::memory_order_release);
+        m_tailVersion.fetch_add(1, std::memory_order_release);
+        m_tailVersion.notify_one();
+        return filled;
+    }
+
     alignas(64) std::atomic<std::size_t> m_tail { 0 };
     alignas(64) std::atomic<std::uint32_t> m_tailVersion { 0 };
     alignas(64) std::atomic<std::size_t> m_head { 0 };

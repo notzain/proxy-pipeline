@@ -75,55 +75,61 @@ void ThreadPoolStrategy::start(IHandler& handler)
                 targetQueue.pushBatch(payloads.size(), [&chName, payloads](MessageTask& slot, std::size_t idx) { slot.assign(chName, payloads[idx]); }, stoken);
             };
 
-            std::array<std::array<std::byte, 2048>, 16> batchBuffers;
-            std::array<std::span<std::byte>, 16> destSpans;
-            for (std::size_t i = 0; i < 16; ++i) {
-                destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
-            }
-            std::array<std::size_t, 16> batchSizes;
+            constexpr std::size_t maxBatch = 16;
+            static thread_local std::array<std::byte, 65535> jumboBuffer;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!namedChannel.channel) {
                     continue;
                 }
 
-                std::size_t batchCount = namedChannel.channel->receiveBatch(
-                    std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
-                    batchSizes,
-                    channelTimeout);
-
-                if (batchCount == 0) {
-                    continue;
-                }
-
-                // If any slot filled the full 2048-byte buffer, check if an oversized jumbo packet was received
-                // and route via receiveInto full-MTU fallback if needed
-                static thread_local std::array<std::byte, 65535> jumboBuffer;
                 bool hasOversized = false;
-                for (std::size_t idx = 0; idx < batchCount; ++idx) {
-                    if (batchSizes[idx] == batchBuffers[idx].size()) {
-                        hasOversized = true;
+
+                // Zero-copy ingress: the channel writes datagrams straight into ring slot memory.
+                auto fillSlots = [&](std::span<MessageTask> slots) -> std::size_t {
+                    std::array<std::span<std::byte>, maxBatch> destSpans;
+                    std::array<std::size_t, maxBatch> sizes { };
+                    const std::size_t n = std::min(slots.size(), maxBatch);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        destSpans[i] = slots[i].prepareInline(namedChannel.name);
+                    }
+                    const std::size_t received = namedChannel.channel->receiveBatch(
+                        std::span<const std::span<std::byte>>(destSpans.data(), n),
+                        std::span<std::size_t>(sizes.data(), n),
+                        channelTimeout);
+                    for (std::size_t i = 0; i < received; ++i) {
+                        slots[i].commitInline(sizes[i]);
+                        if (sizes[i] == MessageTask::SmallBufferSize) {
+                            hasOversized = true;
+                        }
+                    }
+                    return received;
+                };
+
+                // Round-robin worker selection; skip queues currently held by another poller.
+                const std::size_t start = m_nextWorker.fetch_add(1, std::memory_order_relaxed);
+                QueueType* targetQueue = nullptr;
+                std::size_t produced = 0;
+                for (std::size_t attempt = 0; attempt < m_numWorkerThreads; ++attempt) {
+                    auto& q = *m_workerQueues[(start + attempt) % m_numWorkerThreads];
+                    if (auto res = q.tryPushInPlace(maxBatch, fillSlots, stoken)) {
+                        targetQueue = &q;
+                        produced = *res;
                         break;
                     }
                 }
-
-                // Target worker queue using round-robin distribution
-                const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
-                auto& targetQueue = *m_workerQueues[targetWorker];
-
-                std::array<std::span<const std::byte>, 16> spans;
-                for (std::size_t idx = 0; idx < batchCount; ++idx) {
-                    spans[idx] = std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]);
+                if (!targetQueue) {
+                    targetQueue = m_workerQueues[start % m_numWorkerThreads].get();
+                    produced = targetQueue->pushInPlace(maxBatch, fillSlots, stoken);
                 }
-                enqueueTasks(targetQueue, namedChannel.name, std::span<const std::span<const std::byte>>(spans.data(), batchCount));
 
-                if (hasOversized) {
-                    // Check if an oversized datagram is waiting in queue
+                if (produced > 0 && hasOversized) {
+                    // Oversized datagram: fetch the full payload via full-MTU fallback (heap path)
                     constexpr IHandler::Timeout zeroTimeout { 0 };
                     std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuffer, zeroTimeout);
                     if (jumboBytes > 0) {
                         std::array<std::span<const std::byte>, 1> jumboSpan = { std::span<const std::byte>(jumboBuffer.data(), jumboBytes) };
-                        enqueueTasks(targetQueue, namedChannel.name, jumboSpan);
+                        enqueueTasks(*targetQueue, namedChannel.name, jumboSpan);
                     }
                 }
             }
