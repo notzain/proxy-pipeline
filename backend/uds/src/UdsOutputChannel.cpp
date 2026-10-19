@@ -51,6 +51,12 @@ void UdsOutputChannel::openSocket()
     std::strncpy(m_destAddr.sun_path, m_destPath.c_str(), sizeof(m_destAddr.sun_path) - 1);
 
     Proxy::Log::info("[UdsOutputChannel] Target configured for UDS path {}", m_destPath);
+
+    // Connect socket to destination address to eliminate per-packet kernel routing checks
+    if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) < 0) {
+        // May fail if receiver is not bound yet; fallback to sendto will work
+        Proxy::Log::debug("[UdsOutputChannel] Non-blocking initial connect deferred: {}", std::strerror(errno));
+    }
 }
 
 bool UdsOutputChannel::send(std::span<const std::byte> message)
@@ -62,13 +68,22 @@ bool UdsOutputChannel::send(std::span<const std::byte> message)
         }
     }
 
-    ssize_t sent = ::sendto(
+    ssize_t sent = ::send(
         m_socketFd,
         reinterpret_cast<const char*>(message.data()),
         message.size(),
-        0,
-        reinterpret_cast<const sockaddr*>(&m_destAddr),
-        sizeof(m_destAddr));
+        0);
+
+    if (sent < 0) {
+        // Fallback or retry with sendto (connect might have been deferred)
+        sent = ::sendto(
+            m_socketFd,
+            reinterpret_cast<const char*>(message.data()),
+            message.size(),
+            0,
+            reinterpret_cast<const sockaddr*>(&m_destAddr),
+            sizeof(m_destAddr));
+    }
 
     if (sent < 0) {
         Proxy::Log::error("[UdsOutputChannel] Failed to send {} bytes to {} ({})", message.size(), m_destPath, std::strerror(errno));

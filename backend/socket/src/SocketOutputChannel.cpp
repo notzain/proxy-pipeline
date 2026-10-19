@@ -51,6 +51,11 @@ void SocketOutputChannel::openSocket()
     }
 
     Proxy::Log::info("[SocketOutputChannel] Target configured for UDP {}:{}", m_destHost, m_destPort);
+
+    // Connect socket to destination address to eliminate per-packet kernel route lookups
+    if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) < 0) {
+        Proxy::Log::warn("[SocketOutputChannel] Failed to connect UDP socket to {}:{} ({})", m_destHost, m_destPort, std::strerror(errno));
+    }
 }
 
 bool SocketOutputChannel::send(std::span<const std::byte> message)
@@ -62,13 +67,22 @@ bool SocketOutputChannel::send(std::span<const std::byte> message)
         }
     }
 
-    ssize_t sent = ::sendto(
+    ssize_t sent = ::send(
         m_socketFd,
         reinterpret_cast<const char*>(message.data()),
         message.size(),
-        0,
-        reinterpret_cast<const sockaddr*>(&m_destAddr),
-        sizeof(m_destAddr));
+        0);
+
+    if (sent < 0) {
+        // Fallback to sendto if disconnected
+        sent = ::sendto(
+            m_socketFd,
+            reinterpret_cast<const char*>(message.data()),
+            message.size(),
+            0,
+            reinterpret_cast<const sockaddr*>(&m_destAddr),
+            sizeof(m_destAddr));
+    }
 
     if (sent < 0) {
         Proxy::Log::error("[SocketOutputChannel] Failed to send {} bytes to {}:{} ({})", message.size(), m_destHost, m_destPort, std::strerror(errno));
