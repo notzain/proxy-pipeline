@@ -1,66 +1,93 @@
 #include "core/ThreadPoolStrategy.hpp"
 #include "core/IHandler.hpp"
 #include "log/Log.hpp"
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <queue>
 #include <span>
 
 namespace Core {
 
-ThreadPoolStrategy::MessageTask::MessageTask(std::string name, std::span<const std::byte> data)
-    : channelName(std::move(name))
-{
-    if (data.size() <= SmallBufferSize) {
-        inlineSize = data.size();
-        std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
-    } else {
-        inlineSize = 0;
-        heapBuffer.assign(data.begin(), data.end());
-    }
-}
+namespace {
 
-ThreadPoolStrategy::MessageTask::MessageTask(MessageTask&& other) noexcept
-    : channelName(std::move(other.channelName))
-    , inlineSize(other.inlineSize)
-    , heapBuffer(std::move(other.heapBuffer))
-{
-    if (inlineSize > 0) {
-        std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
-    }
-}
+    struct MessageTask {
+        static constexpr std::size_t SmallBufferSize = 256;
 
-ThreadPoolStrategy::MessageTask& ThreadPoolStrategy::MessageTask::operator=(MessageTask&& other) noexcept
-{
-    if (this != &other) {
-        channelName = std::move(other.channelName);
-        inlineSize = other.inlineSize;
-        heapBuffer = std::move(other.heapBuffer);
-        if (inlineSize > 0) {
-            std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
+        std::string channelName;
+        std::array<std::byte, SmallBufferSize> inlineBuffer;
+        std::size_t inlineSize { 0 };
+        std::vector<std::byte> heapBuffer;
+
+        MessageTask(std::string name, std::span<const std::byte> data)
+            : channelName(std::move(name))
+        {
+            if (data.size() <= SmallBufferSize) {
+                inlineSize = data.size();
+                std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
+            } else {
+                inlineSize = 0;
+                heapBuffer.assign(data.begin(), data.end());
+            }
         }
-    }
-    return *this;
-}
 
-ThreadPoolStrategy::MessageTask::~MessageTask() = default;
+        MessageTask(MessageTask&& other) noexcept
+            : channelName(std::move(other.channelName))
+            , inlineSize(other.inlineSize)
+            , heapBuffer(std::move(other.heapBuffer))
+        {
+            if (inlineSize > 0) {
+                std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
+            }
+        }
 
-std::span<const std::byte> ThreadPoolStrategy::MessageTask::payload() const noexcept
-{
-    if (inlineSize > 0) {
-        return std::span<const std::byte>(inlineBuffer.data(), inlineSize);
-    }
-    return std::span<const std::byte>(heapBuffer.data(), heapBuffer.size());
-}
+        MessageTask& operator=(MessageTask&& other) noexcept
+        {
+            if (this != &other) {
+                channelName = std::move(other.channelName);
+                inlineSize = other.inlineSize;
+                heapBuffer = std::move(other.heapBuffer);
+                if (inlineSize > 0) {
+                    std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
+                }
+            }
+            return *this;
+        }
+
+        MessageTask(const MessageTask&) = delete;
+        MessageTask& operator=(const MessageTask&) = delete;
+        ~MessageTask() = default;
+
+        [[nodiscard]] std::span<const std::byte> payload() const noexcept
+        {
+            if (inlineSize > 0) {
+                return std::span<const std::byte>(inlineBuffer.data(), inlineSize);
+            }
+            return std::span<const std::byte>(heapBuffer.data(), heapBuffer.size());
+        }
+    };
+
+} // namespace
+
+struct alignas(128) ThreadPoolStrategy::WorkerQueue {
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::queue<MessageTask> queue;
+};
 
 ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
     : m_numWorkerThreads(numWorkerThreads)
 {
     if (m_numWorkerThreads == 0) {
-        m_numWorkerThreads = std::thread::hardware_concurrency();
-        if (m_numWorkerThreads == 0) {
-            m_numWorkerThreads = 2;
-        }
+        m_numWorkerThreads = std::max(2UL, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+    }
+
+    m_workerQueues.reserve(m_numWorkerThreads);
+    for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
+        m_workerQueues.emplace_back(std::make_unique<WorkerQueue>());
     }
 }
 
@@ -79,28 +106,29 @@ void ThreadPoolStrategy::start(IHandler& handler)
     Proxy::Log::info("[ThreadPoolStrategy] Starting with {} pool workers and {} channel poller(s)...",
         m_numWorkerThreads, channels.size());
 
-    // 1. Launch pool worker threads
+    // 1. Launch pool worker threads with partitioned queues
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
-        m_workerThreads.emplace_back([this, &handler](std::stop_token stoken) {
+        m_workerThreads.emplace_back([this, &handler, i](std::stop_token stoken) {
             std::vector<MessageTask> batch;
             batch.reserve(16);
+            auto& myQueue = *m_workerQueues[i];
 
             while (!stoken.stop_requested()) {
                 batch.clear();
                 {
-                    std::unique_lock lock(m_queueMutex);
-                    m_queueCv.wait(lock, [this, &stoken] {
-                        return stoken.stop_requested() || !m_taskQueue.empty();
+                    std::unique_lock lock(myQueue.mutex);
+                    myQueue.cv.wait(lock, [&myQueue, &stoken] {
+                        return stoken.stop_requested() || !myQueue.queue.empty();
                     });
 
-                    if (stoken.stop_requested() && m_taskQueue.empty()) {
+                    if (stoken.stop_requested() && myQueue.queue.empty()) {
                         break;
                     }
 
                     // Drain up to 16 tasks per lock acquisition
-                    while (!m_taskQueue.empty() && batch.size() < 16) {
-                        batch.push_back(std::move(m_taskQueue.front()));
-                        m_taskQueue.pop();
+                    while (!myQueue.queue.empty() && batch.size() < 16) {
+                        batch.push_back(std::move(myQueue.queue.front()));
+                        myQueue.queue.pop();
                     }
                 }
 
@@ -141,17 +169,21 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     ingressBatch.emplace_back(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
                 }
 
-                // Bulk push into task queue with a single lock acquisition
+                // Target worker queue using round-robin distribution
+                const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
+                auto& targetQueue = *m_workerQueues[targetWorker];
+
+                // Push into target worker queue with a single lock acquisition
                 {
-                    std::unique_lock lock(m_queueMutex);
+                    std::unique_lock lock(targetQueue.mutex);
                     for (auto& task : ingressBatch) {
-                        m_taskQueue.push(std::move(task));
+                        targetQueue.queue.push(std::move(task));
                     }
                 }
                 ingressBatch.clear();
 
-                // Wake up waiting workers
-                m_queueCv.notify_all();
+                // Wake up only the assigned worker
+                targetQueue.cv.notify_one();
             }
         });
     }
@@ -176,13 +208,14 @@ void ThreadPoolStrategy::stop()
     }
     m_stepThread.request_stop();
 
-    {
-        std::unique_lock lock(m_queueMutex);
-        for (auto& t : m_workerThreads) {
-            t.request_stop();
-        }
+    for (auto& t : m_workerThreads) {
+        t.request_stop();
     }
-    m_queueCv.notify_all();
+
+    for (const auto& wq : m_workerQueues) {
+        std::unique_lock lock(wq->mutex);
+        wq->cv.notify_all();
+    }
 }
 
 void ThreadPoolStrategy::wait()

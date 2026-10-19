@@ -1,13 +1,9 @@
 #pragma once
 
 #include "core/IExecutionStrategy.hpp"
-#include <array>
 #include <atomic>
-#include <condition_variable>
 #include <cstddef>
-#include <mutex>
-#include <queue>
-#include <span>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -39,27 +35,9 @@ private:
     std::size_t m_numWorkerThreads;
     std::atomic<bool> m_running { false };
 
-    struct MessageTask {
-        static constexpr std::size_t SmallBufferSize = 256;
-
-        std::string channelName;
-        std::array<std::byte, SmallBufferSize> inlineBuffer;
-        std::size_t inlineSize { 0 };
-        std::vector<std::byte> heapBuffer;
-
-        MessageTask(std::string name, std::span<const std::byte> data);
-        MessageTask(MessageTask&& other) noexcept;
-        MessageTask& operator=(MessageTask&& other) noexcept;
-        MessageTask(const MessageTask&) = delete;
-        MessageTask& operator=(const MessageTask&) = delete;
-        ~MessageTask();
-
-        [[nodiscard]] std::span<const std::byte> payload() const noexcept;
-    };
-
-    std::queue<MessageTask> m_taskQueue;
-    std::mutex m_queueMutex;
-    std::condition_variable m_queueCv;
+    struct WorkerQueue;
+    std::vector<std::unique_ptr<WorkerQueue>> m_workerQueues;
+    std::atomic<std::size_t> m_nextWorker { 0 };
 
     std::vector<std::jthread> m_channelThreads;
     std::vector<std::jthread> m_workerThreads;
