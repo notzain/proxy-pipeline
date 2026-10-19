@@ -11,6 +11,23 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
         return 0;
     }
 
+    // Fast-path: speculative non-blocking read avoids poll() syscall when data is already available
+    ssize_t directBytes = ::recvfrom(
+        socketFd,
+        reinterpret_cast<char*>(destination.data()),
+        destination.size(),
+        MSG_DONTWAIT,
+        nullptr,
+        nullptr);
+
+    if (directBytes > 0) {
+        return static_cast<std::size_t>(directBytes);
+    }
+
+    if (timeout.count() == 0) {
+        return 0;
+    }
+
     pollfd pfd { };
     pfd.fd = socketFd;
     pfd.events = POLLIN;
@@ -23,7 +40,7 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
             socketFd,
             reinterpret_cast<char*>(destination.data()),
             destination.size(),
-            0,
+            MSG_DONTWAIT,
             nullptr,
             nullptr);
 

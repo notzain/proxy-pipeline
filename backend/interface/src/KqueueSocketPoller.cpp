@@ -43,6 +43,23 @@ std::size_t KqueueSocketPoller::receive(int socketFd, std::span<std::byte> desti
         return 0;
     }
 
+    // Fast-path: speculative non-blocking read avoids kevent kernel roundtrip when socket buffer has data
+    ssize_t directBytes = ::recvfrom(
+        socketFd,
+        reinterpret_cast<char*>(destination.data()),
+        destination.size(),
+        MSG_DONTWAIT,
+        nullptr,
+        nullptr);
+
+    if (directBytes > 0) {
+        return static_cast<std::size_t>(directBytes);
+    }
+
+    if (timeout.count() == 0) {
+        return 0;
+    }
+
     registerSocket(socketFd);
 
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -58,7 +75,7 @@ std::size_t KqueueSocketPoller::receive(int socketFd, std::span<std::byte> desti
             socketFd,
             reinterpret_cast<char*>(destination.data()),
             destination.size(),
-            0,
+            MSG_DONTWAIT,
             nullptr,
             nullptr);
 
