@@ -32,12 +32,12 @@ void SequentialStrategy::start(IHandler& handler)
                         break;
                     }
                     if (namedChannel.channel) {
-                        std::array<std::array<std::byte, 2048>, 16> batchBuffers;
+                        alignas(64) std::array<std::array<std::byte, 2048>, 16> batchBuffers;
                         std::array<std::span<std::byte>, 16> destSpans;
                         for (std::size_t i = 0; i < 16; ++i) {
                             destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
                         }
-                        std::array<std::size_t, 16> batchSizes;
+                        alignas(64) std::array<std::size_t, 16> batchSizes;
 
                         std::size_t batchCount = namedChannel.channel->receiveBatch(
                             std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),

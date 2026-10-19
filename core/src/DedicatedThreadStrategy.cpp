@@ -26,12 +26,12 @@ void DedicatedThreadStrategy::start(IHandler& handler)
     for (const auto& namedChannel : channels) {
         m_workerThreads.emplace_back([this, &handler, &namedChannel, channelTimeout](std::stop_token stoken) {
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", namedChannel.name);
-            std::array<std::array<std::byte, 2048>, 16> batchBuffers;
+            alignas(64) std::array<std::array<std::byte, 2048>, 16> batchBuffers;
             std::array<std::span<std::byte>, 16> destSpans;
             for (std::size_t i = 0; i < 16; ++i) {
                 destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
             }
-            std::array<std::size_t, 16> batchSizes;
+            alignas(64) std::array<std::size_t, 16> batchSizes;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (namedChannel.channel) {
