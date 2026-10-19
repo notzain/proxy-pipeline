@@ -38,7 +38,9 @@ public:
 
     void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
 
-    bool waitForCompletion(std::chrono::milliseconds timeout);
+    bool waitForCompletion(
+        std::chrono::milliseconds timeout,
+        std::chrono::milliseconds idleDrainTimeout = std::chrono::milliseconds(500));
 
     [[nodiscard]] const std::vector<std::chrono::steady_clock::time_point>& getReceiveTimestamps() const noexcept;
     [[nodiscard]] std::size_t getBytesReceived() const noexcept;

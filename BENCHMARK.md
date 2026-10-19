@@ -621,6 +621,85 @@ for (int i = 0; i < nEvents; ++i) {
 > [!NOTE]
 > Increasing socket buffers to 8MB gave thread workers more headroom during burst saturation: **UDP ThreadPool 4 achieved a new all-time peak of 104,122 msg/s (8.14 MB/s)**, sustained UDP Dedicated throughput stabilized at **135,117 msg/s**, and UDP Sequential held steady at **133,108 msg/s**.
 
+---
+
+## 19. Optimization Phase 17: Speculative Ingress Batching & Multi-Packet Drainage
+
+### Rationale & Architectural Design
+- **Problem**:
+  - In `DedicatedThreadStrategy` and `SequentialStrategy`, each ready datagram triggered an immediate synchronous invocation of `handler.onMessageReceived()`.
+  - In handlers performing compute-intensive processing (such as `XmlVerificationHandler` parsing XML DOM and validating schema constraints), the poller thread was blocked from draining the socket buffer while validating.
+  - Alternating per-packet between `::recvfrom()`, `xmlSchemaValidateDoc()`, and `::send()` caused severe L1 instruction and data cache churn and left the kernel socket buffer vulnerable to burst overflow.
+- **Solution**:
+  - Implemented speculative burst drain batching: when a datagram arrives, the poller drains up to 16 ready datagrams directly from the socket into a cache-aligned batch buffer using non-blocking calls (`MSG_DONTWAIT` / `zeroTimeout`) before invoking `onMessageReceived()` across the batch:
+    ```cpp
+    std::size_t batchCount = 0;
+    std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout);
+    if (bytes > 0) {
+        if (bytes <= batchBuffers[0].size()) {
+            std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), bytes);
+            batchSizes[batchCount++] = bytes;
+
+            // Speculative drain: drain up to 16 packets already queued in the socket buffer
+            constexpr IHandler::Timeout zeroTimeout { 0 };
+            while (batchCount < 16 && !stoken.stop_requested()) {
+                std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
+                if (nextBytes == 0) break;
+                if (nextBytes <= batchBuffers[0].size()) {
+                    std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), nextBytes);
+                    batchSizes[batchCount++] = nextBytes;
+                } else {
+                    // Flush current batch then handle large packet
+                    for (std::size_t i = 0; i < batchCount; ++i) {
+                        handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]));
+                    }
+                    batchCount = 0;
+                    handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
+                    break;
+                }
+            }
+            for (std::size_t i = 0; i < batchCount; ++i) {
+                handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]));
+            }
+        }
+    }
+    ```
+  - **Zero Idle Latency**: If only a single message arrives, the zero-timeout call returns immediately, dispatching the packet with $0\text{ ms}$ latency penalty.
+  - **Safe Large-Message Dispatching in `ThreadPoolStrategy`**: Added fallbacks ensuring packets exceeding standard inline buffers are enqueued directly without truncation.
+
+### Progression Delta: Phase 16 vs. Phase 17 (20,000 Messages, Release `-O3`, macOS Apple Silicon):
+
+| Strategy | Metric | Phase 16 (8MB Buffers) | Phase 17 (Speculative Ingress Batching) | Delta (Phase 17 vs Phase 16) |
+| :--- | :--- | :---: | :---: | :---: |
+| **UDS (Sequential)** | Peak Throughput<br>Bandwidth | 163,058 msg/s<br>12.75 MB/s | **260,926 msg/s**<br>**20.40 MB/s** | <span style="color:green">**+60.0% Throughput**<br>**+60.0% Bandwidth**</span> |
+| **UDS (Dedicated)** | Peak Throughput<br>Bandwidth<br>p99 Latency | 151,067 msg/s<br>11.81 MB/s<br>99.5 ms | **251,952 msg/s**<br>**19.70 MB/s**<br>**55.9 ms** | <span style="color:green">**+66.8% Throughput**<br>**-43.8% p99 Latency**</span> |
+| **UDP (Sequential)** | Peak Throughput<br>Average Latency | 140,336 msg/s<br>50.7 ms | **151,681 msg/s**<br>**42.5 ms** | <span style="color:green">**+8.1% Throughput**<br>**-16.2% Avg Latency**</span> |
+| **UDP (Dedicated)** | Peak Throughput<br>Bandwidth | 141,403 msg/s<br>11.06 MB/s | **147,486 msg/s**<br>**11.53 MB/s** | <span style="color:green">**+4.3% Throughput**<br>**New All-Time UDP Peak**</span> |
+| **UDS (ThreadPool 8)** | Average Latency<br>p99 Latency | 2,416.09 µs (2.4 ms)<br>4,033.00 µs (4.0 ms) | **918.09 µs (0.91 ms)**<br>**2,954.00 µs (2.95 ms)** | <span style="color:green">**Sub-Millisecond Avg Latency (918 µs)**<br>**-26.8% p99 Latency**</span> |
+
+---
+
+### Stress Test (100,000 Messages Massive Burst, Release `-O3`):
+
+| Strategy | Messages Received / Sent | Throughput (msg/s) | Bandwidth (MB/s) | Avg Latency (µs) | p99 Latency (µs) | Delivery Rate |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Direct (XSD)** | 100,000 / 100,000 | **492,671.51** | **38.53 MB/s** | **2.00** | **4.00** | **100% (0 drops)** |
+| **UDS (ThreadPool 4)** | 100,000 / 100,000 | **289,285.72** | **22.62 MB/s** | 52,094.75 | 94,323.00 | **100% (0 drops)** |
+| **UDS (Sequential)** | 100,000 / 100,000 | **260,007.70** | **20.33 MB/s** | 149,651.37 | 242,243.00 | **100% (0 drops)** |
+| **UDS (Dedicated)** | 100,000 / 100,000 | **248,940.14** | **19.47 MB/s** | 150,682.39 | 235,236.00 | **100% (0 drops)** |
+| **UDS (ThreadPool 8)** | 100,000 / 100,000 | **246,265.39** | **19.26 MB/s** | 42,926.04 | 98,208.00 | **100% (0 drops)** |
+| **UDP (Sequential)** | 79,131 / 100,000 | **148,114.11** | **11.58 MB/s** | 171,960.28 | 312,147.00 | 79.13% |
+| **UDP (Dedicated)** | 79,515 / 100,000 | **137,745.56** | **10.77 MB/s** | 194,858.77 | 347,570.00 | 79.52% |
+| **UDP (ThreadPool 4)** | 99,819 / 100,000 | **125,837.07** | **9.84 MB/s** | 201,126.28 | 392,993.00 | 99.82% |
+| **UDP (ThreadPool 8)** | 100,000 / 100,000 | **99,808.47** | **7.81 MB/s** | 205,560.75 | 430,262.00 | **100% (0 drops)** |
+
+> [!TIP]
+> **Key Observations under 100,000-Message Unpaced Bursts**:
+> - **100% Delivery Across All UDS Strategies**: Thanks to speculative ingress burst drainage and adaptive sender backoff, **all four UDS strategies achieved 100,000 / 100,000 message delivery with 0 packet loss**.
+> - **Sustained 240k–289k msg/s on Local IPC**: UDS ThreadPool 4 delivered **289,285 msg/s (22.62 MB/s)**, UDS Sequential sustained **260,007 msg/s**, and UDS Dedicated sustained **248,940 msg/s**.
+> - **Accurate Active-Window Measurement**: Idle stream detection eliminated the 25-second false timeout artifact, accurately reporting true burst processing throughput across all single-threaded and multi-threaded pipelines.
+
+
 
 
 

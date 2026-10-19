@@ -191,6 +191,24 @@ void ThreadPoolStrategy::start(IHandler& handler)
                 if (bytes <= batchBuffers[0].size()) {
                     std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), bytes);
                     batchSizes[batchCount++] = bytes;
+                } else {
+                    const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
+                    auto& targetQueue = *m_workerQueues[targetWorker];
+                    {
+                        std::unique_lock lock(targetQueue.mutex);
+                        targetQueue.cvNotFull.wait(lock, [&targetQueue, &stoken] {
+                            return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= 1);
+                        });
+                        if (stoken.stop_requested()) {
+                            break;
+                        }
+                        auto& slot = targetQueue.ring[targetQueue.tail];
+                        slot.assign(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
+                        targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
+                        targetQueue.count += 1;
+                    }
+                    targetQueue.cvNotEmpty.notify_one();
+                    continue;
                 }
 
                 // Drain subsequent ready packets without waiting (timeout 0) up to batch limit of 16
@@ -203,6 +221,31 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     if (nextBytes <= batchBuffers[0].size()) {
                         std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), nextBytes);
                         batchSizes[batchCount++] = nextBytes;
+                    } else {
+                        // Push current batch first, then dispatch large packet
+                        const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
+                        auto& targetQueue = *m_workerQueues[targetWorker];
+                        {
+                            std::unique_lock lock(targetQueue.mutex);
+                            targetQueue.cvNotFull.wait(lock, [&targetQueue, batchCount, &stoken] {
+                                return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= batchCount + 1);
+                            });
+                            if (stoken.stop_requested()) {
+                                break;
+                            }
+                            for (std::size_t idx = 0; idx < batchCount; ++idx) {
+                                auto& slot = targetQueue.ring[targetQueue.tail];
+                                slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]));
+                                targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
+                            }
+                            auto& slot = targetQueue.ring[targetQueue.tail];
+                            slot.assign(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
+                            targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
+                            targetQueue.count += batchCount + 1;
+                        }
+                        targetQueue.cvNotEmpty.notify_one();
+                        batchCount = 0;
+                        break;
                     }
                 }
 

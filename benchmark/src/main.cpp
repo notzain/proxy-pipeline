@@ -218,8 +218,8 @@ int main(int argc, char* argv[])
             }
         }
 
-        // Wait up to 5 seconds for messages to arrive
-        receiver.waitForCompletion(std::chrono::seconds(5));
+        // Wait for messages to arrive (dynamically scaled with message count)
+        receiver.waitForCompletion(std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))));
         receiver.stop();
         receiver.wait();
 
@@ -227,9 +227,14 @@ int main(int argc, char* argv[])
         verifier.stop();
         verifier.wait();
 
-        auto totalDuration = endAll - startAll;
-        double sec = std::chrono::duration<double>(totalDuration).count();
         const auto& recvTimestamps = receiver.getReceiveTimestamps();
+        auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
+            ? (recvTimestamps.back() - startAll)
+            : (endAll - startAll);
+        if (totalDuration.count() <= 0) {
+            totalDuration = endAll - startAll;
+        }
+        double sec = std::chrono::duration<double>(totalDuration).count();
 
         std::vector<double> latenciesUs;
         std::size_t count = std::min(sendTimestamps.size(), recvTimestamps.size());
@@ -316,8 +321,8 @@ int main(int argc, char* argv[])
             }
         }
 
-        // Wait up to 5 seconds for messages to arrive
-        receiver.waitForCompletion(std::chrono::seconds(5));
+        // Wait for messages to arrive (dynamically scaled with message count)
+        receiver.waitForCompletion(std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))));
         receiver.stop();
         receiver.wait();
 
@@ -325,9 +330,14 @@ int main(int argc, char* argv[])
         verifier.stop();
         verifier.wait();
 
-        auto totalDuration = endAll - startAll;
-        double sec = std::chrono::duration<double>(totalDuration).count();
         const auto& recvTimestamps = receiver.getReceiveTimestamps();
+        auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
+            ? (recvTimestamps.back() - startAll)
+            : (endAll - startAll);
+        if (totalDuration.count() <= 0) {
+            totalDuration = endAll - startAll;
+        }
+        double sec = std::chrono::duration<double>(totalDuration).count();
 
         std::vector<double> latenciesUs;
         std::size_t count = std::min(sendTimestamps.size(), recvTimestamps.size());

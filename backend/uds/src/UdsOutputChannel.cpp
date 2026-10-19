@@ -110,8 +110,12 @@ bool UdsOutputChannel::send(std::span<const std::byte> message)
 
     if (sent < 0 && (errno == ENOBUFS || errno == EAGAIN)) {
         // Socket buffer full under heavy burst; give receiver thread a chance to drain
-        for (int retry = 0; retry < 10 && sent < 0; ++retry) {
-            std::this_thread::yield();
+        for (int retry = 0; retry < 50 && sent < 0; ++retry) {
+            if (retry < 10) {
+                std::this_thread::yield();
+            } else {
+                std::this_thread::sleep_for(std::chrono::microseconds(20));
+            }
             if (m_connected.load(std::memory_order_relaxed)) {
                 sent = ::send(
                     m_socketFd,
