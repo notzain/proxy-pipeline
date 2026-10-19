@@ -50,7 +50,7 @@ std::unique_ptr<::Backend::IOutputChannel> SocketBackend::createOutputChannel(st
 
 namespace Backend {
 
-std::unique_ptr<IBackend> createBackend()
+[[gnu::weak]] std::unique_ptr<IBackend> createBackend()
 {
     return std::make_unique<Proxy::Backend::Socket::SocketBackend>();
 }

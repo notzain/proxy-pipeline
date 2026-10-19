@@ -104,4 +104,3 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
 } // namespace Proxy::Backend::Socket
 
 #endif // __linux__
-

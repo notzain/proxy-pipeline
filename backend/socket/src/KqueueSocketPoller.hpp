@@ -31,4 +31,3 @@ private:
 } // namespace Proxy::Backend::Socket
 
 #endif // __APPLE__ || BSD
-

@@ -29,6 +29,8 @@ target_include_directories(proxy_tests PRIVATE
 
 target_link_libraries(proxy_tests PRIVATE
     core
+    backend-socket
+    backend-uds
     proxylog::proxylog
     LibXml2::LibXml2
     XercesC::XercesC

@@ -1,6 +1,8 @@
 #include "BenchmarkRunner.hpp"
 #include "XmlVerificationHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/socket/SocketBackend.hpp"
+#include "backend/uds/UdsBackend.hpp"
 #include "core/Configuration.hpp"
 #include "log/Log.hpp"
 
@@ -177,7 +179,7 @@ int main(int argc, char* argv[])
         confFile.close();
 
         Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_socket.conf");
-        std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
+        std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Socket::SocketBackend>();
         backend->configure(config);
 
         // Instantiate components
@@ -259,21 +261,130 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     };
 
+    // Helper lambda to run IPC (UDS) benchmark with a specific execution strategy
+    auto runUdsBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+        std::size_t udsMessages = numMessages;
+        fmt::print(fg(fmt::color::cyan), "[Benchmark] Running IPC (UDS) chain ({}) with {} messages...\n", strategyName, udsMessages);
+
+        std::ofstream confFile("/tmp/bench_uds.conf");
+        confFile << "channel.uds_raw.path=/tmp/bench_uds_raw.sock\n";
+        confFile << "channel.uds_raw.dest_path=/tmp/bench_uds_raw.sock\n";
+        confFile << "channel.uds_verified.path=/tmp/bench_uds_verified.sock\n";
+        confFile << "channel.uds_verified.dest_path=/tmp/bench_uds_verified.sock\n";
+        confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
+        confFile << "xml.input_channel=uds_raw\n";
+        confFile << "xml.output_channel=uds_verified\n";
+        confFile.close();
+
+        Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_uds.conf");
+        std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Uds::UdsBackend>();
+        backend->configure(config);
+
+        // Instantiate components
+        auto verifierIn = backend->createInputChannel("uds_raw", config);
+        auto verifierOut = backend->createOutputChannel("uds_verified", config);
+        Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "uds_verified");
+        verifier.setExecutionModel(model, poolSize);
+        verifier.registerInputChannel("uds_raw", std::move(verifierIn));
+        verifier.registerOutputChannel("uds_verified", std::move(verifierOut));
+
+        auto receiverIn = backend->createInputChannel("uds_verified", config);
+        Proxy::Benchmark::BenchmarkReceiver receiver(udsMessages);
+        receiver.setExecutionModel(model, poolSize);
+        receiver.registerInputChannel("uds_verified", std::move(receiverIn));
+
+        auto senderOut = backend->createOutputChannel("uds_raw", config);
+
+        // Start verifier and receiver concurrently
+        verifier.startAsync();
+        receiver.startAsync();
+
+        // Brief delay to allow UDS socket binding
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+
+        auto startAll = std::chrono::steady_clock::now();
+        std::vector<std::chrono::steady_clock::time_point> sendTimestamps;
+        sendTimestamps.reserve(udsMessages);
+
+        for (std::size_t i = 0; i < udsMessages; ++i) {
+            sendTimestamps.push_back(std::chrono::steady_clock::now());
+            senderOut->send(msgSpan);
+            if ((i & 0x7F) == 0) {
+                std::this_thread::yield();
+            }
+        }
+
+        // Wait up to 5 seconds for messages to arrive
+        receiver.waitForCompletion(std::chrono::seconds(5));
+        receiver.stop();
+        receiver.wait();
+
+        auto endAll = std::chrono::steady_clock::now();
+        verifier.stop();
+        verifier.wait();
+
+        auto totalDuration = endAll - startAll;
+        double sec = std::chrono::duration<double>(totalDuration).count();
+        const auto& recvTimestamps = receiver.getReceiveTimestamps();
+
+        std::vector<double> latenciesUs;
+        std::size_t count = std::min(sendTimestamps.size(), recvTimestamps.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            latenciesUs.push_back(std::chrono::duration<double, std::micro>(recvTimestamps[i] - sendTimestamps[i]).count());
+        }
+        std::sort(latenciesUs.begin(), latenciesUs.end());
+
+        double totalLat = 0;
+        for (double l : latenciesUs) {
+            totalLat += l;
+        }
+
+        Proxy::Benchmark::BenchmarkResult res;
+        res.backendName = std::string(strategyName);
+        res.totalMessages = udsMessages;
+        res.verifiedMessages = count;
+        res.totalDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(totalDuration);
+        res.messagesPerSecond = count / sec;
+        res.averageLatencyUs = latenciesUs.empty() ? 0 : totalLat / latenciesUs.size();
+        res.medianLatencyUs = latenciesUs.empty() ? 0 : latenciesUs[latenciesUs.size() / 2];
+        res.p95LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.95)];
+        res.p99LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.99)];
+        res.throughputMBps = (count * validXmlMsg.size()) / (sec * 1024.0 * 1024.0);
+
+        results.push_back(res);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    };
+
     auto runSelected = [&](std::string_view strategy) {
         if (strategy == "all" || strategy == "direct") {
             runDirectBenchmark();
         }
-        if (strategy == "all" || strategy == "dedicated") {
+        if (strategy == "all" || strategy == "udp-dedicated" || strategy == "dedicated") {
             runSocketBenchmark(Core::ExecutionModel::Dedicated, "UDP (Dedicated)");
         }
-        if (strategy == "all" || strategy == "sequential") {
+        if (strategy == "all" || strategy == "uds-dedicated") {
+            runUdsBenchmark(Core::ExecutionModel::Dedicated, "UDS (Dedicated)");
+        }
+        if (strategy == "all" || strategy == "udp-sequential" || strategy == "sequential") {
             runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
         }
-        if (strategy == "all" || strategy == "threadpool4") {
+        if (strategy == "all" || strategy == "uds-sequential") {
+            runUdsBenchmark(Core::ExecutionModel::Sequential, "UDS (Sequential)");
+        }
+        if (strategy == "all" || strategy == "udp-threadpool4" || strategy == "threadpool4") {
             runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
         }
-        if (strategy == "all" || strategy == "threadpool8") {
+        if (strategy == "all" || strategy == "uds-threadpool4") {
+            runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 4)", 4);
+        }
+        if (strategy == "all" || strategy == "udp-threadpool8" || strategy == "threadpool8") {
             runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
+        }
+        if (strategy == "all" || strategy == "uds-threadpool8") {
+            runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 8)", 8);
         }
     };
 

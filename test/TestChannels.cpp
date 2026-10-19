@@ -235,3 +235,25 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 
     REQUIRE(rawOut->sentMessages.size() == 2);
 }
+
+#include "backend/uds/UdsInputChannel.hpp"
+#include "backend/uds/UdsOutputChannel.hpp"
+
+TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][uds]")
+{
+    const std::string sockPath = "/tmp/test_proxy_channel.sock";
+    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+
+    std::string testMsg = "Hello UDS IPC!";
+    std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
+
+    REQUIRE(outChannel.send(sendSpan));
+
+    std::array<std::byte, 128> recvBuf { };
+    std::size_t received = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(500));
+    REQUIRE(received == testMsg.size());
+
+    std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), received);
+    CHECK(receivedStr == testMsg);
+}

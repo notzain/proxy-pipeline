@@ -38,4 +38,3 @@ public:
 [[nodiscard]] std::unique_ptr<ISocketPoller> createSocketPoller();
 
 } // namespace Proxy::Backend::Socket
-

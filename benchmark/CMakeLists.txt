@@ -23,6 +23,7 @@ target_include_directories(proxy_benchmark PRIVATE
 target_link_libraries(proxy_benchmark PRIVATE
     core
     backend-socket
+    backend-uds
     proxylog::proxylog
     LibXml2::LibXml2
     fmt::fmt

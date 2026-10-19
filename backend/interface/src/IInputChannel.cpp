@@ -16,4 +16,3 @@ std::size_t IInputChannel::receiveInto(std::span<std::byte> destination, Timeout
 }
 
 } // namespace Backend
-

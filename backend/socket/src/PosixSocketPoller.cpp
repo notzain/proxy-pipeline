@@ -45,4 +45,3 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
 }
 
 } // namespace Proxy::Backend::Socket
-

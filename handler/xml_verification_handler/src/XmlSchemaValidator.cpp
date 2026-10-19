@@ -129,4 +129,3 @@ bool XmlSchemaValidator::validate(std::span<const std::byte> xmlData) const
 }
 
 } // namespace Proxy::Handler
-
