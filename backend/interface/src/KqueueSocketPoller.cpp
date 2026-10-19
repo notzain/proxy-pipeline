@@ -67,20 +67,22 @@ std::size_t KqueueSocketPoller::receive(int socketFd, std::span<std::byte> desti
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (ms % 1000) * 1000000L;
 
-    struct kevent event { };
-    int nEvents = ::kevent(m_kqueueFd, nullptr, 0, &event, 1, &ts);
+    struct kevent events[8] { };
+    int nEvents = ::kevent(m_kqueueFd, nullptr, 0, events, 8, &ts);
 
-    if (nEvents > 0 && event.filter == EVFILT_READ) {
-        ssize_t bytesRead = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(destination.data()),
-            destination.size(),
-            MSG_DONTWAIT,
-            nullptr,
-            nullptr);
+    for (int i = 0; i < nEvents; ++i) {
+        if (events[i].ident == static_cast<uintptr_t>(socketFd) && events[i].filter == EVFILT_READ) {
+            ssize_t bytesRead = ::recvfrom(
+                socketFd,
+                reinterpret_cast<char*>(destination.data()),
+                destination.size(),
+                MSG_DONTWAIT,
+                nullptr,
+                nullptr);
 
-        if (bytesRead > 0) {
-            return static_cast<std::size_t>(bytesRead);
+            if (bytesRead > 0) {
+                return static_cast<std::size_t>(bytesRead);
+            }
         }
     }
 
