@@ -84,44 +84,69 @@ bool XmlSchemaValidator::validate(std::span<const std::byte> xmlData) const
         return false;
     }
 
-    xmlDocPtr doc = xmlReadMemory(
-        reinterpret_cast<const char*>(xmlData.data()),
-        static_cast<int>(xmlData.size()),
-        "noname.xml",
-        nullptr,
-        XML_PARSE_NONET | XML_PARSE_NOWARNING | XML_PARSE_NOERROR);
+    // Thread-local parser & validation contexts: eliminates per-document context allocation & mutex contention
+    static thread_local struct ThreadLocalContexts {
+        xmlSchemaPtr cachedSchema { nullptr };
+        xmlSchemaValidCtxtPtr validCtxt { nullptr };
+        xmlParserCtxtPtr parserCtxt { nullptr };
+
+        ThreadLocalContexts()
+        {
+            parserCtxt = xmlNewParserCtxt();
+        }
+
+        ~ThreadLocalContexts()
+        {
+            if (validCtxt) {
+                xmlSchemaFreeValidCtxt(validCtxt);
+            }
+            if (parserCtxt) {
+                xmlFreeParserCtxt(parserCtxt);
+            }
+        }
+    } tl;
+
+    if (tl.cachedSchema != m_schema || !tl.validCtxt) {
+        if (tl.validCtxt) {
+            xmlSchemaFreeValidCtxt(tl.validCtxt);
+        }
+        tl.validCtxt = xmlSchemaNewValidCtxt(m_schema);
+        tl.cachedSchema = m_schema;
+        if (tl.validCtxt) {
+            xmlSchemaSetValidErrors(tl.validCtxt, xmlSilentErrorCallback, xmlSilentWarningCallback, nullptr);
+        }
+    }
+
+    if (!tl.parserCtxt) {
+        tl.parserCtxt = xmlNewParserCtxt();
+    }
+
+    xmlDocPtr doc = nullptr;
+    if (tl.parserCtxt) {
+        xmlCtxtReset(tl.parserCtxt);
+        doc = xmlCtxtReadMemory(
+            tl.parserCtxt,
+            reinterpret_cast<const char*>(xmlData.data()),
+            static_cast<int>(xmlData.size()),
+            "noname.xml",
+            nullptr,
+            XML_PARSE_NONET | XML_PARSE_NOWARNING | XML_PARSE_NOERROR | XML_PARSE_COMPACT);
+    } else {
+        doc = xmlReadMemory(
+            reinterpret_cast<const char*>(xmlData.data()),
+            static_cast<int>(xmlData.size()),
+            "noname.xml",
+            nullptr,
+            XML_PARSE_NONET | XML_PARSE_NOWARNING | XML_PARSE_NOERROR);
+    }
 
     if (!doc) {
         return false;
     }
 
-    // Thread-local validation context pool: eliminates all mutex contention across threads
-    static thread_local struct ThreadLocalValidCtxt {
-        xmlSchemaPtr cachedSchema { nullptr };
-        xmlSchemaValidCtxtPtr ctxt { nullptr };
-
-        ~ThreadLocalValidCtxt()
-        {
-            if (ctxt) {
-                xmlSchemaFreeValidCtxt(ctxt);
-            }
-        }
-    } tlCtxt;
-
-    if (tlCtxt.cachedSchema != m_schema || !tlCtxt.ctxt) {
-        if (tlCtxt.ctxt) {
-            xmlSchemaFreeValidCtxt(tlCtxt.ctxt);
-        }
-        tlCtxt.ctxt = xmlSchemaNewValidCtxt(m_schema);
-        tlCtxt.cachedSchema = m_schema;
-        if (tlCtxt.ctxt) {
-            xmlSchemaSetValidErrors(tlCtxt.ctxt, xmlSilentErrorCallback, xmlSilentWarningCallback, nullptr);
-        }
-    }
-
     int result = -1;
-    if (tlCtxt.ctxt) {
-        result = xmlSchemaValidateDoc(tlCtxt.ctxt, doc);
+    if (tl.validCtxt) {
+        result = xmlSchemaValidateDoc(tl.validCtxt, doc);
     }
     xmlFreeDoc(doc);
 
