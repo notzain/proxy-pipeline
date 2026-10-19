@@ -47,7 +47,7 @@ void UdsInputChannel::openAndBindSocket()
         return;
     }
 
-    int rcvbuf = 4 * 1024 * 1024; // 4MB receive buffer
+    int rcvbuf = 8 * 1024 * 1024; // 8MB receive buffer for high-throughput bursts
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
     if (m_socketPath.size() >= sizeof(sockaddr_un::sun_path)) {

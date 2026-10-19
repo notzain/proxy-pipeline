@@ -38,7 +38,7 @@ void UdsOutputChannel::openSocket()
         return;
     }
 
-    int sndbuf = 4 * 1024 * 1024; // 4MB send buffer
+    int sndbuf = 8 * 1024 * 1024; // 8MB send buffer
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
     if (m_destPath.size() >= sizeof(sockaddr_un::sun_path)) {

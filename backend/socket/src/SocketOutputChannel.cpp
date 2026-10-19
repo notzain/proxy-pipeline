@@ -39,7 +39,7 @@ void SocketOutputChannel::openSocket()
         return;
     }
 
-    int sndbuf = 4 * 1024 * 1024; // 4MB send buffer for high-throughput bursts
+    int sndbuf = 8 * 1024 * 1024; // 8MB send buffer for maximum throughput burst transmission
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
     std::memset(&m_destAddr, 0, sizeof(m_destAddr));
