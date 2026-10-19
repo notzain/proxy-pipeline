@@ -80,12 +80,13 @@ void IHandler::onMessageReceived(std::string_view, std::span<const std::byte>)
 bool IHandler::send(std::string_view channelName, std::span<const std::byte> message)
 {
     std::shared_lock lock(m_outputMutex);
-    auto it = m_outputChannels.find(std::string(channelName));
-    if (it == m_outputChannels.end() || !it->second) {
-        Proxy::Log::error("[IHandler] Output channel '{}' not found", channelName);
-        return false;
+    for (const auto& [name, channel] : m_outputChannels) {
+        if (name == channelName && channel) {
+            return channel->send(message);
+        }
     }
-    return it->second->send(message);
+    Proxy::Log::error("[IHandler] Output channel '{}' not found", channelName);
+    return false;
 }
 
 std::size_t IHandler::sendAll(std::span<const std::byte> message)

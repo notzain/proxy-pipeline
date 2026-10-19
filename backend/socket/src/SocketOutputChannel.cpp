@@ -73,6 +73,16 @@ bool SocketOutputChannel::send(std::span<const std::byte> message)
         message.size(),
         0);
 
+    // If an ICMP Port Unreachable or route invalidation occurred, refresh connection
+    if (sent < 0 && (errno == ECONNREFUSED || errno == ENETUNREACH || errno == ENETDOWN)) {
+        ::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr));
+        sent = ::send(
+            m_socketFd,
+            reinterpret_cast<const char*>(message.data()),
+            message.size(),
+            0);
+    }
+
     if (sent < 0) {
         // Fallback to sendto if disconnected
         sent = ::sendto(
