@@ -1,4 +1,5 @@
 #include "backend/socket/SocketInputChannel.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <array>
@@ -15,6 +16,7 @@ namespace Proxy::Backend::Socket {
 SocketInputChannel::SocketInputChannel(std::string host, std::uint16_t port)
     : m_host(std::move(host))
     , m_port(port)
+    , m_poller(createSocketPoller())
 {
     openAndBindSocket();
 }
@@ -76,31 +78,8 @@ std::size_t SocketInputChannel::receiveInto(std::span<std::byte> destination, Ti
         }
     }
 
-    pollfd pfd { };
-    pfd.fd = m_socketFd;
-    pfd.events = POLLIN;
-
-    int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
-    int ret = ::poll(&pfd, 1, timeoutMs);
-
-    if (ret > 0 && (pfd.revents & POLLIN)) {
-        sockaddr_in clientAddr { };
-        socklen_t clientLen = sizeof(clientAddr);
-
-        ssize_t bytesRead = ::recvfrom(
-            m_socketFd,
-            reinterpret_cast<char*>(destination.data()),
-            destination.size(),
-            0,
-            reinterpret_cast<sockaddr*>(&clientAddr),
-            &clientLen);
-
-        if (bytesRead > 0) {
-            char clientIp[INET_ADDRSTRLEN];
-            ::inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
-            Proxy::Log::debug("[SocketInputChannel] Received {} bytes from {}:{}", bytesRead, clientIp, ntohs(clientAddr.sin_port));
-            return static_cast<std::size_t>(bytesRead);
-        }
+    if (m_poller) {
+        return m_poller->receive(m_socketFd, destination, timeout);
     }
 
     return 0;

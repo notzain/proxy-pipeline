@@ -12,6 +12,7 @@ file(GLOB_RECURSE BENCH_SOURCES CONFIGURE_DEPENDS
 add_executable(proxy_benchmark
     ${BENCH_SOURCES}
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/src/XmlVerificationHandler.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/src/XmlSchemaValidator.cpp"
 )
 
 target_include_directories(proxy_benchmark PRIVATE

@@ -30,6 +30,8 @@ class BackendSocketConan(ConanFile):
     def requirements(self):
         self.requires("backend-interface/0.1.0", transitive_headers=True)
         self.requires("proxylog/0.1.0")
+        if self.settings.os == "Linux":
+            self.requires("liburing/2.8")
 
     def generate(self):
         deps = CMakeDeps(self)

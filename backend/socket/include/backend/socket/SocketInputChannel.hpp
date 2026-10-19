@@ -7,6 +7,8 @@
 
 namespace Proxy::Backend::Socket {
 
+class ISocketPoller;
+
 /**
  * @brief Input channel for receiving UDP datagrams on a bound host and port.
  */
@@ -22,6 +24,7 @@ private:
     std::string m_host;
     std::uint16_t m_port;
     int m_socketFd { -1 };
+    std::unique_ptr<ISocketPoller> m_poller;
 
     void closeSocket();
     void openAndBindSocket();

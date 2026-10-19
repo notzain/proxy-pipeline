@@ -15,6 +15,15 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
 )
 
+if(APPLE)
+    list(FILTER SOURCES EXCLUDE REGEX ".*/IoUringSocketPoller\\..*")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(FILTER SOURCES EXCLUDE REGEX ".*/KqueueSocketPoller\\..*")
+    find_package(liburing REQUIRED)
+else()
+    list(FILTER SOURCES EXCLUDE REGEX ".*/(IoUring|Kqueue)SocketPoller\\..*")
+endif()
+
 add_library(backend-socket ${SOURCES})
 
 target_include_directories(backend-socket
@@ -30,6 +39,10 @@ target_link_libraries(backend-socket
         backend-interface::backend-interface
         proxylog::proxylog
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(backend-socket PRIVATE liburing::liburing)
+endif()
 
 target_compile_features(backend-socket PUBLIC cxx_std_20)
 
