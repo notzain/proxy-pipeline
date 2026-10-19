@@ -50,17 +50,23 @@ void DedicatedThreadStrategy::start(IHandler& handler)
                                     std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), nextBytes);
                                     batchSizes[batchCount++] = nextBytes;
                                 } else {
+                                    std::array<std::span<const std::byte>, 16> batchSpans;
                                     for (std::size_t i = 0; i < batchCount; ++i) {
-                                        handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]));
+                                        batchSpans[i] = std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]);
                                     }
+                                    handler.onBatchReceived(namedChannel.name, std::span<const std::span<const std::byte>>(batchSpans.data(), batchCount));
                                     batchCount = 0;
                                     handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
                                     break;
                                 }
                             }
 
-                            for (std::size_t i = 0; i < batchCount; ++i) {
-                                handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]));
+                            if (batchCount > 0) {
+                                std::array<std::span<const std::byte>, 16> batchSpans;
+                                for (std::size_t i = 0; i < batchCount; ++i) {
+                                    batchSpans[i] = std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]);
+                                }
+                                handler.onBatchReceived(namedChannel.name, std::span<const std::span<const std::byte>>(batchSpans.data(), batchCount));
                             }
                         } else {
                             handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));

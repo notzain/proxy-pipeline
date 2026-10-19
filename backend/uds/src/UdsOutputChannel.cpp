@@ -162,4 +162,18 @@ bool UdsOutputChannel::send(std::span<const std::byte> message)
     return true;
 }
 
+std::size_t UdsOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+{
+    if (messages.empty()) {
+        return 0;
+    }
+    std::size_t count = 0;
+    for (const auto& msg : messages) {
+        if (send(msg)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 } // namespace Proxy::Backend::Uds

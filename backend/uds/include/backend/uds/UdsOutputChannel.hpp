@@ -18,6 +18,7 @@ public:
     ~UdsOutputChannel() override;
 
     bool send(std::span<const std::byte> message) override;
+    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
 
 private:
     std::string m_destPath;

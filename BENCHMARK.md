@@ -699,6 +699,57 @@ for (int i = 0; i < nEvents; ++i) {
 > - **Sustained 240k–289k msg/s on Local IPC**: UDS ThreadPool 4 delivered **289,285 msg/s (22.62 MB/s)**, UDS Sequential sustained **260,007 msg/s**, and UDS Dedicated sustained **248,940 msg/s**.
 > - **Accurate Active-Window Measurement**: Idle stream detection eliminated the 25-second false timeout artifact, accurately reporting true burst processing throughput across all single-threaded and multi-threaded pipelines.
 
+---
+
+## 20. Optimization Phase 18: Vectorized Egress Batching (`sendBatch` & `onBatchReceived`)
+
+### Rationale & Architectural Design
+- **Problem**:
+  - In Phase 17, incoming packets were drained in speculative batches of up to 16 datagrams from the kernel socket buffer.
+  - However, upon validating each packet, handlers invoked `send()` individually for each message.
+  - Sending each message one-by-one required acquiring `m_outputMutex` per packet, performing hash/linear channel name resolution per packet, and issuing individual system call transmissions back into the outbound transport.
+- **Solution**:
+  - **Batched Ingress & Egress Interface**:
+    - Added `IOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)`.
+    - Added `IHandler::sendBatch(channelName, messages)`: acquires `m_outputMutex` once and resolves the destination channel once for the entire batch.
+    - Added `IHandler::onBatchReceived(channelName, messages)`: passes entire drained packet slices directly to the handler.
+  - **Batched Validation in `XmlVerificationHandler`**:
+    - Validates all incoming XML messages in a tight CPU loop using stack-allocated span arrays (`validSpans[32]`) with zero heap allocations.
+    - Dispatches valid messages in bulk to the output channel via `m_outputChannel->sendBatch(...)`.
+  - **Thread Strategies Integration**:
+    - In `DedicatedThreadStrategy` and `SequentialStrategy`, drained packet batches are converted to `std::span` slices and forwarded directly via `handler.onBatchReceived()`.
+    - In `ThreadPoolStrategy`, dequeued ring buffer tasks are grouped by channel name and dispatched in contiguous slices via `handler.onBatchReceived()`.
+
+### Progression Delta: Phase 17 vs. Phase 18 (20,000 Messages, Release `-O3`, macOS Apple Silicon):
+
+| Strategy | Metric | Phase 17 (Speculative Ingress) | Phase 18 (Vectorized Egress Batching) | Delta (Phase 18 vs Phase 17) |
+| :--- | :--- | :---: | :---: | :---: |
+| **UDP (Dedicated)** | Peak Throughput<br>Bandwidth | 147,486 msg/s<br>11.53 MB/s | **179,715 msg/s**<br>**14.05 MB/s** | <span style="color:green">**+21.9% Throughput**<br>**All-Time Peak UDP Record**</span> |
+| **UDP (Sequential)** | Peak Throughput<br>Bandwidth | 151,681 msg/s<br>11.86 MB/s | **158,295 msg/s**<br>**12.38 MB/s** | <span style="color:green">**+4.4% Throughput**</span> |
+| **UDP (ThreadPool 4)** | Peak Throughput<br>Latency (Avg / p99) | 99,149 msg/s<br>39.3 ms / 77.6 ms | **117,240 msg/s**<br>**22.5 ms / 37.1 ms** | <span style="color:green">**+18.2% Throughput**<br>**-42.8% Avg / -52.2% p99 Latency**</span> |
+| **UDP (ThreadPool 8)** | Peak Throughput<br>Bandwidth | 78,172 msg/s<br>6.11 MB/s | **104,988 msg/s**<br>**8.21 MB/s** | <span style="color:green">**+34.3% Throughput**<br>**Broke 100k msg/s barrier**</span> |
+| **UDS (Dedicated)** | Peak Throughput<br>Bandwidth | 251,952 msg/s<br>19.70 MB/s | **256,818 msg/s**<br>**20.08 MB/s** | <span style="color:green">**+1.9% Throughput**</span> |
+| **UDS (ThreadPool 8)** | Average Latency<br>p99 Latency | 918.09 µs (0.91 ms)<br>2,954.00 µs (2.95 ms) | **743.25 µs (0.74 ms)**<br>**2,043.00 µs (2.04 ms)** | <span style="color:green">**New Latency Record (743 µs)**<br>**-30.8% p99 Latency**</span> |
+
+---
+
+### Stress Test (100,000 Messages Massive Burst, Release `-O3`):
+
+| Strategy | Messages Received / Sent | Throughput (msg/s) | Bandwidth (MB/s) | Avg Latency (µs) | p99 Latency (µs) | Delivery Rate |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Direct (XSD)** | 100,000 / 100,000 | **549,619.66** | **42.98 MB/s** | **1.80** | **2.00** | **100% (0 drops)** |
+| **UDS (ThreadPool 4)** | 100,000 / 100,000 | **316,314.56** | **24.74 MB/s** | **36,832.03** | **61,145.00** | **100% (0 drops)** |
+| **UDS (Dedicated)** | 100,000 / 100,000 | **272,345.99** | **21.30 MB/s** | 134,828.69 | 213,052.00 | **100% (0 drops)** |
+| **UDS (Sequential)** | 100,000 / 100,000 | **269,570.12** | **21.08 MB/s** | 139,933.68 | 218,764.00 | **100% (0 drops)** |
+| **UDS (ThreadPool 8)** | 100,000 / 100,000 | **239,245.90** | **18.71 MB/s** | 52,567.73 | 106,945.00 | **100% (0 drops)** |
+| **UDP (Dedicated)** | 81,163 / 100,000 | **179,745.10** | **14.06 MB/s** | 145,343.77 | 251,618.00 | 81.16% |
+| **UDP (Sequential)** | 82,315 / 100,000 | **159,748.41** | **12.49 MB/s** | 161,346.06 | 276,050.00 | 82.32% |
+| **UDP (ThreadPool 4)** | 100,000 / 100,000 | **139,904.17** | **10.94 MB/s** | 105,571.90 | 194,661.00 | **100% (0 drops)** |
+| **UDP (ThreadPool 8)** | 100,000 / 100,000 | **102,230.99** | **7.99 MB/s** | 156,049.52 | 332,027.00 | **100% (0 drops)** |
+
+> [!NOTE]
+> Combining speculative ingress batching with vectorized egress batching unlocked new peaks across the board: **UDS ThreadPool 4 achieved a record-breaking 316,314 msg/s (24.74 MB/s)**, **UDP Dedicated advanced to 179,745 msg/s (14.06 MB/s)**, and **UDS ThreadPool 8 drove average latency down to 743 µs**.
+
 
 
 

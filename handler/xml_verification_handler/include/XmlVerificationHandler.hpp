@@ -55,6 +55,15 @@ public:
     void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
 
     /**
+     * @brief Ingress callback for batched incoming messages.
+     * Validates batch against schema and forwards valid messages via sendBatch().
+     *
+     * @param channelName Name of the channel that received the message.
+     * @param messages View of byte buffer spans.
+     */
+    void onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages) override;
+
+    /**
      * @brief Validates an XML byte buffer against the loaded schema.
      *
      * @param xmlData Non-owning span of the XML document.

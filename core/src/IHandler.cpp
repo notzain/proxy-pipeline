@@ -65,6 +65,13 @@ void IHandler::onMessageReceived(std::string_view, std::span<const std::byte>)
 {
 }
 
+void IHandler::onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+{
+    for (const auto& msg : messages) {
+        onMessageReceived(channelName, msg);
+    }
+}
+
 ::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
 {
     if (!channel) {
@@ -87,6 +94,21 @@ bool IHandler::send(std::string_view channelName, std::span<const std::byte> mes
     }
     Proxy::Log::error("[IHandler] Output channel '{}' not found", channelName);
     return false;
+}
+
+std::size_t IHandler::sendBatch(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+{
+    if (messages.empty()) {
+        return 0;
+    }
+    std::shared_lock lock(m_outputMutex);
+    for (const auto& [name, channel] : m_outputChannels) {
+        if (name == channelName && channel) {
+            return channel->sendBatch(messages);
+        }
+    }
+    Proxy::Log::error("[IHandler] Output channel '{}' not found for sendBatch", channelName);
+    return 0;
 }
 
 std::size_t IHandler::sendAll(std::span<const std::byte> message)

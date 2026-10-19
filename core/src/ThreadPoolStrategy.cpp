@@ -158,9 +158,21 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     myQueue.cvNotFull.notify_one();
                 }
 
-                for (std::size_t j = 0; j < drainCount; ++j) {
-                    const auto& task = myQueue.ring[drainStart + j];
-                    handler.onMessageReceived(task.channelName, task.payload());
+                std::size_t batchStart = 0;
+                while (batchStart < drainCount) {
+                    const auto& firstTask = myQueue.ring[drainStart + batchStart];
+                    std::string_view chName = firstTask.channelName;
+                    std::size_t batchEnd = batchStart + 1;
+                    while (batchEnd < drainCount && myQueue.ring[drainStart + batchEnd].channelName == chName) {
+                        ++batchEnd;
+                    }
+                    std::array<std::span<const std::byte>, 16> batchSpans;
+                    std::size_t spanCount = batchEnd - batchStart;
+                    for (std::size_t k = 0; k < spanCount; ++k) {
+                        batchSpans[k] = myQueue.ring[drainStart + batchStart + k].payload();
+                    }
+                    handler.onBatchReceived(chName, std::span<const std::span<const std::byte>>(batchSpans.data(), spanCount));
+                    batchStart = batchEnd;
                 }
             }
         });

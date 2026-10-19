@@ -79,4 +79,37 @@ void XmlVerificationHandler::onMessageReceived(std::string_view channelName, std
     }
 }
 
+void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+{
+    std::array<std::span<const std::byte>, 32> validSpans;
+    std::size_t validCount = 0;
+
+    for (const auto& buffer : messages) {
+        if (validate(buffer)) {
+            Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes) verified against XSD schema.",
+                channelName, buffer.size());
+            validSpans[validCount++] = buffer;
+            if (validCount == validSpans.size()) {
+                if (m_outputChannel) {
+                    m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+                } else {
+                    sendBatch(m_outputChannelName, std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+                }
+                validCount = 0;
+            }
+        } else {
+            Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes) REJECTED by XSD schema '{}'. Discarding message.",
+                channelName, buffer.size(), m_schemaPath.string());
+        }
+    }
+
+    if (validCount > 0) {
+        if (m_outputChannel) {
+            m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+        } else {
+            sendBatch(m_outputChannelName, std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+        }
+    }
+}
+
 } // namespace Proxy::Handler

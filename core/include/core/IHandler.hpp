@@ -108,6 +108,17 @@ public:
      */
     virtual void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer);
 
+    /**
+     * @brief Ingress callback invoked when a batch of messages has been received on an input channel.
+     *
+     * Handlers can override this to perform batched validation and vectorized egress dispatching.
+     * Default implementation iterates over onMessageReceived().
+     *
+     * @param channelName Name of the channel that received the messages.
+     * @param messages Non-owning views of the raw byte buffers received.
+     */
+    virtual void onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages);
+
     // --- Output Channel Management (Egress) ---
 
     /**
@@ -127,6 +138,17 @@ public:
      * @return true If the channel was found and message sent successfully, false otherwise.
      */
     bool send(std::string_view channelName, std::span<const std::byte> message);
+
+    /**
+     * @brief Sends a batch of messages to a registered output channel in a thread-safe manner.
+     *
+     * Acquires the channel lock once for the entire batch.
+     *
+     * @param channelName Name of the channel to send the messages to.
+     * @param messages View of message byte spans to send.
+     * @return std::size_t Number of messages successfully dispatched.
+     */
+    std::size_t sendBatch(std::string_view channelName, std::span<const std::span<const std::byte>> messages);
 
     /**
      * @brief Sends a message to all registered output channels in a thread-safe manner.
