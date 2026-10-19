@@ -31,6 +31,16 @@ void DedicatedThreadStrategy::start(IHandler& handler)
                 if (namedChannel.channel) {
                     if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
                         handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
+
+                        // Speculative drain: drain any additional packets already queued in the socket buffer without waiting
+                        constexpr IHandler::Timeout zeroTimeout { 0 };
+                        while (!stoken.stop_requested()) {
+                            std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
+                            if (nextBytes == 0) {
+                                break;
+                            }
+                            handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
+                        }
                     }
                 }
             }

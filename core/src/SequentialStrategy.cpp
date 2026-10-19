@@ -35,6 +35,18 @@ void SequentialStrategy::start(IHandler& handler)
                         thread_local std::array<std::byte, 65535> rxBuffer;
                         if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
                             handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
+
+                            // Speculative drain: drain any additional packets already queued in the socket buffer without waiting
+                            constexpr IHandler::Timeout zeroTimeout { 0 };
+                            std::size_t drained = 0;
+                            while (drained < 32 && !stoken.stop_requested()) {
+                                std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
+                                if (nextBytes == 0) {
+                                    break;
+                                }
+                                handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
+                                ++drained;
+                            }
                         }
                     }
                 }

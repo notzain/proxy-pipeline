@@ -84,6 +84,14 @@ bool XmlSchemaValidator::validate(std::span<const std::byte> xmlData) const
         return false;
     }
 
+    // Fast-path structural pre-filter: ensure basic XML tag framing (<...>) before invoking libxml2
+    std::string_view sv(reinterpret_cast<const char*>(xmlData.data()), xmlData.size());
+    auto firstOpen = sv.find('<');
+    auto lastClose = sv.rfind('>');
+    if (firstOpen == std::string_view::npos || lastClose == std::string_view::npos || firstOpen >= lastClose) {
+        return false;
+    }
+
     // Thread-local parser & validation contexts: eliminates per-document context allocation & mutex contention
     static thread_local struct ThreadLocalContexts {
         xmlSchemaPtr cachedSchema { nullptr };
