@@ -58,8 +58,8 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     }
                 }
 
-                for (auto& task : batch) {
-                    handler.onMessageReceived(task.channelName, task.buffer);
+                for (const auto& task : batch) {
+                    handler.onMessageReceived(task.channelName, task.payload());
                 }
             }
         });
@@ -83,9 +83,7 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     continue;
                 }
 
-                ingressBatch.push_back(MessageTask {
-                    namedChannel.name,
-                    std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + bytes) });
+                ingressBatch.emplace_back(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
 
                 // Drain subsequent ready packets without waiting (timeout 0) up to batch limit of 16
                 constexpr IHandler::Timeout zeroTimeout { 0 };
@@ -94,9 +92,7 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     if (nextBytes == 0) {
                         break;
                     }
-                    ingressBatch.push_back(MessageTask {
-                        namedChannel.name,
-                        std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + nextBytes) });
+                    ingressBatch.emplace_back(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
                 }
 
                 // Bulk push into task queue with a single lock acquisition
