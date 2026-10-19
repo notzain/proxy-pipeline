@@ -22,6 +22,20 @@ namespace {
         std::size_t inlineSize { 0 };
         std::vector<std::byte> heapBuffer;
 
+        MessageTask() = default;
+
+        void assign(std::string_view name, std::span<const std::byte> data)
+        {
+            channelName = name;
+            if (data.size() <= SmallBufferSize) {
+                inlineSize = data.size();
+                std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
+            } else {
+                inlineSize = 0;
+                heapBuffer.assign(data.begin(), data.end());
+            }
+        }
+
         MessageTask(std::string name, std::span<const std::byte> data)
             : channelName(std::move(name))
         {
@@ -73,9 +87,15 @@ namespace {
 } // namespace
 
 struct alignas(128) ThreadPoolStrategy::WorkerQueue {
+    static constexpr std::size_t Capacity = 2048;
+
     std::mutex mutex;
-    std::condition_variable cv;
-    std::queue<MessageTask> queue;
+    std::condition_variable cvNotEmpty;
+    std::condition_variable cvNotFull;
+    std::array<MessageTask, Capacity> ring;
+    std::size_t head { 0 };
+    std::size_t tail { 0 };
+    std::size_t count { 0 };
 };
 
 ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
@@ -109,30 +129,37 @@ void ThreadPoolStrategy::start(IHandler& handler)
     // 1. Launch pool worker threads with partitioned queues
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
         m_workerThreads.emplace_back([this, &handler, i](std::stop_token stoken) {
-            std::vector<MessageTask> batch;
-            batch.reserve(16);
             auto& myQueue = *m_workerQueues[i];
 
             while (!stoken.stop_requested()) {
-                batch.clear();
+                std::size_t drainStart = 0;
+                std::size_t drainCount = 0;
+
                 {
                     std::unique_lock lock(myQueue.mutex);
-                    myQueue.cv.wait(lock, [&myQueue, &stoken] {
-                        return stoken.stop_requested() || !myQueue.queue.empty();
+                    myQueue.cvNotEmpty.wait(lock, [&myQueue, &stoken] {
+                        return stoken.stop_requested() || myQueue.count > 0;
                     });
 
-                    if (stoken.stop_requested() && myQueue.queue.empty()) {
+                    if (stoken.stop_requested() && myQueue.count == 0) {
                         break;
                     }
 
-                    // Drain up to 16 tasks per lock acquisition
-                    while (!myQueue.queue.empty() && batch.size() < 16) {
-                        batch.push_back(std::move(myQueue.queue.front()));
-                        myQueue.queue.pop();
-                    }
+                    // Process up to 16 contiguous tasks from ring buffer
+                    drainStart = myQueue.head;
+                    drainCount = std::min(myQueue.count, std::size_t { 16 });
+                    // Ensure drain doesn't wrap around in single batch for direct slice processing
+                    drainCount = std::min(drainCount, WorkerQueue::Capacity - drainStart);
+
+                    myQueue.head = (myQueue.head + drainCount) % WorkerQueue::Capacity;
+                    myQueue.count -= drainCount;
+
+                    // If queue was previously full or high, notify waiting producers
+                    myQueue.cvNotFull.notify_one();
                 }
 
-                for (const auto& task : batch) {
+                for (std::size_t j = 0; j < drainCount; ++j) {
+                    const auto& task = myQueue.ring[drainStart + j];
                     handler.onMessageReceived(task.channelName, task.payload());
                 }
             }
@@ -143,13 +170,17 @@ void ThreadPoolStrategy::start(IHandler& handler)
     for (const auto& namedChannel : channels) {
         m_channelThreads.emplace_back([this, &namedChannel, channelTimeout](std::stop_token stoken) {
             thread_local std::array<std::byte, 65535> rxBuffer;
-            std::vector<MessageTask> ingressBatch;
-            ingressBatch.reserve(16);
+
+            std::array<std::array<std::byte, 2048>, 16> batchBuffers;
+            std::array<std::size_t, 16> batchSizes;
+            std::size_t batchCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!namedChannel.channel) {
                     continue;
                 }
+
+                batchCount = 0;
 
                 // Initial receive with timeout to yield if idle
                 std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout);
@@ -157,33 +188,53 @@ void ThreadPoolStrategy::start(IHandler& handler)
                     continue;
                 }
 
-                ingressBatch.emplace_back(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
+                if (bytes <= batchBuffers[0].size()) {
+                    std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), bytes);
+                    batchSizes[batchCount++] = bytes;
+                }
 
                 // Drain subsequent ready packets without waiting (timeout 0) up to batch limit of 16
                 constexpr IHandler::Timeout zeroTimeout { 0 };
-                while (ingressBatch.size() < 16 && !stoken.stop_requested()) {
+                while (batchCount < 16 && !stoken.stop_requested()) {
                     std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
                     if (nextBytes == 0) {
                         break;
                     }
-                    ingressBatch.emplace_back(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
+                    if (nextBytes <= batchBuffers[0].size()) {
+                        std::memcpy(batchBuffers[batchCount].data(), rxBuffer.data(), nextBytes);
+                        batchSizes[batchCount++] = nextBytes;
+                    }
+                }
+
+                if (batchCount == 0) {
+                    continue;
                 }
 
                 // Target worker queue using round-robin distribution
                 const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
                 auto& targetQueue = *m_workerQueues[targetWorker];
 
-                // Push into target worker queue with a single lock acquisition
+                // Push into target worker ring buffer with a single lock acquisition
                 {
                     std::unique_lock lock(targetQueue.mutex);
-                    for (auto& task : ingressBatch) {
-                        targetQueue.queue.push(std::move(task));
-                    }
-                }
-                ingressBatch.clear();
+                    targetQueue.cvNotFull.wait(lock, [&targetQueue, batchCount, &stoken] {
+                        return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= batchCount);
+                    });
 
-                // Wake up only the assigned worker
-                targetQueue.cv.notify_one();
+                    if (stoken.stop_requested()) {
+                        break;
+                    }
+
+                    for (std::size_t idx = 0; idx < batchCount; ++idx) {
+                        auto& slot = targetQueue.ring[targetQueue.tail];
+                        slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]));
+                        targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
+                    }
+                    targetQueue.count += batchCount;
+                }
+
+                // Wake up the assigned worker
+                targetQueue.cvNotEmpty.notify_one();
             }
         });
     }
@@ -214,7 +265,8 @@ void ThreadPoolStrategy::stop()
 
     for (const auto& wq : m_workerQueues) {
         std::unique_lock lock(wq->mutex);
-        wq->cv.notify_all();
+        wq->cvNotEmpty.notify_all();
+        wq->cvNotFull.notify_all();
     }
 }
 
