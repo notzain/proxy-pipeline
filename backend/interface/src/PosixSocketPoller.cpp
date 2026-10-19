@@ -65,6 +65,30 @@ std::size_t PosixSocketPoller::receiveBatch(
     std::size_t count = 0;
     const std::size_t maxBatch = destinations.size();
 
+#if defined(__linux__)
+    // True vectorized ingress: recvmmsg fetches up to 32 datagrams in a single kernel transition
+    constexpr std::size_t kernelBatchMax = 32;
+    const std::size_t batchTarget = std::min(maxBatch, kernelBatchMax);
+
+    struct mmsghdr msgvec[kernelBatchMax];
+    struct iovec iov[kernelBatchMax];
+    std::memset(msgvec, 0, sizeof(msgvec[0]) * batchTarget);
+
+    for (std::size_t i = 0; i < batchTarget; ++i) {
+        iov[i].iov_base = destinations[i].data();
+        iov[i].iov_len = destinations[i].size();
+        msgvec[i].msg_hdr.msg_iov = &iov[i];
+        msgvec[i].msg_hdr.msg_iovlen = 1;
+    }
+
+    int received = ::recvmmsg(socketFd, msgvec, static_cast<unsigned int>(batchTarget), MSG_DONTWAIT, nullptr);
+    if (received > 0) {
+        for (int i = 0; i < received; ++i) {
+            outSizes[i] = msgvec[i].msg_len;
+        }
+        return static_cast<std::size_t>(received);
+    }
+#else
     // Fast-path: speculative non-blocking drain
     while (count < maxBatch) {
         ssize_t bytes = ::recvfrom(
@@ -81,6 +105,7 @@ std::size_t PosixSocketPoller::receiveBatch(
             break;
         }
     }
+#endif
 
     if (count > 0 || timeout.count() == 0) {
         return count;
