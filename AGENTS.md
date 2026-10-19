@@ -113,6 +113,9 @@ cmake --build build
   - `src/`: Implementation files (`.cpp`) and private/internal headers (`.hpp`).
 - **Separation of Declarations & Implementations**:
   - All non-templated function and method implementations must reside in source files (`.cpp`). Headers (`.hpp`) are reserved for declarations only. Templated classes/functions are the only exception to this rule.
+- **Single-Class-Per-File Policy (No Monolithic or Nested Large Classes)**:
+  - Substantial or standalone classes (e.g. validator classes, format encoders/decoders, strategy engines, or complex helper types) must **never** be defined as in-line private implementations within a parent class's source file.
+  - Each significant class must have its own dedicated pair of files (`<ClassName>.hpp` and `<ClassName>.cpp`). Internal or implementation-detail classes belong in `src/` (or private subdirectories) if not intended for public consumption.
 - **Header Include Policy (Interface vs. Concrete Implementation)**:
   - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::IHandler`, `Core::IExecutionStrategy`).
   - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files; they must be included in source files (`.cpp`) only.
