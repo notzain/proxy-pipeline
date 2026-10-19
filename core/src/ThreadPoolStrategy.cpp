@@ -69,18 +69,47 @@ void ThreadPoolStrategy::start(IHandler& handler)
     for (const auto& namedChannel : channels) {
         m_channelThreads.emplace_back([this, &namedChannel, channelTimeout](std::stop_token stoken) {
             thread_local std::array<std::byte, 65535> rxBuffer;
+            std::vector<MessageTask> ingressBatch;
+            ingressBatch.reserve(16);
+
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-                if (namedChannel.channel) {
-                    if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout); bytes > 0) {
-                        {
-                            std::unique_lock lock(m_queueMutex);
-                            m_taskQueue.push(MessageTask {
-                                namedChannel.name,
-                                std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + bytes) });
-                        }
-                        m_queueCv.notify_one();
+                if (!namedChannel.channel) {
+                    continue;
+                }
+
+                // Initial receive with timeout to yield if idle
+                std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeout);
+                if (bytes == 0) {
+                    continue;
+                }
+
+                ingressBatch.push_back(MessageTask {
+                    namedChannel.name,
+                    std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + bytes) });
+
+                // Drain subsequent ready packets without waiting (timeout 0) up to batch limit of 16
+                constexpr IHandler::Timeout zeroTimeout { 0 };
+                while (ingressBatch.size() < 16 && !stoken.stop_requested()) {
+                    std::size_t nextBytes = namedChannel.channel->receiveInto(rxBuffer, zeroTimeout);
+                    if (nextBytes == 0) {
+                        break;
+                    }
+                    ingressBatch.push_back(MessageTask {
+                        namedChannel.name,
+                        std::vector<std::byte>(rxBuffer.begin(), rxBuffer.begin() + nextBytes) });
+                }
+
+                // Bulk push into task queue with a single lock acquisition
+                {
+                    std::unique_lock lock(m_queueMutex);
+                    for (auto& task : ingressBatch) {
+                        m_taskQueue.push(std::move(task));
                     }
                 }
+                ingressBatch.clear();
+
+                // Wake up waiting workers
+                m_queueCv.notify_all();
             }
         });
     }
