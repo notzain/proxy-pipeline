@@ -1,6 +1,7 @@
 #include "BenchmarkRunner.hpp"
 #include "XmlVerificationHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/shm/ShmBackend.hpp"
 #include "backend/socket/SocketBackend.hpp"
 #include "backend/uds/UdsBackend.hpp"
 #include "core/Configuration.hpp"
@@ -368,6 +369,119 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     };
 
+    // Helper lambda to run Kernel Bypass IPC (SHM) benchmark with a specific execution strategy
+    auto runShmBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+        std::size_t shmMessages = numMessages;
+        fmt::print(fg(fmt::color::cyan), "[Benchmark] Running Kernel Bypass IPC (SHM) chain ({}) with {} messages...\n", strategyName, shmMessages);
+
+        std::ofstream confFile("/tmp/bench_shm.conf");
+        confFile << "channel.shm_raw.path=/tmp/bench_shm_raw.dat\n";
+        confFile << "channel.shm_raw.dest_path=/tmp/bench_shm_raw.dat\n";
+        confFile << "channel.shm_raw.capacity=4096\n";
+        confFile << "channel.shm_verified.path=/tmp/bench_shm_verified.dat\n";
+        confFile << "channel.shm_verified.dest_path=/tmp/bench_shm_verified.dat\n";
+        confFile << "channel.shm_verified.capacity=4096\n";
+        confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
+        confFile << "xml.input_channel=shm_raw\n";
+        confFile << "xml.output_channel=shm_verified\n";
+        confFile.close();
+
+        std::filesystem::remove("/tmp/bench_shm_raw.dat");
+        std::filesystem::remove("/tmp/bench_shm_verified.dat");
+
+        Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_shm.conf");
+        std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Shm::ShmBackend>();
+        backend->configure(config);
+
+        auto receiverIn = backend->createInputChannel("shm_verified", config);
+        Proxy::Benchmark::BenchmarkReceiver receiver(shmMessages);
+        receiver.setExecutionModel(model, poolSize);
+        receiver.registerInputChannel("shm_verified", std::move(receiverIn));
+
+        auto verifierIn = backend->createInputChannel("shm_raw", config);
+        auto verifierOut = backend->createOutputChannel("shm_verified", config);
+        Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "shm_verified");
+        verifier.setExecutionModel(model, poolSize);
+        verifier.registerInputChannel("shm_raw", std::move(verifierIn));
+        verifier.registerOutputChannel("shm_verified", std::move(verifierOut));
+
+        auto senderOut = backend->createOutputChannel("shm_raw", config);
+
+        verifier.startAsync();
+        receiver.startAsync();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+
+        auto startAll = std::chrono::steady_clock::now();
+        std::vector<std::chrono::steady_clock::time_point> sendTimestamps;
+        sendTimestamps.reserve(shmMessages);
+
+        std::size_t sentCount = 0;
+        for (std::size_t i = 0; i < shmMessages; ++i) {
+            sendTimestamps.push_back(std::chrono::steady_clock::now());
+            if (senderOut->send(msgSpan)) {
+                ++sentCount;
+            }
+            if ((i & 0x7F) == 0) {
+                std::this_thread::yield();
+            }
+        }
+        if (sentCount < shmMessages) {
+            fmt::print(fg(fmt::color::yellow), "[Benchmark] Warning: only {}/{} messages sent successfully\n", sentCount, shmMessages);
+        }
+
+        receiver.waitForCompletion(
+            std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))),
+            std::chrono::milliseconds(2000));
+        receiver.stop();
+        receiver.wait();
+
+        auto endAll = std::chrono::steady_clock::now();
+        verifier.stop();
+        verifier.wait();
+
+        const auto& recvTimestamps = receiver.getReceiveTimestamps();
+        auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
+            ? (recvTimestamps.back() - startAll)
+            : (endAll - startAll);
+        if (totalDuration.count() <= 0) {
+            totalDuration = endAll - startAll;
+        }
+        double sec = std::chrono::duration<double>(totalDuration).count();
+
+        std::vector<double> latenciesUs;
+        std::size_t count = std::min(sendTimestamps.size(), recvTimestamps.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            latenciesUs.push_back(std::chrono::duration<double, std::micro>(recvTimestamps[i] - sendTimestamps[i]).count());
+        }
+        std::sort(latenciesUs.begin(), latenciesUs.end());
+
+        double totalLat = 0;
+        for (double l : latenciesUs) {
+            totalLat += l;
+        }
+
+        Proxy::Benchmark::BenchmarkResult res;
+        res.backendName = std::string(strategyName);
+        res.totalMessages = shmMessages;
+        res.verifiedMessages = count;
+        res.totalDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(totalDuration);
+        res.messagesPerSecond = count / sec;
+        res.averageLatencyUs = latenciesUs.empty() ? 0 : totalLat / latenciesUs.size();
+        res.medianLatencyUs = latenciesUs.empty() ? 0 : latenciesUs[latenciesUs.size() / 2];
+        res.p95LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.95)];
+        res.p99LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.99)];
+        res.throughputMBps = (count * validXmlMsg.size()) / (sec * 1024.0 * 1024.0);
+
+        results.push_back(res);
+
+        std::filesystem::remove("/tmp/bench_shm_raw.dat");
+        std::filesystem::remove("/tmp/bench_shm_verified.dat");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    };
+
     auto runSelected = [&](std::string_view strategy) {
         if (strategy == "all" || strategy == "direct") {
             runDirectBenchmark();
@@ -378,11 +492,17 @@ int main(int argc, char* argv[])
         if (strategy == "all" || strategy == "uds-dedicated") {
             runUdsBenchmark(Core::ExecutionModel::Dedicated, "UDS (Dedicated)");
         }
+        if (strategy == "all" || strategy == "shm-dedicated" || strategy == "shm") {
+            runShmBenchmark(Core::ExecutionModel::Dedicated, "SHM (Dedicated)");
+        }
         if (strategy == "all" || strategy == "udp-sequential" || strategy == "sequential") {
             runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
         }
         if (strategy == "all" || strategy == "uds-sequential") {
             runUdsBenchmark(Core::ExecutionModel::Sequential, "UDS (Sequential)");
+        }
+        if (strategy == "all" || strategy == "shm-sequential" || strategy == "shm") {
+            runShmBenchmark(Core::ExecutionModel::Sequential, "SHM (Sequential)");
         }
         if (strategy == "all" || strategy == "udp-threadpool4" || strategy == "threadpool4") {
             runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
@@ -390,11 +510,17 @@ int main(int argc, char* argv[])
         if (strategy == "all" || strategy == "uds-threadpool4") {
             runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 4)", 4);
         }
+        if (strategy == "all" || strategy == "shm-threadpool4" || strategy == "shm") {
+            runShmBenchmark(Core::ExecutionModel::ThreadPool, "SHM (ThreadPool 4)", 4);
+        }
         if (strategy == "all" || strategy == "udp-threadpool8" || strategy == "threadpool8") {
             runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
         }
         if (strategy == "all" || strategy == "uds-threadpool8") {
             runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 8)", 8);
+        }
+        if (strategy == "all" || strategy == "shm-threadpool8" || strategy == "shm") {
+            runShmBenchmark(Core::ExecutionModel::ThreadPool, "SHM (ThreadPool 8)", 8);
         }
     };
 

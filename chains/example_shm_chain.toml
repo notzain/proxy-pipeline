@@ -1,0 +1,32 @@
+# Chain configuration demonstrating Kernel-Bypass Shared Memory (SHM) IPC
+backend = "shm"
+
+[config]
+shm.path = "/tmp/proxy_shm_default.dat"
+"channel.orders_raw.path" = "/tmp/proxy_shm_orders_raw.dat"
+"channel.orders_verified.path" = "/tmp/proxy_shm_orders_verified.dat"
+
+# Sender producing valid XML orders across shared memory
+[[handlers]]
+name = "order_sender"
+type = "dummy_send"
+output_channel = "orders_raw"
+[handlers.config]
+"dummy.message" = "<order><customer>Alice</customer><item>Widget</item><quantity>42</quantity></order>"
+"dummy.delay_ms" = 500
+
+# XML Verification Handler checking against order.xsd in shared memory
+[[handlers]]
+name = "xml_validator"
+type = "xml_verification_handler"
+input_channel = "orders_raw"
+output_channel = "orders_verified"
+[handlers.config]
+"xml.xsd_path" = "chains/order.xsd"
+
+# Printer displaying verified XML orders received over shared memory
+[[handlers]]
+name = "verified_order_printer"
+type = "print_handler"
+input_channel = "orders_verified"
+
