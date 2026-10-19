@@ -1,12 +1,9 @@
 #include "PosixSocketPoller.hpp"
-#include "log/Log.hpp"
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include <chrono>
 #include <poll.h>
 #include <sys/socket.h>
 
-namespace Proxy::Backend::Socket {
+namespace Backend {
 
 std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destination, Timeout timeout)
 {
@@ -22,21 +19,15 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
     int ret = ::poll(&pfd, 1, timeoutMs);
 
     if (ret > 0 && (pfd.revents & POLLIN)) {
-        sockaddr_in clientAddr { };
-        socklen_t clientLen = sizeof(clientAddr);
-
         ssize_t bytesRead = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destination.data()),
             destination.size(),
             0,
-            reinterpret_cast<sockaddr*>(&clientAddr),
-            &clientLen);
+            nullptr,
+            nullptr);
 
         if (bytesRead > 0) {
-            char clientIp[INET_ADDRSTRLEN];
-            ::inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, sizeof(clientIp));
-            Proxy::Log::debug("[PosixSocketPoller] Received {} bytes from {}:{}", bytesRead, clientIp, ntohs(clientAddr.sin_port));
             return static_cast<std::size_t>(bytesRead);
         }
     }
@@ -44,4 +35,5 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
     return 0;
 }
 
-} // namespace Proxy::Backend::Socket
+} // namespace Backend
+

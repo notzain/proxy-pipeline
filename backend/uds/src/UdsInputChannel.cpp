@@ -1,5 +1,5 @@
 #include "backend/uds/UdsInputChannel.hpp"
-#include "backend/uds/IUdsPoller.hpp"
+#include "backend/ISocketPoller.hpp"
 #include "log/Log.hpp"
 
 #include <array>
@@ -15,7 +15,7 @@ namespace Proxy::Backend::Uds {
 
 UdsInputChannel::UdsInputChannel(std::string socketPath)
     : m_socketPath(std::move(socketPath))
-    , m_poller(createUdsPoller())
+    , m_poller(::Backend::createSocketPoller())
 {
     openAndBindSocket();
 }

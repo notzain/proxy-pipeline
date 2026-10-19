@@ -1,5 +1,5 @@
 #include "backend/socket/SocketInputChannel.hpp"
-#include "backend/socket/ISocketPoller.hpp"
+#include "backend/ISocketPoller.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <array>
@@ -16,7 +16,7 @@ namespace Proxy::Backend::Socket {
 SocketInputChannel::SocketInputChannel(std::string host, std::uint16_t port)
     : m_host(std::move(host))
     , m_port(port)
-    , m_poller(createSocketPoller())
+    , m_poller(::Backend::createSocketPoller())
 {
     openAndBindSocket();
 }

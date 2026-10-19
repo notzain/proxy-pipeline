@@ -1,11 +1,11 @@
 #pragma once
 
-#include "backend/socket/ISocketPoller.hpp"
+#include "backend/ISocketPoller.hpp"
 
-namespace Proxy::Backend::Socket {
+namespace Backend {
 
 /**
- * @brief Portable POSIX poll(2) socket poller fallback.
+ * @brief Standard POSIX poll() based socket poller implementation.
  */
 class PosixSocketPoller : public ISocketPoller {
 public:
@@ -15,4 +15,5 @@ public:
     std::size_t receive(int socketFd, std::span<std::byte> destination, Timeout timeout) override;
 };
 
-} // namespace Proxy::Backend::Socket
+} // namespace Backend
+

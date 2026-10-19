@@ -1,13 +1,12 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
+#include "backend/ISocketPoller.hpp"
 #include <memory>
 #include <optional>
 #include <string>
 
 namespace Proxy::Backend::Uds {
-
-class IUdsPoller;
 
 /**
  * @brief Input channel for receiving datagrams on a bound Unix Domain Socket.
@@ -23,7 +22,7 @@ public:
 private:
     std::string m_socketPath;
     int m_socketFd { -1 };
-    std::unique_ptr<IUdsPoller> m_poller;
+    std::unique_ptr<::Backend::ISocketPoller> m_poller;
 
     void closeSocket();
     void openAndBindSocket();

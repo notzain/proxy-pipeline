@@ -1,5 +1,5 @@
 #include "PosixSocketPoller.hpp"
-#include "backend/socket/ISocketPoller.hpp"
+#include "backend/ISocketPoller.hpp"
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 #include "KqueueSocketPoller.hpp"
@@ -7,7 +7,7 @@
 #include "IoUringSocketPoller.hpp"
 #endif
 
-namespace Proxy::Backend::Socket {
+namespace Backend {
 
 std::unique_ptr<ISocketPoller> createSocketPoller()
 {
@@ -20,4 +20,5 @@ std::unique_ptr<ISocketPoller> createSocketPoller()
 #endif
 }
 
-} // namespace Proxy::Backend::Socket
+} // namespace Backend
+
