@@ -5,8 +5,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
-#include <cstring>
-#include <functional>
 #include <mutex>
 #include <queue>
 #include <span>
@@ -42,57 +40,21 @@ private:
     std::atomic<bool> m_running { false };
 
     struct MessageTask {
-        std::string channelName;
         static constexpr std::size_t SmallBufferSize = 256;
+
+        std::string channelName;
         std::array<std::byte, SmallBufferSize> inlineBuffer;
         std::size_t inlineSize { 0 };
         std::vector<std::byte> heapBuffer;
 
-        MessageTask(std::string name, std::span<const std::byte> data)
-            : channelName(std::move(name))
-        {
-            if (data.size() <= SmallBufferSize) {
-                inlineSize = data.size();
-                std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
-            } else {
-                inlineSize = 0;
-                heapBuffer.assign(data.begin(), data.end());
-            }
-        }
-
-        MessageTask(MessageTask&& other) noexcept
-            : channelName(std::move(other.channelName))
-            , inlineSize(other.inlineSize)
-            , heapBuffer(std::move(other.heapBuffer))
-        {
-            if (inlineSize > 0) {
-                std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
-            }
-        }
-
-        MessageTask& operator=(MessageTask&& other) noexcept
-        {
-            if (this != &other) {
-                channelName = std::move(other.channelName);
-                inlineSize = other.inlineSize;
-                heapBuffer = std::move(other.heapBuffer);
-                if (inlineSize > 0) {
-                    std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
-                }
-            }
-            return *this;
-        }
-
+        MessageTask(std::string name, std::span<const std::byte> data);
+        MessageTask(MessageTask&& other) noexcept;
+        MessageTask& operator=(MessageTask&& other) noexcept;
         MessageTask(const MessageTask&) = delete;
         MessageTask& operator=(const MessageTask&) = delete;
+        ~MessageTask();
 
-        [[nodiscard]] std::span<const std::byte> payload() const noexcept
-        {
-            if (inlineSize > 0) {
-                return std::span<const std::byte>(inlineBuffer.data(), inlineSize);
-            }
-            return std::span<const std::byte>(heapBuffer.data(), heapBuffer.size());
-        }
+        [[nodiscard]] std::span<const std::byte> payload() const noexcept;
     };
 
     std::queue<MessageTask> m_taskQueue;

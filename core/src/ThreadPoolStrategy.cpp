@@ -3,9 +3,55 @@
 #include "log/Log.hpp"
 #include <array>
 #include <chrono>
+#include <cstring>
 #include <span>
 
 namespace Core {
+
+ThreadPoolStrategy::MessageTask::MessageTask(std::string name, std::span<const std::byte> data)
+    : channelName(std::move(name))
+{
+    if (data.size() <= SmallBufferSize) {
+        inlineSize = data.size();
+        std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
+    } else {
+        inlineSize = 0;
+        heapBuffer.assign(data.begin(), data.end());
+    }
+}
+
+ThreadPoolStrategy::MessageTask::MessageTask(MessageTask&& other) noexcept
+    : channelName(std::move(other.channelName))
+    , inlineSize(other.inlineSize)
+    , heapBuffer(std::move(other.heapBuffer))
+{
+    if (inlineSize > 0) {
+        std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
+    }
+}
+
+ThreadPoolStrategy::MessageTask& ThreadPoolStrategy::MessageTask::operator=(MessageTask&& other) noexcept
+{
+    if (this != &other) {
+        channelName = std::move(other.channelName);
+        inlineSize = other.inlineSize;
+        heapBuffer = std::move(other.heapBuffer);
+        if (inlineSize > 0) {
+            std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
+        }
+    }
+    return *this;
+}
+
+ThreadPoolStrategy::MessageTask::~MessageTask() = default;
+
+std::span<const std::byte> ThreadPoolStrategy::MessageTask::payload() const noexcept
+{
+    if (inlineSize > 0) {
+        return std::span<const std::byte>(inlineBuffer.data(), inlineSize);
+    }
+    return std::span<const std::byte>(heapBuffer.data(), heapBuffer.size());
+}
 
 ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
     : m_numWorkerThreads(numWorkerThreads)
