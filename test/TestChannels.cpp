@@ -400,3 +400,39 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
         CHECK(handler.lastReceivedPayload == jumboPayload);
     }
 }
+
+TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[channel][egress][batch]")
+{
+    const std::string sockPath = "/tmp/test_proxy_uds_egress_batch.sock";
+    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+
+    std::vector<std::string> messages = { "Batch1", "Batch2", "Batch3", "Batch4" };
+    std::vector<std::span<const std::byte>> messageSpans;
+    messageSpans.reserve(messages.size());
+    for (const auto& msg : messages) {
+        messageSpans.emplace_back(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+    }
+
+    std::size_t sent = outChannel.sendBatch(
+        std::span<const std::span<const std::byte>>(messageSpans.data(), messageSpans.size()));
+    REQUIRE(sent == messages.size());
+
+    std::array<std::array<std::byte, 64>, 4> recvBuffers;
+    std::array<std::span<std::byte>, 4> destSpans;
+    for (std::size_t i = 0; i < 4; ++i) {
+        destSpans[i] = std::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size());
+    }
+    std::array<std::size_t, 4> outSizes { };
+
+    std::size_t received = inChannel.receiveBatch(
+        std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
+        outSizes,
+        std::chrono::milliseconds(500));
+
+    REQUIRE(received == messages.size());
+    for (std::size_t i = 0; i < messages.size(); ++i) {
+        std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), outSizes[i]);
+        CHECK(recStr == messages[i]);
+    }
+}
