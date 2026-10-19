@@ -12,92 +12,6 @@
 
 namespace Core {
 
-namespace {
-
-    struct MessageTask {
-        static constexpr std::size_t SmallBufferSize = 256;
-
-        std::string channelName;
-        std::array<std::byte, SmallBufferSize> inlineBuffer;
-        std::size_t inlineSize { 0 };
-        std::vector<std::byte> heapBuffer;
-
-        MessageTask() = default;
-
-        void assign(std::string_view name, std::span<const std::byte> data)
-        {
-            channelName = name;
-            if (data.size() <= SmallBufferSize) {
-                inlineSize = data.size();
-                std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
-            } else {
-                inlineSize = 0;
-                heapBuffer.assign(data.begin(), data.end());
-            }
-        }
-
-        MessageTask(std::string name, std::span<const std::byte> data)
-            : channelName(std::move(name))
-        {
-            if (data.size() <= SmallBufferSize) {
-                inlineSize = data.size();
-                std::memcpy(inlineBuffer.data(), data.data(), inlineSize);
-            } else {
-                inlineSize = 0;
-                heapBuffer.assign(data.begin(), data.end());
-            }
-        }
-
-        MessageTask(MessageTask&& other) noexcept
-            : channelName(std::move(other.channelName))
-            , inlineSize(other.inlineSize)
-            , heapBuffer(std::move(other.heapBuffer))
-        {
-            if (inlineSize > 0) {
-                std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
-            }
-        }
-
-        MessageTask& operator=(MessageTask&& other) noexcept
-        {
-            if (this != &other) {
-                channelName = std::move(other.channelName);
-                inlineSize = other.inlineSize;
-                heapBuffer = std::move(other.heapBuffer);
-                if (inlineSize > 0) {
-                    std::memcpy(inlineBuffer.data(), other.inlineBuffer.data(), inlineSize);
-                }
-            }
-            return *this;
-        }
-
-        MessageTask(const MessageTask&) = delete;
-        MessageTask& operator=(const MessageTask&) = delete;
-        ~MessageTask() = default;
-
-        [[nodiscard]] std::span<const std::byte> payload() const noexcept
-        {
-            if (inlineSize > 0) {
-                return std::span<const std::byte>(inlineBuffer.data(), inlineSize);
-            }
-            return std::span<const std::byte>(heapBuffer.data(), heapBuffer.size());
-        }
-    };
-
-} // namespace
-
-struct alignas(128) ThreadPoolStrategy::WorkerQueue {
-    static constexpr std::size_t Capacity = 2048;
-
-    std::mutex mutex;
-    std::condition_variable cvNotEmpty;
-    std::condition_variable cvNotFull;
-    std::array<MessageTask, Capacity> ring;
-    std::size_t head { 0 };
-    std::size_t tail { 0 };
-    std::size_t count { 0 };
-};
-
 ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
     : m_numWorkerThreads(numWorkerThreads)
 {
@@ -107,7 +21,7 @@ ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
 
     m_workerQueues.reserve(m_numWorkerThreads);
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
-        m_workerQueues.emplace_back(std::make_unique<WorkerQueue>());
+        m_workerQueues.emplace_back(std::make_unique<QueueType>());
     }
 }
 
@@ -132,48 +46,24 @@ void ThreadPoolStrategy::start(IHandler& handler)
             auto& myQueue = *m_workerQueues[i];
 
             while (!stoken.stop_requested()) {
-                std::size_t drainStart = 0;
-                std::size_t drainCount = 0;
-
-                {
-                    std::unique_lock lock(myQueue.mutex);
-                    myQueue.cvNotEmpty.wait(lock, [&myQueue, &stoken] {
-                        return stoken.stop_requested() || myQueue.count > 0;
-                    });
-
-                    if (stoken.stop_requested() && myQueue.count == 0) {
-                        break;
+                myQueue.drainContiguous(16, [&handler](std::span<const MessageTask> tasks) {
+                    const std::size_t drainCount = tasks.size();
+                    std::size_t batchStart = 0;
+                    while (batchStart < drainCount) {
+                        std::string_view chName = tasks[batchStart].channelName();
+                        std::size_t batchEnd = batchStart + 1;
+                        while (batchEnd < drainCount && tasks[batchEnd].channelName() == chName) {
+                            ++batchEnd;
+                        }
+                        std::array<std::span<const std::byte>, 16> batchSpans;
+                        std::size_t spanCount = batchEnd - batchStart;
+                        for (std::size_t k = 0; k < spanCount; ++k) {
+                            batchSpans[k] = tasks[batchStart + k].payload();
+                        }
+                        handler.onBatchReceived(chName, std::span<const std::span<const std::byte>>(batchSpans.data(), spanCount));
+                        batchStart = batchEnd;
                     }
-
-                    // Process up to 16 contiguous tasks from ring buffer
-                    drainStart = myQueue.head;
-                    drainCount = std::min(myQueue.count, std::size_t { 16 });
-                    // Ensure drain doesn't wrap around in single batch for direct slice processing
-                    drainCount = std::min(drainCount, WorkerQueue::Capacity - drainStart);
-
-                    myQueue.head = (myQueue.head + drainCount) % WorkerQueue::Capacity;
-                    myQueue.count -= drainCount;
-
-                    // If queue was previously full or high, notify waiting producers
-                    myQueue.cvNotFull.notify_one();
-                }
-
-                std::size_t batchStart = 0;
-                while (batchStart < drainCount) {
-                    const auto& firstTask = myQueue.ring[drainStart + batchStart];
-                    std::string_view chName = firstTask.channelName;
-                    std::size_t batchEnd = batchStart + 1;
-                    while (batchEnd < drainCount && myQueue.ring[drainStart + batchEnd].channelName == chName) {
-                        ++batchEnd;
-                    }
-                    std::array<std::span<const std::byte>, 16> batchSpans;
-                    std::size_t spanCount = batchEnd - batchStart;
-                    for (std::size_t k = 0; k < spanCount; ++k) {
-                        batchSpans[k] = myQueue.ring[drainStart + batchStart + k].payload();
-                    }
-                    handler.onBatchReceived(chName, std::span<const std::span<const std::byte>>(batchSpans.data(), spanCount));
-                    batchStart = batchEnd;
-                }
+                }, stoken);
             }
         });
     }
@@ -186,6 +76,13 @@ void ThreadPoolStrategy::start(IHandler& handler)
             std::array<std::array<std::byte, 2048>, 16> batchBuffers;
             std::array<std::size_t, 16> batchSizes;
             std::size_t batchCount = 0;
+
+            auto enqueueTasks = [&stoken](QueueType& targetQueue, std::string_view chName,
+                                    std::span<const std::span<const std::byte>> payloads) {
+                targetQueue.pushBatch(payloads.size(), [&chName, payloads](MessageTask& slot, std::size_t idx) {
+                    slot.assign(chName, payloads[idx]);
+                }, stoken);
+            };
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!namedChannel.channel) {
@@ -206,20 +103,8 @@ void ThreadPoolStrategy::start(IHandler& handler)
                 } else {
                     const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
                     auto& targetQueue = *m_workerQueues[targetWorker];
-                    {
-                        std::unique_lock lock(targetQueue.mutex);
-                        targetQueue.cvNotFull.wait(lock, [&targetQueue, &stoken] {
-                            return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= 1);
-                        });
-                        if (stoken.stop_requested()) {
-                            break;
-                        }
-                        auto& slot = targetQueue.ring[targetQueue.tail];
-                        slot.assign(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), bytes));
-                        targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
-                        targetQueue.count += 1;
-                    }
-                    targetQueue.cvNotEmpty.notify_one();
+                    std::array<std::span<const std::byte>, 1> singleSpan = { std::span<const std::byte>(rxBuffer.data(), bytes) };
+                    enqueueTasks(targetQueue, namedChannel.name, singleSpan);
                     continue;
                 }
 
@@ -237,25 +122,14 @@ void ThreadPoolStrategy::start(IHandler& handler)
                         // Push current batch first, then dispatch large packet
                         const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
                         auto& targetQueue = *m_workerQueues[targetWorker];
-                        {
-                            std::unique_lock lock(targetQueue.mutex);
-                            targetQueue.cvNotFull.wait(lock, [&targetQueue, batchCount, &stoken] {
-                                return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= batchCount + 1);
-                            });
-                            if (stoken.stop_requested()) {
-                                break;
-                            }
-                            for (std::size_t idx = 0; idx < batchCount; ++idx) {
-                                auto& slot = targetQueue.ring[targetQueue.tail];
-                                slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]));
-                                targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
-                            }
-                            auto& slot = targetQueue.ring[targetQueue.tail];
-                            slot.assign(namedChannel.name, std::span<const std::byte>(rxBuffer.data(), nextBytes));
-                            targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
-                            targetQueue.count += batchCount + 1;
+
+                        std::array<std::span<const std::byte>, 17> combinedSpans;
+                        for (std::size_t idx = 0; idx < batchCount; ++idx) {
+                            combinedSpans[idx] = std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]);
                         }
-                        targetQueue.cvNotEmpty.notify_one();
+                        combinedSpans[batchCount] = std::span<const std::byte>(rxBuffer.data(), nextBytes);
+                        enqueueTasks(targetQueue, namedChannel.name, std::span<const std::span<const std::byte>>(combinedSpans.data(), batchCount + 1));
+
                         batchCount = 0;
                         break;
                     }
@@ -269,27 +143,11 @@ void ThreadPoolStrategy::start(IHandler& handler)
                 const std::size_t targetWorker = m_nextWorker.fetch_add(1, std::memory_order_relaxed) % m_numWorkerThreads;
                 auto& targetQueue = *m_workerQueues[targetWorker];
 
-                // Push into target worker ring buffer with a single lock acquisition
-                {
-                    std::unique_lock lock(targetQueue.mutex);
-                    targetQueue.cvNotFull.wait(lock, [&targetQueue, batchCount, &stoken] {
-                        return stoken.stop_requested() || (WorkerQueue::Capacity - targetQueue.count >= batchCount);
-                    });
-
-                    if (stoken.stop_requested()) {
-                        break;
-                    }
-
-                    for (std::size_t idx = 0; idx < batchCount; ++idx) {
-                        auto& slot = targetQueue.ring[targetQueue.tail];
-                        slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]));
-                        targetQueue.tail = (targetQueue.tail + 1) % WorkerQueue::Capacity;
-                    }
-                    targetQueue.count += batchCount;
+                std::array<std::span<const std::byte>, 16> spans;
+                for (std::size_t idx = 0; idx < batchCount; ++idx) {
+                    spans[idx] = std::span<const std::byte>(batchBuffers[idx].data(), batchSizes[idx]);
                 }
-
-                // Wake up the assigned worker
-                targetQueue.cvNotEmpty.notify_one();
+                enqueueTasks(targetQueue, namedChannel.name, std::span<const std::span<const std::byte>>(spans.data(), batchCount));
             }
         });
     }
@@ -319,9 +177,7 @@ void ThreadPoolStrategy::stop()
     }
 
     for (const auto& wq : m_workerQueues) {
-        std::unique_lock lock(wq->mutex);
-        wq->cvNotEmpty.notify_all();
-        wq->cvNotFull.notify_all();
+        wq->stop();
     }
 }
 

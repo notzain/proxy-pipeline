@@ -750,6 +750,53 @@ for (int i = 0; i < nEvents; ++i) {
 > [!NOTE]
 > Combining speculative ingress batching with vectorized egress batching unlocked new peaks across the board: **UDS ThreadPool 4 achieved a record-breaking 316,314 msg/s (24.74 MB/s)**, **UDP Dedicated advanced to 179,745 msg/s (14.06 MB/s)**, and **UDS ThreadPool 8 drove average latency down to 743 µs**.
 
+---
+
+## 21. Optimization Phase 19: Lockless SPSC Ring Buffers in ThreadPoolStrategy
+
+### Rationale & Architectural Design
+- **Problem**:
+  - In Phase 18, `ThreadPoolStrategy` used per-worker `std::mutex` and `std::condition_variable` synchronization to guard worker ring buffers.
+  - While worker queues are partitioned across worker threads, consumer worker threads were still repeatedly locking and unlocking `std::mutex` and waiting on `condition_variable` per batch drain.
+  - Mutex operations incur atomic compare-and-swap bus traffic and POSIX condition variable kernel transitions (`pthread_cond_signal` / `pthread_cond_wait`).
+- **Solution**:
+  - **Single Producer / Single Consumer (SPSC) Architecture**:
+    - Each worker thread is the sole consumer popping tasks from its own dedicated ring buffer `WorkerQueue[i]`.
+    - Padded (`alignas(64)`) atomic indices `head` and `tail` eliminate false sharing between producer and consumer threads.
+    - C++20 `std::atomic<std::size_t>::wait` and `notify_one()` replace `std::condition_variable`.
+    - Padded version counters (`tailVersion`, `headVersion`) guarantee reliable wakeups during thread termination or queue transitions across Darwin and Linux without missing notification pulses.
+    - Poller producer threads serialize via `producerMutex` only in the event of multi-channel collision on the same worker, keeping the worker consumer drain completely lockless.
+
+### Results (20,000 Messages, Release `-O3`, macOS Apple Silicon):
+
+| Strategy | Messages | Throughput (m/s) | Throughput (MB/s) | Avg Lat (µs) | p99 (µs) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Direct (XSD)** | 20,000 | **400,624.97** | **31.33** | **2.47** | **5.00** |
+| **UDS (ThreadPool 8)** | 20,000 | **186,570.64** | **14.59** | **580.08** (0.58 ms) | **1,752.00** (1.75 ms) |
+| **UDS (ThreadPool 4)** | 20,000 | **183,136.77** | **14.32** | **3,741.24** | **7,368.00** |
+| **UDP (ThreadPool 4)** | 20,000 | **127,622.65** | **9.98** | **5,844.02** | **16,936.00** |
+| **UDP (ThreadPool 8)** | 20,000 | **127,944.32** | **10.01** | **3,407.33** | **12,363.00** |
+
+---
+
+### Stress Test (100,000 Messages Massive Burst, Release `-O3`):
+
+| Strategy | Messages Received / Sent | Throughput (msg/s) | Bandwidth (MB/s) | Avg Latency (µs) | p99 Latency (µs) | Delivery Rate |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Direct (XSD)** | 100,000 / 100,000 | **548,573.43** | **42.90 MB/s** | **1.80** | **3.00** | **100% (0 drops)** |
+| **UDS (ThreadPool 4)** | 100,000 / 100,000 | **305,074.30** | **23.86 MB/s** | **35,750.63** | **57,559.00** | **100% (0 drops)** |
+| **UDS (ThreadPool 8)** | 100,000 / 100,000 | **286,990.16** | **22.44 MB/s** | **409.17** (0.41 ms) | **1,492.00** (1.49 ms) | **100% (0 drops)** |
+| **UDP (ThreadPool 4)** | 100,000 / 100,000 | **150,787.26** | **11.79 MB/s** | **81,899.11** | **165,110.00** | **100% (0 drops)** |
+| **UDP (ThreadPool 8)** | 100,000 / 100,000 | **131,501.60** | **10.28 MB/s** | **9,142.85** | **45,398.00** | **100% (0 drops)** |
+| **UDS (Dedicated)** | 100,000 / 100,000 | **265,142.28** | **20.73 MB/s** | 131,132.80 | 214,943.00 | **100% (0 drops)** |
+| **UDS (Sequential)** | 100,000 / 100,000 | **260,391.58** | **20.36 MB/s** | 142,370.84 | 225,370.00 | **100% (0 drops)** |
+| **UDP (Dedicated)** | 80,443 / 100,000 | **171,255.89** | **13.39 MB/s** | 149,063.03 | 269,855.00 | 80.44% |
+| **UDP (Sequential)** | 82,875 / 100,000 | **155,363.05** | **12.15 MB/s** | 165,940.18 | 275,997.00 | 82.88% |
+
+> [!NOTE]
+> - **All-Time Latency Record**: UDS `ThreadPool 8` reduced average latency to **409 µs (0.41 ms)** with p99 latency down to **1.49 ms**, down from 743 µs in Phase 18 and 918 µs in Phase 17.
+> - **UDP ThreadPool Scaling**: UDP `ThreadPool 4` reached **150,787 msg/s** (up from 139,904 msg/s in Phase 18, +7.8%), and UDP `ThreadPool 8` reached **131,501 msg/s** (up from 102,230 msg/s in Phase 18, +28.6%), processing all 100,000 unpaced packets with **0 packet loss**.
+
 
 
 

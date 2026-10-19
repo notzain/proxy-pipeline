@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/IExecutionStrategy.hpp"
+#include "core/MessageTask.hpp"
+#include "core/SpscQueue.hpp"
 #include <atomic>
 #include <cstddef>
 #include <memory>
@@ -35,8 +37,8 @@ private:
     std::size_t m_numWorkerThreads;
     std::atomic<bool> m_running { false };
 
-    struct WorkerQueue;
-    std::vector<std::unique_ptr<WorkerQueue>> m_workerQueues;
+    using QueueType = SpscQueue<MessageTask, 4096>;
+    std::vector<std::unique_ptr<QueueType>> m_workerQueues;
     std::atomic<std::size_t> m_nextWorker { 0 };
 
     std::vector<std::jthread> m_channelThreads;
