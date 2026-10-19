@@ -176,6 +176,49 @@ std::size_t SocketOutputChannel::sendBatch(std::span<const std::span<const std::
     if (messages.empty()) {
         return 0;
     }
+
+#if defined(__linux__)
+    constexpr std::size_t maxBatch = 32;
+    std::size_t totalSent = 0;
+
+    for (std::size_t offset = 0; offset < messages.size(); offset += maxBatch) {
+        std::size_t chunk = std::min(maxBatch, messages.size() - offset);
+        struct mmsghdr msgvec[maxBatch];
+        struct iovec iov[maxBatch];
+        std::memset(msgvec, 0, sizeof(msgvec[0]) * chunk);
+
+        for (std::size_t i = 0; i < chunk; ++i) {
+            const auto& msg = messages[offset + i];
+            iov[i].iov_base = const_cast<char*>(reinterpret_cast<const char*>(msg.data()));
+            iov[i].iov_len = msg.size();
+
+            msgvec[i].msg_hdr.msg_iov = &iov[i];
+            msgvec[i].msg_hdr.msg_iovlen = 1;
+            if (!m_connected.load(std::memory_order_relaxed)) {
+                msgvec[i].msg_hdr.msg_name = &m_destAddr;
+                msgvec[i].msg_hdr.msg_namelen = sizeof(m_destAddr);
+            }
+        }
+
+        int sentCount = ::sendmmsg(m_socketFd, msgvec, static_cast<unsigned int>(chunk), 0);
+        if (sentCount > 0) {
+            totalSent += static_cast<std::size_t>(sentCount);
+            if (static_cast<std::size_t>(sentCount) < chunk) {
+                break;
+            }
+        } else if (sentCount < 0 && (errno == ENOBUFS || errno == EAGAIN)) {
+            // Buffer saturation under heavy burst; fallback to single retry send
+            for (std::size_t i = 0; i < chunk; ++i) {
+                if (send(messages[offset + i])) {
+                    ++totalSent;
+                }
+            }
+        } else {
+            break;
+        }
+    }
+    return totalSent;
+#else
     std::size_t count = 0;
     for (const auto& msg : messages) {
         if (send(msg)) {
@@ -183,6 +226,7 @@ std::size_t SocketOutputChannel::sendBatch(std::span<const std::span<const std::
         }
     }
     return count;
+#endif
 }
 
 } // namespace Proxy::Backend::Socket

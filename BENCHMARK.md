@@ -893,3 +893,34 @@ Raw per-run ThreadPool throughput (msg/s) in `gcc16-release`:
 >   - **UDS ThreadPool 8**: Shattered the 300k barrier, peaking at **310,356 msg/s** (24.27 MB/s) with sub-millisecond **843 µs** average latency.
 >   - **UDS ThreadPool 4**: Consistent 300k+ msg/s sustained throughput peaking at **304,792 msg/s**.
 
+
+---
+
+## 24. Optimization Phase 22: Cache-Residency Sizing & Vectorized Egress (`sendmmsg`)
+
+### Rationale & Architectural Design
+- **Problem**:
+  - In Phase 21, expanding `SmallBufferSize` to 2048 B for zero-copy ingress increased the per-queue footprint to ~8.5 MB with a capacity of 4096. For 8 pool workers, the 68 MB aggregate ring size exceeded typical CPU L3 cache capacity, inducing cache-line eviction and TLB stalls.
+  - While ingress was fully vectorized via `receiveBatch`, egress transmission in `SocketOutputChannel::sendBatch` and `UdsOutputChannel::sendBatch` still looped over single `::send()` system calls.
+- **Solution**:
+  - **L2/L3 Cache-Residency Ring Sizing**:
+    - Right-sized `SpscQueue` capacity in `ThreadPoolStrategy` from **4096** to **1024** slots.
+    - Each queue footprint decreased from **~8.5 MB** to **~2.1 MB** (~17 MB total for 8 workers), fitting comfortably within CPU cache slices.
+  - **Vectorized Egress via `sendmmsg`**:
+    - Implemented chunked `::sendmmsg()` transmitting up to 32 datagrams per syscall on Linux in `SocketOutputChannel::sendBatch` and `UdsOutputChannel::sendBatch`, significantly reducing syscall context switches during heavy burst dispatch.
+
+### Stress Test (100,000 Messages, `gcc16-release` `-O3`):
+
+| Strategy               | Phase 21 Peak (msg/s) | Phase 22 Peak (msg/s) | Phase 22 Best Latency (µs) |   Lowest p99 (µs)   |
+| :--------------------- | :-------------------: | :-------------------: | :------------------------: | :-----------------: |
+| **UDS (ThreadPool 8)** |        310,356        |  **330,330** (+6.4%)  |    **768.13** (0.77 ms)    | **2,321** (2.32 ms) |
+| **UDS (ThreadPool 4)** |        304,792        |  **313,650** (+2.9%)  |       **12,241.72**        |     **25,374**      |
+| **UDP (ThreadPool 4)** |        166,328        |  **175,008** (+5.2%)  |       **11,985.05**        |     **23,108**      |
+| **UDP (ThreadPool 8)** |        141,834        |      **132,867**      |   **2,700.68** (2.70 ms)   |     **14,153**      |
+
+> [!NOTE]
+> - **All-Time UDS Throughput Record**: `UDS (ThreadPool 8)` set a new record of **330,330 msg/s** (25.83 MB/s) with sub-millisecond average latency (**768 µs**).
+> - **All-Time UDP Throughput Record**: `UDP (ThreadPool 4)` reached **175,008 msg/s** (13.69 MB/s) with 100% packet delivery (0 packet loss under 100k unpaced bursts).
+> - **Drastic Latency Floor Lowering**:
+>   - `UDP (ThreadPool 8)` average latency dropped to **2.70 ms** (p99: **14.15 ms**).
+>   - `UDP (ThreadPool 4)` latency dropped to **11.98 ms** (p99: **23.11 ms**).

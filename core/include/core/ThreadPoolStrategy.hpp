@@ -37,7 +37,7 @@ private:
     std::size_t m_numWorkerThreads;
     std::atomic<bool> m_running { false };
 
-    using QueueType = SpscQueue<MessageTask, 4096>;
+    using QueueType = SpscQueue<MessageTask, 1024>;
     std::vector<std::unique_ptr<QueueType>> m_workerQueues;
     std::atomic<std::size_t> m_nextWorker { 0 };
 
