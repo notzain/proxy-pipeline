@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include <atomic>
 #include <span>
 #include <string>
 #include <sys/socket.h>
@@ -22,6 +23,7 @@ private:
     std::string m_destPath;
     sockaddr_un m_destAddr { };
     int m_socketFd { -1 };
+    std::atomic<bool> m_connected { false };
 
     void closeSocket();
     void openSocket();

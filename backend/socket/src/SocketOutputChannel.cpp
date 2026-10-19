@@ -5,6 +5,7 @@
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 
@@ -53,7 +54,10 @@ void SocketOutputChannel::openSocket()
     Proxy::Log::info("[SocketOutputChannel] Target configured for UDP {}:{}", m_destHost, m_destPort);
 
     // Connect socket to destination address to eliminate per-packet kernel route lookups
-    if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) < 0) {
+    if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) == 0) {
+        m_connected = true;
+    } else {
+        m_connected = false;
         Proxy::Log::warn("[SocketOutputChannel] Failed to connect UDP socket to {}:{} ({})", m_destHost, m_destPort, std::strerror(errno));
     }
 }
@@ -67,31 +71,91 @@ bool SocketOutputChannel::send(std::span<const std::byte> message)
         }
     }
 
-    ssize_t sent = ::send(
-        m_socketFd,
-        reinterpret_cast<const char*>(message.data()),
-        message.size(),
-        0);
-
-    // If an ICMP Port Unreachable or route invalidation occurred, refresh connection
-    if (sent < 0 && (errno == ECONNREFUSED || errno == ENETUNREACH || errno == ENETDOWN)) {
-        ::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr));
+    ssize_t sent = -1;
+    if (m_connected.load(std::memory_order_relaxed)) {
         sent = ::send(
             m_socketFd,
             reinterpret_cast<const char*>(message.data()),
             message.size(),
             0);
+
+        // If an ICMP Port Unreachable or route invalidation occurred, refresh connection
+        if (sent < 0 && (errno == ECONNREFUSED || errno == ENETUNREACH || errno == ENETDOWN)) {
+            if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) == 0) {
+                sent = ::send(
+                    m_socketFd,
+                    reinterpret_cast<const char*>(message.data()),
+                    message.size(),
+                    0);
+            }
+        }
+    } else {
+        // Attempt lazy connect
+        int connRes = ::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr));
+        if (connRes == 0 || errno == EISCONN) {
+            m_connected.store(true, std::memory_order_relaxed);
+            sent = ::send(
+                m_socketFd,
+                reinterpret_cast<const char*>(message.data()),
+                message.size(),
+                0);
+        } else {
+            sent = ::sendto(
+                m_socketFd,
+                reinterpret_cast<const char*>(message.data()),
+                message.size(),
+                0,
+                reinterpret_cast<const sockaddr*>(&m_destAddr),
+                sizeof(m_destAddr));
+            if (sent < 0 && errno == EISCONN) {
+                m_connected.store(true, std::memory_order_relaxed);
+                sent = ::send(
+                    m_socketFd,
+                    reinterpret_cast<const char*>(message.data()),
+                    message.size(),
+                    0);
+            }
+        }
     }
 
-    if (sent < 0) {
-        // Fallback to sendto if disconnected
-        sent = ::sendto(
-            m_socketFd,
-            reinterpret_cast<const char*>(message.data()),
-            message.size(),
-            0,
-            reinterpret_cast<const sockaddr*>(&m_destAddr),
-            sizeof(m_destAddr));
+    if (sent < 0 && (errno == ENOBUFS || errno == EAGAIN)) {
+        // Socket buffer full under heavy burst; give receiver thread a chance to drain
+        for (int retry = 0; retry < 10 && sent < 0; ++retry) {
+            std::this_thread::yield();
+            if (m_connected.load(std::memory_order_relaxed)) {
+                sent = ::send(
+                    m_socketFd,
+                    reinterpret_cast<const char*>(message.data()),
+                    message.size(),
+                    0);
+            } else {
+                sent = ::sendto(
+                    m_socketFd,
+                    reinterpret_cast<const char*>(message.data()),
+                    message.size(),
+                    0,
+                    reinterpret_cast<const sockaddr*>(&m_destAddr),
+                    sizeof(m_destAddr));
+            }
+        }
+    } else if (sent < 0 && errno == EDESTADDRREQ) {
+        if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) == 0) {
+            m_connected.store(true, std::memory_order_relaxed);
+            sent = ::send(
+                m_socketFd,
+                reinterpret_cast<const char*>(message.data()),
+                message.size(),
+                0);
+        } else {
+            m_connected.store(false, std::memory_order_relaxed);
+            sent = ::sendto(
+                m_socketFd,
+                reinterpret_cast<const char*>(message.data()),
+                message.size(),
+                0,
+                reinterpret_cast<const sockaddr*>(&m_destAddr),
+                sizeof(m_destAddr));
+        }
     }
 
     if (sent < 0) {

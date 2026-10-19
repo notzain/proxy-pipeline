@@ -280,18 +280,18 @@ int main(int argc, char* argv[])
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Uds::UdsBackend>();
         backend->configure(config);
 
-        // Instantiate components
+        // Instantiate components: create receiver's input channel first so its socket path is bound
+        auto receiverIn = backend->createInputChannel("uds_verified", config);
+        Proxy::Benchmark::BenchmarkReceiver receiver(udsMessages);
+        receiver.setExecutionModel(model, poolSize);
+        receiver.registerInputChannel("uds_verified", std::move(receiverIn));
+
         auto verifierIn = backend->createInputChannel("uds_raw", config);
         auto verifierOut = backend->createOutputChannel("uds_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "uds_verified");
         verifier.setExecutionModel(model, poolSize);
         verifier.registerInputChannel("uds_raw", std::move(verifierIn));
         verifier.registerOutputChannel("uds_verified", std::move(verifierOut));
-
-        auto receiverIn = backend->createInputChannel("uds_verified", config);
-        Proxy::Benchmark::BenchmarkReceiver receiver(udsMessages);
-        receiver.setExecutionModel(model, poolSize);
-        receiver.registerInputChannel("uds_verified", std::move(receiverIn));
 
         auto senderOut = backend->createOutputChannel("uds_raw", config);
 

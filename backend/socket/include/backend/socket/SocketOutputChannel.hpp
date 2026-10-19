@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include <atomic>
 #include <cstdint>
 #include <netinet/in.h>
 #include <span>
@@ -23,6 +24,7 @@ private:
     std::uint16_t m_destPort;
     sockaddr_in m_destAddr { };
     int m_socketFd { -1 };
+    std::atomic<bool> m_connected { false };
 
     void closeSocket();
     void openSocket();
