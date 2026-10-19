@@ -24,4 +24,3 @@ private:
 } // namespace Backend
 
 #endif // __linux__
-

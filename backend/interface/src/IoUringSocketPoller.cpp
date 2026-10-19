@@ -86,4 +86,3 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
 } // namespace Backend
 
 #endif // __linux__
-

@@ -73,4 +73,3 @@ std::size_t KqueueSocketPoller::receive(int socketFd, std::span<std::byte> desti
 } // namespace Backend
 
 #endif // __APPLE__ || BSD
-

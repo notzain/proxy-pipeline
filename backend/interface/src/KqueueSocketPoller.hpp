@@ -26,4 +26,3 @@ private:
 } // namespace Backend
 
 #endif // __APPLE__ || BSD
-

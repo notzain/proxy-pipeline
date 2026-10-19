@@ -21,4 +21,3 @@ std::unique_ptr<ISocketPoller> createSocketPoller()
 }
 
 } // namespace Backend
-
