@@ -8,12 +8,12 @@ BenchmarkReceiver::BenchmarkReceiver(std::size_t expectedCount)
     m_receiveTimestamps.reserve(m_expectedCount);
 }
 
-void BenchmarkReceiver::onMessageReceived(std::string_view, std::span<const std::byte> buffer)
+void BenchmarkReceiver::onMessageReceived(std::string_view, const Core::Message::MessageView& message)
 {
     {
         std::lock_guard lock(m_mutex);
         m_receiveTimestamps.push_back(std::chrono::steady_clock::now());
-        m_bytesReceived += buffer.size();
+        m_bytesReceived += message.payload().size();
     }
 
     if (m_receiveTimestamps.size() >= m_expectedCount) {

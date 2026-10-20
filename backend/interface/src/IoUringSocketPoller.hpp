@@ -14,12 +14,17 @@ public:
     IoUringSocketPoller();
     ~IoUringSocketPoller() override;
 
-    std::size_t receive(int socketFd, std::span<std::byte> destination, Timeout timeout) override;
+    std::size_t receive(
+        int socketFd,
+        std::span<std::byte> destination,
+        Timeout timeout,
+        SocketAddress* outSourceAddress = nullptr) override;
     std::size_t receiveBatch(
         int socketFd,
         std::span<const std::span<std::byte>> destinations,
         std::span<std::size_t> outSizes,
-        Timeout timeout) override;
+        Timeout timeout,
+        std::span<SocketAddress> outSourceAddresses = { }) override;
 
 private:
     struct RingImpl;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
+#include "backend/SocketAddress.hpp"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -17,13 +18,11 @@ namespace Core::Net {
 /**
  * @brief Standalone UDP message reception channel implementing Backend::IInputChannel.
  *
- * Listens on a specified IP address and UDP port, reading incoming datagrams
- * using the platform's high-performance socket polling driver (kqueue on macOS,
- * io_uring / recvmmsg on Linux).
+ * Listens on a specified IP address and UDP port, reading incoming datagrams and packing
+ * them directly into binary envelopes containing UdpMetadata (source/dest IP and port)
+ * in-place with zero heap allocations using platform-specific socket polling drivers.
  *
- * This channel is decoupled from any specific Backend::IBackend transport, allowing
- * it to serve as a network ingress channel inside handlers regardless of what backend
- * is linked for pipeline egress.
+ * This channel is decoupled from any specific Backend::IBackend transport.
  */
 class UdpInputChannel : public ::Backend::IInputChannel {
 public:
@@ -49,29 +48,17 @@ public:
     UdpInputChannel& operator=(UdpInputChannel&&) noexcept;
 
     /**
-     * @brief Polls the UDP socket for the next available datagram.
-     *
-     * @param timeout Maximum duration to wait before timing out.
-     * @return std::optional<Buffer> Buffer containing the received datagram, or std::nullopt.
+     * @brief Polls the UDP socket for the next available datagram and returns an enveloped buffer.
      */
     std::optional<Buffer> receive(Timeout timeout) override;
 
     /**
-     * @brief Reads a datagram directly into a pre-allocated memory buffer without heap allocation.
-     *
-     * @param destination Non-owning memory span to receive data into.
-     * @param timeout Maximum duration to wait.
-     * @return std::size_t Number of bytes received (0 on timeout or error).
+     * @brief Reads a datagram and serializes an in-place envelope directly into destination.
      */
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
 
     /**
-     * @brief Drains a batch of incoming UDP datagrams in a single polling cycle.
-     *
-     * @param destinations Spans of pre-allocated target buffers.
-     * @param outSizes Span of size_t where received byte counts are stored.
-     * @param timeout Maximum duration to wait for the first datagram.
-     * @return std::size_t Number of datagrams read.
+     * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.
      */
     std::size_t receiveBatch(
         std::span<const std::span<std::byte>> destinations,
@@ -80,8 +67,6 @@ public:
 
     /**
      * @brief Gets the native socket file descriptor.
-     *
-     * @return int Native socket FD, or -1 if closed.
      */
     [[nodiscard]] int getNativeSocket() const noexcept;
 
@@ -103,6 +88,7 @@ private:
     std::uint16_t m_port { 0 };
     std::size_t m_receiveBufferSize { 8 * 1024 * 1024 };
     int m_socketFd { -1 };
+    ::Backend::SocketAddress m_boundAddr;
     std::unique_ptr<::Backend::ISocketPoller> m_poller;
 };
 

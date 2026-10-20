@@ -5,11 +5,20 @@
 
 namespace Backend {
 
-std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destination, Timeout timeout)
+std::size_t PosixSocketPoller::receive(
+    int socketFd,
+    std::span<std::byte> destination,
+    Timeout timeout,
+    SocketAddress* outSourceAddress)
 {
     if (socketFd < 0 || destination.empty()) {
         return 0;
     }
+
+    sockaddr_storage ss { };
+    socklen_t addrLen = sizeof(ss);
+    sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
+    socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
 
     // Fast-path: speculative non-blocking read avoids poll() syscall when data is already available
     ssize_t directBytes = ::recvfrom(
@@ -17,10 +26,13 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
         reinterpret_cast<char*>(destination.data()),
         destination.size(),
         MSG_DONTWAIT,
-        nullptr,
-        nullptr);
+        saPtr,
+        saLenPtr);
 
     if (directBytes > 0) {
+        if (outSourceAddress) {
+            outSourceAddress->setFromNative(&ss, addrLen);
+        }
         return static_cast<std::size_t>(directBytes);
     }
 
@@ -36,15 +48,19 @@ std::size_t PosixSocketPoller::receive(int socketFd, std::span<std::byte> destin
     int ret = ::poll(&pfd, 1, timeoutMs);
 
     if (ret > 0 && (pfd.revents & POLLIN)) {
+        addrLen = sizeof(ss);
         ssize_t bytesRead = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destination.data()),
             destination.size(),
             MSG_DONTWAIT,
-            nullptr,
-            nullptr);
+            saPtr,
+            saLenPtr);
 
         if (bytesRead > 0) {
+            if (outSourceAddress) {
+                outSourceAddress->setFromNative(&ss, addrLen);
+            }
             return static_cast<std::size_t>(bytesRead);
         }
     }
@@ -56,7 +72,8 @@ std::size_t PosixSocketPoller::receiveBatch(
     int socketFd,
     std::span<const std::span<std::byte>> destinations,
     std::span<std::size_t> outSizes,
-    Timeout timeout)
+    Timeout timeout,
+    std::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
         return 0;
@@ -72,6 +89,7 @@ std::size_t PosixSocketPoller::receiveBatch(
 
     struct mmsghdr msgvec[kernelBatchMax];
     struct iovec iov[kernelBatchMax];
+    sockaddr_storage addrs[kernelBatchMax];
     std::memset(msgvec, 0, sizeof(msgvec[0]) * batchTarget);
 
     for (std::size_t i = 0; i < batchTarget; ++i) {
@@ -79,27 +97,42 @@ std::size_t PosixSocketPoller::receiveBatch(
         iov[i].iov_len = destinations[i].size();
         msgvec[i].msg_hdr.msg_iov = &iov[i];
         msgvec[i].msg_hdr.msg_iovlen = 1;
+        if (i < outSourceAddresses.size()) {
+            msgvec[i].msg_hdr.msg_name = &addrs[i];
+            msgvec[i].msg_hdr.msg_namelen = sizeof(addrs[i]);
+        }
     }
 
     int received = ::recvmmsg(socketFd, msgvec, static_cast<unsigned int>(batchTarget), MSG_DONTWAIT, nullptr);
     if (received > 0) {
         for (int i = 0; i < received; ++i) {
             outSizes[i] = msgvec[i].msg_len;
+            if (i < outSourceAddresses.size()) {
+                outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
+            }
         }
         return static_cast<std::size_t>(received);
     }
 #else
     // Fast-path: speculative non-blocking drain
     while (count < maxBatch) {
+        sockaddr_storage ss { };
+        socklen_t addrLen = sizeof(ss);
+        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
+        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
+
         ssize_t bytes = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destinations[count].data()),
             destinations[count].size(),
             MSG_DONTWAIT,
-            nullptr,
-            nullptr);
+            saPtr,
+            saLenPtr);
 
         if (bytes > 0) {
+            if (count < outSourceAddresses.size()) {
+                outSourceAddresses[count].setFromNative(&ss, addrLen);
+            }
             outSizes[count++] = static_cast<std::size_t>(bytes);
         } else {
             break;
@@ -120,15 +153,23 @@ std::size_t PosixSocketPoller::receiveBatch(
 
     if (ret > 0 && (pfd.revents & POLLIN)) {
         while (count < maxBatch) {
+            sockaddr_storage ss { };
+            socklen_t addrLen = sizeof(ss);
+            sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
+            socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
+
             ssize_t bytes = ::recvfrom(
                 socketFd,
                 reinterpret_cast<char*>(destinations[count].data()),
                 destinations[count].size(),
                 MSG_DONTWAIT,
-                nullptr,
-                nullptr);
+                saPtr,
+                saLenPtr);
 
             if (bytes > 0) {
+                if (count < outSourceAddresses.size()) {
+                    outSourceAddresses[count].setFromNative(&ss, addrLen);
+                }
                 outSizes[count++] = static_cast<std::size_t>(bytes);
             } else {
                 break;

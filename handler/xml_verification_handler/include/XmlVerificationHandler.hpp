@@ -46,22 +46,21 @@ public:
     bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
-     * @brief Ingress callback for incoming messages.
-     * Validates buffer against schema and forwards to output channel if valid.
+     * @brief Ingress callback for incoming enveloped messages.
+     * Validates message.payload() against schema and forwards full message to output channel if valid.
      *
      * @param channelName Name of the channel that received the message.
-     * @param buffer Byte buffer of the message payload.
+     * @param message Validated view of the received enveloped message.
      */
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
-     * @brief Ingress callback for batched incoming messages.
-     * Validates batch against schema and forwards valid messages via sendBatch().
+     * @brief Vectorized ingress callback for batches of enveloped messages.
      *
-     * @param channelName Name of the channel that received the message.
-     * @param messages View of byte buffer spans.
+     * @param channelName Name of the channel that received the messages.
+     * @param messages Vectorized view of message views.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages) override;
+    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
 
     /**
      * @brief Validates an XML byte buffer against the loaded schema.

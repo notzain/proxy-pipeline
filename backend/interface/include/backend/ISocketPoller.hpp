@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
+#include "backend/SocketAddress.hpp"
 #include <chrono>
 #include <cstddef>
 #include <memory>
@@ -23,9 +24,14 @@ public:
      * @param socketFd The bound socket file descriptor (UDP, UDS, etc.).
      * @param destination Target buffer.
      * @param timeout Maximum wait duration.
+     * @param outSourceAddress Optional pointer to record sender's address.
      * @return std::size_t Number of bytes received (0 on timeout or error).
      */
-    virtual std::size_t receive(int socketFd, std::span<std::byte> destination, Timeout timeout) = 0;
+    virtual std::size_t receive(
+        int socketFd,
+        std::span<std::byte> destination,
+        Timeout timeout,
+        SocketAddress* outSourceAddress = nullptr) = 0;
 
     /**
      * @brief Waits for readability and receives a batch of datagrams into destination buffers.
@@ -36,13 +42,15 @@ public:
      * @param destinations Spans of pre-allocated target buffers.
      * @param outSizes Span of size_t where received byte counts are stored.
      * @param timeout Maximum wait duration for the first packet.
+     * @param outSourceAddresses Optional span to record sender addresses.
      * @return std::size_t Number of packets received.
      */
     virtual std::size_t receiveBatch(
         int socketFd,
         std::span<const std::span<std::byte>> destinations,
         std::span<std::size_t> outSizes,
-        Timeout timeout);
+        Timeout timeout,
+        std::span<SocketAddress> outSourceAddresses = { });
 };
 
 /**

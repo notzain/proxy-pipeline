@@ -1,5 +1,6 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "core/handler/IHandler.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -55,12 +56,21 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
                         while (batchEnd < drainCount && tasks[batchEnd].channelName() == chName) {
                             ++batchEnd;
                         }
-                        std::array<std::span<const std::byte>, 16> batchSpans;
+                        std::array<Core::Message::MessageView, 16> views;
+                        std::size_t validViews = 0;
                         std::size_t spanCount = batchEnd - batchStart;
                         for (std::size_t k = 0; k < spanCount; ++k) {
-                            batchSpans[k] = tasks[batchStart + k].payload();
+                            auto payloadSpan = tasks[batchStart + k].payload();
+                            auto optView = Core::Message::MessageView::from(payloadSpan);
+                            if (optView) {
+                                views[validViews++] = *optView;
+                            } else {
+                                Proxy::Log::warn("[ThreadPoolStrategy] Channel '{}' task received invalid envelope ({} bytes). Dropping.", chName, payloadSpan.size());
+                            }
                         }
-                        handler.onBatchReceived(chName, std::span<const std::span<const std::byte>>(batchSpans.data(), spanCount));
+                        if (validViews > 0) {
+                            handler.onBatchReceived(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                        }
                         batchStart = batchEnd;
                     } }, stoken);
             }

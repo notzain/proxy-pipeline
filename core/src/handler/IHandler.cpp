@@ -1,8 +1,10 @@
 #include "core/handler/IHandler.hpp"
+#include "core/message/MessageView.hpp"
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "core/threading/SequentialStrategy.hpp"
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
+#include <array>
 #include <csignal>
 #include <mutex>
 
@@ -61,15 +63,40 @@ const std::vector<IHandler::NamedInputChannel>& IHandler::getInputChannels() con
     return m_inputChannels;
 }
 
-void IHandler::onMessageReceived(std::string_view, std::span<const std::byte>)
+void IHandler::onMessageReceived(std::string_view, const Message::MessageView&)
 {
 }
 
-void IHandler::onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+void IHandler::onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages)
 {
     for (const auto& msg : messages) {
         onMessageReceived(channelName, msg);
     }
+}
+
+bool IHandler::send(std::string_view channelName, const Message::MessageView& message)
+{
+    return send(channelName, message.rawBuffer());
+}
+
+std::size_t IHandler::sendBatch(std::string_view channelName, std::span<const Message::MessageView> messages)
+{
+    if (messages.empty()) {
+        return 0;
+    }
+    std::array<std::span<const std::byte>, 32> rawSpans;
+    std::size_t count = 0;
+    for (const auto& msg : messages) {
+        rawSpans[count++] = msg.rawBuffer();
+        if (count == rawSpans.size()) {
+            sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+            count = 0;
+        }
+    }
+    if (count > 0) {
+        sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+    }
+    return messages.size();
 }
 
 ::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)

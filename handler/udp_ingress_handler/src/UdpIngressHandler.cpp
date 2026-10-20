@@ -2,8 +2,10 @@
 #include "backend/IBackend.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "log/Log.hpp"
+#include <array>
 #include <utility>
 
 namespace Proxy::Handler {
@@ -44,29 +46,40 @@ bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::B
     return true;
 }
 
-void UdpIngressHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    Proxy::Log::info("[UdpIngressHandler] Received datagram ({} bytes) on '{}'. Forwarding to '{}'...",
-        buffer.size(), channelName, m_outputChannelName);
+    Proxy::Log::info("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
+        message.payload().size(), message.metadata().size(), channelName, m_outputChannelName);
 
     if (m_outputChannel) {
-        if (!m_outputChannel->send(buffer)) {
+        if (!m_outputChannel->send(message.rawBuffer())) {
             Proxy::Log::warn("[UdpIngressHandler] Failed to forward datagram to '{}'", m_outputChannelName);
         }
     } else {
-        if (!send(m_outputChannelName, buffer)) {
+        if (!send(m_outputChannelName, message)) {
             Proxy::Log::warn("[UdpIngressHandler] Failed to send datagram to '{}'", m_outputChannelName);
         }
     }
 }
 
-void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
 {
     Proxy::Log::info("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, m_outputChannelName);
 
     if (m_outputChannel) {
-        m_outputChannel->sendBatch(messages);
+        std::array<std::span<const std::byte>, 32> rawSpans;
+        std::size_t count = 0;
+        for (const auto& msg : messages) {
+            rawSpans[count++] = msg.rawBuffer();
+            if (count == rawSpans.size()) {
+                m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+                count = 0;
+            }
+        }
+        if (count > 0) {
+            m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+        }
     } else {
         sendBatch(m_outputChannelName, messages);
     }

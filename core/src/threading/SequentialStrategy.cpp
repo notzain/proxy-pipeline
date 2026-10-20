@@ -1,5 +1,6 @@
 #include "core/threading/SequentialStrategy.hpp"
 #include "core/handler/IHandler.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <array>
 #include <chrono>
@@ -45,22 +46,38 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                             channelTimeout);
 
                         if (batchCount > 0) {
-                            std::array<std::span<const std::byte>, 16> batchSpans;
+                            std::array<Core::Message::MessageView, 16> views;
+                            std::size_t validViews = 0;
                             bool hasOversized = false;
                             for (std::size_t i = 0; i < batchCount; ++i) {
-                                batchSpans[i] = std::span<const std::byte>(batchBuffers[i].data(), batchSizes[i]);
+                                std::span<const std::byte> span(batchBuffers[i].data(), batchSizes[i]);
                                 if (batchSizes[i] == batchBuffers[i].size()) {
                                     hasOversized = true;
                                 }
+                                auto optView = Core::Message::MessageView::from(span);
+                                if (optView) {
+                                    views[validViews++] = *optView;
+                                } else {
+                                    Proxy::Log::warn("[SequentialStrategy] Channel '{}' received invalid envelope ({} bytes). Dropping.", namedChannel.name, batchSizes[i]);
+                                }
                             }
-                            handler.onBatchReceived(namedChannel.name, std::span<const std::span<const std::byte>>(batchSpans.data(), batchCount));
+
+                            if (validViews > 0) {
+                                handler.onBatchReceived(namedChannel.name, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                            }
 
                             if (hasOversized) {
                                 static thread_local std::array<std::byte, 65535> jumboBuffer;
                                 constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
                                 std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuffer, zeroTimeout);
                                 if (jumboBytes > 0) {
-                                    handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(jumboBuffer.data(), jumboBytes));
+                                    std::span<const std::byte> jumboSpan(jumboBuffer.data(), jumboBytes);
+                                    auto optView = Core::Message::MessageView::from(jumboSpan);
+                                    if (optView) {
+                                        handler.onMessageReceived(namedChannel.name, *optView);
+                                    } else {
+                                        Proxy::Log::warn("[SequentialStrategy] Channel '{}' received invalid envelope ({} bytes). Dropping.", namedChannel.name, jumboBytes);
+                                    }
                                 }
                             }
                         }

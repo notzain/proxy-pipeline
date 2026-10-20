@@ -1,6 +1,7 @@
 #include "DummyReceiveHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
@@ -19,12 +20,13 @@ bool DummyReceiveHandler::configure(const Core::Config::Configuration& config, :
     return true;
 }
 
-void DummyReceiveHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void DummyReceiveHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
+    auto payload = message.payload();
     std::string textFormatted;
     std::string hexFormatted;
 
-    for (const auto b : buffer) {
+    for (const auto b : payload) {
         const auto val = static_cast<unsigned char>(b);
         if (std::isprint(val)) {
             textFormatted += static_cast<char>(val);
@@ -34,7 +36,7 @@ void DummyReceiveHandler::onMessageReceived(std::string_view channelName, std::s
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    Proxy::Log::info("[DummyReceive] Channel '{}' received message ({} bytes): {}", channelName, buffer.size(), textFormatted);
+    Proxy::Log::info("[DummyReceive] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[DummyReceive] Channel '{}' hex dump: {}", channelName, hexFormatted);
 }
 

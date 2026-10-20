@@ -1,6 +1,7 @@
 #include "PrintHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
@@ -20,12 +21,13 @@ bool PrintHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void PrintHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void PrintHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
+    auto payload = message.payload();
     std::string textFormatted;
     std::string hexFormatted;
 
-    for (const auto b : buffer) {
+    for (const auto b : payload) {
         const auto val = static_cast<unsigned char>(b);
         if (std::isprint(val)) {
             textFormatted += static_cast<char>(val);
@@ -35,7 +37,7 @@ void PrintHandler::onMessageReceived(std::string_view channelName, std::span<con
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, buffer.size(), textFormatted);
+    Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
 }
 

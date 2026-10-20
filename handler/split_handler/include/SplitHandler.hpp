@@ -28,9 +28,9 @@ public:
      * Forwards the received message buffer to all registered output channels.
      *
      * @param channelName Identifying name of the receiving channel.
-     * @param buffer Raw message byte buffer.
+     * @param message Enveloped message view.
      */
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
 private:
     std::string m_inputChannelName;

@@ -5,6 +5,7 @@
 #include "backend/socket/SocketBackend.hpp"
 #include "backend/uds/UdsBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageEnvelope.hpp"
 #include "log/Log.hpp"
 
 #include <algorithm>
@@ -116,7 +117,9 @@ int main(int argc, char* argv[])
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running direct XML verification on {} messages...\n", numMessages);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "output");
 
-        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
+        std::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         std::vector<double> latenciesUs;
         latenciesUs.reserve(numMessages);
@@ -126,7 +129,7 @@ int main(int argc, char* argv[])
 
         for (std::size_t i = 0; i < numMessages; ++i) {
             auto t0 = std::chrono::steady_clock::now();
-            if (verifier.validate(msgSpan)) {
+            if (verifier.validate(rawXmlSpan)) {
                 verified++;
             }
             auto t1 = std::chrono::steady_clock::now();
@@ -205,7 +208,9 @@ int main(int argc, char* argv[])
         // Brief delay to allow UDP socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
+        std::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
         std::vector<std::chrono::steady_clock::time_point> sendTimestamps;
@@ -308,7 +313,9 @@ int main(int argc, char* argv[])
         // Brief delay to allow UDS socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
+        std::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
         std::vector<std::chrono::steady_clock::time_point> sendTimestamps;
@@ -412,7 +419,9 @@ int main(int argc, char* argv[])
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        std::span<const std::byte> msgSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
+        std::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
         std::vector<std::chrono::steady_clock::time_point> sendTimestamps;

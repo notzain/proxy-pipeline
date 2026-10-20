@@ -19,6 +19,10 @@ class IConfig;
 class IBackend;
 } // namespace Backend
 
+namespace Core::Message {
+class MessageView;
+} // namespace Core::Message
+
 namespace Core::Handler {
 
 /**
@@ -98,26 +102,26 @@ public:
     [[nodiscard]] const std::vector<NamedInputChannel>& getInputChannels() const noexcept;
 
     /**
-     * @brief Ingress callback invoked when a message has been received on an input channel.
+     * @brief Ingress callback invoked when an enveloped message has been received on an input channel.
      *
      * Subclasses interested in processing incoming messages override this.
      * Default implementation is a no-op.
      *
      * @param channelName Name of the channel that received the message.
-     * @param buffer Non-owning view of the raw byte buffer received.
+     * @param message Validated non-owning view of the envelope, metadata, and payload.
      */
-    virtual void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer);
+    virtual void onMessageReceived(std::string_view channelName, const Message::MessageView& message);
 
     /**
-     * @brief Ingress callback invoked when a batch of messages has been received on an input channel.
+     * @brief Ingress callback invoked when a batch of enveloped messages has been received on an input channel.
      *
      * Handlers can override this to perform batched validation and vectorized egress dispatching.
      * Default implementation iterates over onMessageReceived().
      *
      * @param channelName Name of the channel that received the messages.
-     * @param messages Non-owning views of the raw byte buffers received.
+     * @param messages Non-owning views of the received messages.
      */
-    virtual void onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages);
+    virtual void onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages);
 
     // --- Output Channel Management (Egress) ---
 
@@ -129,6 +133,24 @@ public:
      * @return ::Backend::IOutputChannel* Non-owning pointer to the registered channel.
      */
     ::Backend::IOutputChannel* registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
+
+    /**
+     * @brief Sends an enveloped message to a registered output channel in a thread-safe manner.
+     *
+     * @param channelName Name of the channel to send the message to.
+     * @param message The message view whose rawBuffer() is dispatched.
+     * @return true If the channel was found and message sent successfully, false otherwise.
+     */
+    bool send(std::string_view channelName, const Message::MessageView& message);
+
+    /**
+     * @brief Sends a batch of enveloped messages to a registered output channel in a thread-safe manner.
+     *
+     * @param channelName Name of the channel to send the messages to.
+     * @param messages Views of messages to transmit.
+     * @return std::size_t Number of messages successfully dispatched.
+     */
+    std::size_t sendBatch(std::string_view channelName, std::span<const Message::MessageView> messages);
 
     /**
      * @brief Sends a message to a registered output channel in a thread-safe manner.

@@ -48,15 +48,8 @@ public:
      * @param channelName Name of the input channel ("udp_network_ingress").
      * @param buffer Non-owning view of the raw received payload.
      */
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
-
-    /**
-     * @brief Vectorized dispatch of multiple received datagram payloads into the backend output channel.
-     *
-     * @param channelName Name of the input channel.
-     * @param messages Vectorized view of received payload buffers.
-     */
-    void onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages) override;
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
 
 private:
     std::string m_outputChannelName;

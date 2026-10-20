@@ -45,7 +45,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param buffer Byte buffer of the message payload.
      */
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Deserializes an XML buffer into an Order model.

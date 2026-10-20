@@ -125,6 +125,7 @@ def generate_handler_config(
     if "input_channel" in handler_spec:
         in_ch = handler_spec["input_channel"]
         lines.append(f"channel.input={in_ch}")
+        lines.append(f"egress.input_channel={in_ch}")
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
         lines.append(f"split.input_channel={in_ch}")

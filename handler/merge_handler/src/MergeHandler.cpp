@@ -1,6 +1,7 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <utility>
@@ -56,16 +57,16 @@ bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void MergeHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void MergeHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes), redirecting to '{}'...",
-        channelName, buffer.size(), m_outputChannelName);
+    Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
+        channelName, message.payload().size(), m_outputChannelName);
 
     if (m_outputChannel) {
-        if (!m_outputChannel->send(buffer)) {
+        if (!m_outputChannel->send(message.rawBuffer())) {
             Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", m_outputChannelName);
         }
-    } else if (!send(m_outputChannelName, buffer)) {
+    } else if (!send(m_outputChannelName, message)) {
         Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", m_outputChannelName);
     }
 }

@@ -33,7 +33,11 @@ IoUringSocketPoller::~IoUringSocketPoller()
     }
 }
 
-std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> destination, Timeout timeout)
+std::size_t IoUringSocketPoller::receive(
+    int socketFd,
+    std::span<std::byte> destination,
+    Timeout timeout,
+    SocketAddress* outSourceAddress)
 {
     if (!m_impl || !m_impl->initialized || socketFd < 0 || destination.empty()) {
         return 0;
@@ -44,6 +48,7 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
         return 0;
     }
 
+    sockaddr_storage ss { };
     struct iovec iov { };
     iov.iov_base = destination.data();
     iov.iov_len = destination.size();
@@ -51,6 +56,10 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
     struct msghdr msg { };
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
+    if (outSourceAddress) {
+        msg.msg_name = &ss;
+        msg.msg_namelen = sizeof(ss);
+    }
 
     io_uring_prep_recvmsg(sqe, socketFd, &msg, 0);
     io_uring_sqe_set_data(sqe, nullptr);
@@ -76,6 +85,9 @@ std::size_t IoUringSocketPoller::receive(int socketFd, std::span<std::byte> dest
     if (cqe) {
         if (cqe->res > 0) {
             bytesRead = static_cast<std::size_t>(cqe->res);
+            if (outSourceAddress) {
+                outSourceAddress->setFromNative(&ss, msg.msg_namelen);
+            }
         }
         io_uring_cqe_seen(&m_impl->ring, cqe);
     }
@@ -87,7 +99,8 @@ std::size_t IoUringSocketPoller::receiveBatch(
     int socketFd,
     std::span<const std::span<std::byte>> destinations,
     std::span<std::size_t> outSizes,
-    Timeout timeout)
+    Timeout timeout,
+    std::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
         return 0;
@@ -98,15 +111,23 @@ std::size_t IoUringSocketPoller::receiveBatch(
 
     // Speculative non-blocking drain
     while (count < maxBatch) {
+        sockaddr_storage ss { };
+        socklen_t addrLen = sizeof(ss);
+        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
+        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
+
         ssize_t bytes = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destinations[count].data()),
             destinations[count].size(),
             MSG_DONTWAIT,
-            nullptr,
-            nullptr);
+            saPtr,
+            saLenPtr);
 
         if (bytes > 0) {
+            if (count < outSourceAddresses.size()) {
+                outSourceAddresses[count].setFromNative(&ss, addrLen);
+            }
             outSizes[count++] = static_cast<std::size_t>(bytes);
         } else {
             break;
@@ -118,7 +139,8 @@ std::size_t IoUringSocketPoller::receiveBatch(
     }
 
     // Wait for the first packet via io_uring
-    std::size_t firstBytes = receive(socketFd, destinations[0], timeout);
+    SocketAddress* firstAddr = (!outSourceAddresses.empty()) ? &outSourceAddresses[0] : nullptr;
+    std::size_t firstBytes = receive(socketFd, destinations[0], timeout, firstAddr);
     if (firstBytes == 0) {
         return 0;
     }
@@ -127,15 +149,23 @@ std::size_t IoUringSocketPoller::receiveBatch(
 
     // Drain remaining ready datagrams
     while (count < maxBatch) {
+        sockaddr_storage ss { };
+        socklen_t addrLen = sizeof(ss);
+        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
+        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
+
         ssize_t bytes = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destinations[count].data()),
             destinations[count].size(),
             MSG_DONTWAIT,
-            nullptr,
-            nullptr);
+            saPtr,
+            saLenPtr);
 
         if (bytes > 0) {
+            if (count < outSourceAddresses.size()) {
+                outSourceAddresses[count].setFromNative(&ss, addrLen);
+            }
             outSizes[count++] = static_cast<std::size_t>(bytes);
         } else {
             break;

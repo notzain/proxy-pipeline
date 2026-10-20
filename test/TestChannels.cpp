@@ -1,4 +1,6 @@
 #include "core/handler/IHandler.hpp"
+#include "core/message/MessageEnvelope.hpp"
+#include "core/message/MessageView.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <fmt/core.h>
 #include <memory>
@@ -12,8 +14,11 @@ namespace {
 class MockInputChannel : public Backend::IInputChannel {
 public:
     explicit MockInputChannel(std::vector<std::string> messages)
-        : m_messages(std::move(messages))
     {
+        for (const auto& msg : messages) {
+            auto env = Core::Message::MessageEnvelope::packRaw(std::as_bytes(std::span(msg.data(), msg.size())));
+            m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
+        }
     }
 
     std::optional<Buffer> receive(Timeout) override
@@ -52,13 +57,9 @@ public:
         std::size_t count = 0;
         while (count < destinations.size() && m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index];
-            // If the message exceeds the destination buffer slot, do not consume it in batch:
-            // leave it for full-MTU fallback receiveInto, or if it's the first message, signal saturation
             if (msg.size() > destinations[count].size()) {
-                // Peek/truncate into buffer to signal saturation without popping from queue
                 std::memcpy(destinations[count].data(), msg.data(), destinations[count].size());
                 outSizes[count] = destinations[count].size();
-                // Do not pop m_index: fallback receiveInto will read the full message
                 ++count;
                 break;
             }
@@ -81,7 +82,10 @@ public:
     bool send(std::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
-        std::string str(reinterpret_cast<const char*>(message.data()), message.size());
+        auto optView = Core::Message::MessageView::from(message);
+        std::string str = optView
+            ? std::string(reinterpret_cast<const char*>(optView->payload().data()), optView->payload().size())
+            : std::string(reinterpret_cast<const char*>(message.data()), message.size());
         sentMessages.push_back(str);
         return true;
     }
@@ -92,14 +96,14 @@ public:
 
 class TestChainedHandler : public Core::Handler::IHandler {
 public:
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
     {
         std::lock_guard lock(m_handlerMutex);
-        std::string text(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+        std::string text(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
         receivedMessages.push_back(fmt::format("{}:{}", channelName, text));
 
         if (hasOutputChannel("out")) {
-            send("out", buffer);
+            send("out", message);
         }
 
         m_count++;
@@ -234,9 +238,9 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
         {
         }
 
-        void onMessageReceived(std::string_view, std::span<const std::byte> buffer) override
+        void onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
         {
-            send(m_outChannel, buffer);
+            send(m_outChannel, message);
             m_count++;
             if (m_count >= 2) {
                 stop();
@@ -324,14 +328,14 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 {
     class JumboVerifyHandler : public Core::Handler::IHandler {
     public:
-        void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
+        void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             lastReceivedChannel = std::string(channelName);
-            lastReceivedSize = buffer.size();
-            lastReceivedPayload = std::string(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+            lastReceivedSize = message.payload().size();
+            lastReceivedPayload = std::string(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
             m_count++;
-            if (buffer.size() > 2048) {
+            if (message.payload().size() > 2048) {
                 stop();
             }
         }

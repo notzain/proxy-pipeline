@@ -2,6 +2,7 @@
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 
 namespace Proxy::Handler {
@@ -61,34 +62,32 @@ bool XmlVerificationHandler::validate(std::span<const std::byte> xmlData) const
     return m_validator && m_validator->validate(xmlData);
 }
 
-void XmlVerificationHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    if (validate(buffer)) {
-        Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes) verified against XSD schema. Forwarding to '{}'...",
-            channelName, buffer.size(), m_outputChannelName);
+    if (validate(message.payload())) {
+        Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes payload) verified against XSD schema. Forwarding to '{}'...",
+            channelName, message.payload().size(), m_outputChannelName);
         if (m_outputChannel) {
-            if (!m_outputChannel->send(buffer)) {
+            if (!m_outputChannel->send(message.rawBuffer())) {
                 Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", m_outputChannelName);
             }
-        } else if (!send(m_outputChannelName, buffer)) {
+        } else if (!send(m_outputChannelName, message)) {
             Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", m_outputChannelName);
         }
     } else {
-        Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes) REJECTED by XSD schema '{}'. Discarding message.",
-            channelName, buffer.size(), m_schemaPath.string());
+        Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
+            channelName, message.payload().size(), m_schemaPath.string());
     }
 }
 
-void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const std::span<const std::byte>> messages)
+void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
 {
     std::array<std::span<const std::byte>, 32> validSpans;
     std::size_t validCount = 0;
 
-    for (const auto& buffer : messages) {
-        if (validate(buffer)) {
-            Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes) verified against XSD schema.",
-                channelName, buffer.size());
-            validSpans[validCount++] = buffer;
+    for (const auto& msg : messages) {
+        if (validate(msg.payload())) {
+            validSpans[validCount++] = msg.rawBuffer();
             if (validCount == validSpans.size()) {
                 if (m_outputChannel) {
                     m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
@@ -98,8 +97,8 @@ void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::
                 validCount = 0;
             }
         } else {
-            Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes) REJECTED by XSD schema '{}'. Discarding message.",
-                channelName, buffer.size(), m_schemaPath.string());
+            Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
+                channelName, msg.payload().size(), m_schemaPath.string());
         }
     }
 

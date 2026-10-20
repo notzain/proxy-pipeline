@@ -1,6 +1,7 @@
 #include "OrderValidationHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
 
@@ -896,12 +897,12 @@ bool OrderValidationHandler::validateOrderFast(const Proxy::Model::OrderView& or
     return true;
 }
 
-void OrderValidationHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void OrderValidationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    auto order = parseOrder(buffer);
+    auto order = parseOrder(message.payload());
     if (!order.has_value()) {
         Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to Order. Discarding.",
-            channelName, buffer.size());
+            channelName, message.payload().size());
         return;
     }
 
@@ -914,7 +915,7 @@ void OrderValidationHandler::onMessageReceived(std::string_view channelName, std
     Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
         order->customer, order->item, order->quantity, m_outputChannelName);
 
-    if (!send(m_outputChannelName, buffer)) {
+    if (!send(m_outputChannelName, message)) {
         Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
     }
 }

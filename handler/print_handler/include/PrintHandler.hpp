@@ -25,12 +25,12 @@ public:
     bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
-     * @brief Prints the received message buffer to standard output using fmt.
+     * @brief Prints the received enveloped message payload to standard output using fmt.
      *
      * @param channelName Name of the channel that received the message.
-     * @param buffer Non-owning view of the raw byte buffer received.
+     * @param message Non-owning view of the received enveloped message.
      */
-    void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override;
+    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
 private:
     std::string m_channelName;

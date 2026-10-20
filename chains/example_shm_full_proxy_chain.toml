@@ -1,0 +1,41 @@
+# Demonstrates a Full End-to-End Proxy Chain with Origin-Preserving Egress:
+# 1. Network Ingress (UDP): Listens on 127.0.0.1:9123, attaches Envelope Header + UdpMetadata (source IP/port).
+# 2. Pipeline Backend (SHM): Message flows through Shared Memory ring buffers.
+# 3. XML Verification: Validates XML payload against XSD while strictly preserving the envelope & metadata.
+# 4. Network Egress (UDP): Reads the envelope, recovers the client's origin (IP/port), and sends the payload back.
+backend = "shm"
+
+[config]
+"shm.path" = "/tmp/proxy_shm_default.dat"
+"channel.orders_raw.path" = "/tmp/proxy_shm_orders_raw.dat"
+"channel.orders_verified.path" = "/tmp/proxy_shm_orders_verified.dat"
+
+# Ingress: Listens for incoming UDP datagrams, packs UDP origin metadata into the envelope,
+# and pushes to internal SHM channel "orders_raw".
+[[handlers]]
+name = "network_ingress"
+type = "udp_ingress_handler"
+output_channel = "orders_raw"
+[handlers.config]
+"ingress.host" = "127.0.0.1"
+"ingress.port" = 9123
+
+# Verification: Consumes envelopes from SHM, validates payload against XSD schema,
+# and forwards valid envelopes to SHM channel "orders_verified".
+[[handlers]]
+name = "xml_validator"
+type = "xml_verification_handler"
+input_channel = "orders_raw"
+output_channel = "orders_verified"
+[handlers.config]
+"xml.xsd_path" = "chains/order.xsd"
+
+# Egress: Consumes envelopes from SHM, extracts original source address from UdpMetadata,
+# and transmits the payload over UDP back to the sender ("reply_to_origin").
+[[handlers]]
+name = "network_egress"
+type = "udp_egress_handler"
+input_channel = "orders_verified"
+[handlers.config]
+"egress.reply_to_origin" = true
+

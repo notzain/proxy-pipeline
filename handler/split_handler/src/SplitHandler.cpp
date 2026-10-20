@@ -1,6 +1,7 @@
 #include "SplitHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <string>
@@ -51,18 +52,19 @@ bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void SplitHandler::onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer)
+void SplitHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes), splitting to output channels...", channelName, buffer.size());
+    Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
+        channelName, message.payload().size());
     std::size_t forwarded = 0;
     if (!m_outputChannelsList.empty()) {
         for (auto* outChan : m_outputChannelsList) {
-            if (outChan && outChan->send(buffer)) {
+            if (outChan && outChan->send(message.rawBuffer())) {
                 forwarded++;
             }
         }
     } else {
-        forwarded = sendAll(buffer);
+        forwarded = sendAll(message.rawBuffer());
     }
     Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
 }

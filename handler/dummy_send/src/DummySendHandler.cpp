@@ -1,6 +1,7 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/message/MessageEnvelope.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
@@ -42,11 +43,13 @@ void DummySendHandler::step()
             reinterpret_cast<const std::byte*>(m_messageText.data()),
             m_messageText.size());
 
+        auto envelope = Core::Message::MessageEnvelope::packRaw(byteSpan);
+
         Proxy::Log::info("[DummySend] Sending message to channel '{}': {}", m_channelName, m_messageText);
         if (m_outputChannel) {
-            m_outputChannel->send(byteSpan);
+            m_outputChannel->send(envelope);
         } else {
-            send(m_channelName, byteSpan);
+            send(m_channelName, envelope);
         }
     }
 }
