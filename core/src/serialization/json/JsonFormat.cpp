@@ -1,8 +1,10 @@
-#include "core/serialization/JsonFormat.hpp"
+#include "core/serialization/json/JsonFormat.hpp"
 
 #include <nlohmann/json.hpp>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Json {
+
+using namespace Core::Serialization::Ir;
 
 namespace {
 
@@ -83,7 +85,7 @@ namespace {
 
 } // namespace
 
-std::string JsonFormat::encode(const Value& ir, const Options& options)
+std::string JsonFormat::encode(const Ir::Value& ir, const Options& options)
 {
     nlohmann::json j = toNlohmann(ir);
     if (options.indent >= 0) {
@@ -92,7 +94,7 @@ std::string JsonFormat::encode(const Value& ir, const Options& options)
     return j.dump();
 }
 
-std::optional<Value> JsonFormat::decode(std::string_view input)
+std::optional<Ir::Value> JsonFormat::decode(std::string_view input)
 {
     try {
         auto j = nlohmann::json::parse(input);
@@ -102,4 +104,4 @@ std::optional<Value> JsonFormat::decode(std::string_view input)
     }
 }
 
-} // namespace Core::Serialization
+} // namespace Core::Serialization::Json

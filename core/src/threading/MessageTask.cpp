@@ -1,7 +1,7 @@
-#include "core/MessageTask.hpp"
+#include "core/threading/MessageTask.hpp"
 #include <algorithm>
 
-namespace Core {
+namespace Core::Threading {
 
 void MessageTask::assign(std::string_view name, std::span<const std::byte> data)
 {
@@ -78,4 +78,4 @@ std::span<const std::byte> MessageTask::payload() const noexcept
     return std::span<const std::byte>(m_heapBuffer.data(), m_heapBuffer.size());
 }
 
-} // namespace Core
+} // namespace Core::Threading

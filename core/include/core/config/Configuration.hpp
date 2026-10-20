@@ -7,7 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace Core {
+namespace Core::Config {
 
 /**
  * @brief Key-value configuration store implementing Backend::IConfig.
@@ -56,4 +56,8 @@ private:
     std::unordered_map<std::string, std::string> m_entries;
 };
 
+} // namespace Core::Config
+
+namespace Core {
+using Config::Configuration;
 } // namespace Core

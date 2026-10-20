@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <string_view>
 
 namespace Proxy::Handler {
@@ -9,7 +9,7 @@ namespace Proxy::Handler {
  * @brief Split / Fan-out handler that consumes messages from an input channel
  * and forwards each received message to all configured output channels.
  */
-class SplitHandler : public Core::IHandler {
+class SplitHandler : public Core::Handler::IHandler {
 public:
     SplitHandler() = default;
     ~SplitHandler() override = default;
@@ -21,7 +21,7 @@ public:
      * @param backend Backend instance.
      * @return true If channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Callback invoked when a message is received on an input channel.

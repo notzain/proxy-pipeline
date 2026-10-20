@@ -1,6 +1,6 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
@@ -14,7 +14,7 @@ DummySendHandler::DummySendHandler(std::string channelName, std::string messageT
 {
 }
 
-bool DummySendHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool DummySendHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     m_messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");

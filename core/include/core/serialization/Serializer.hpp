@@ -1,12 +1,12 @@
 #pragma once
 
-#include "core/serialization/Converter.hpp"
-#include "core/serialization/JsonFormat.hpp"
-#include "core/serialization/JsonSerializer.hpp"
 #include "core/serialization/TypeTraits.hpp"
-#include "core/serialization/Value.hpp"
-#include "core/serialization/XmlFormat.hpp"
-#include "core/serialization/XmlSerializer.hpp"
+#include "core/serialization/ir/Converter.hpp"
+#include "core/serialization/ir/Value.hpp"
+#include "core/serialization/json/JsonFormat.hpp"
+#include "core/serialization/json/JsonSerializer.hpp"
+#include "core/serialization/xml/XmlFormat.hpp"
+#include "core/serialization/xml/XmlSerializer.hpp"
 
 #include <optional>
 #include <string>
@@ -26,7 +26,7 @@ namespace Core::Serialization {
 template <typename Format, typename T>
 std::string serialize(const T& value, const typename Format::Options& options = { })
 {
-    Value ir = toIntermediate(value);
+    Ir::Value ir = Ir::toIntermediate(value);
     return Format::encode(ir, options);
 }
 
@@ -41,11 +41,16 @@ std::string serialize(const T& value, const typename Format::Options& options = 
 template <typename Format, typename T>
 std::optional<T> deserialize(std::string_view input, const typename Format::Options& options = { })
 {
-    auto ir = Format::decode(input, options);
+    std::optional<Ir::Value> ir;
+    if constexpr (requires { Format::decode(input, options); }) {
+        ir = Format::decode(input, options);
+    } else {
+        ir = Format::decode(input);
+    }
     if (!ir) {
         return std::nullopt;
     }
-    return fromIntermediate<T>(*ir);
+    return Ir::fromIntermediate<T>(*ir);
 }
 
 } // namespace Core::Serialization

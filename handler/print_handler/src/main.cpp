@@ -1,6 +1,6 @@
 #include "PrintHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <filesystem>
 #include <memory>
@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
     Proxy::Log::info("Loading configuration from: {}", configPath.string());
 
     // Configuration is always read from file - applications never hardcode their own properties
-    Core::Configuration config = Core::Configuration::fromFile(configPath);
+    Core::Config::Configuration config = Core::Config::Configuration::fromFile(configPath);
 
     // Backend created via link-time resolution and configured purely from file (also initializes backend-specific logging)
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();

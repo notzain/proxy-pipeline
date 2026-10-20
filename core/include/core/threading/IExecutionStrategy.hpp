@@ -1,8 +1,10 @@
 #pragma once
 
-namespace Core {
-
+namespace Core::Handler {
 class IHandler;
+} // namespace Core::Handler
+
+namespace Core::Threading {
 
 /**
  * @brief Strategy interface for executing the IHandler message polling and event loop.
@@ -16,7 +18,7 @@ public:
      *
      * @param handler The handler to run.
      */
-    virtual void start(IHandler& handler) = 0;
+    virtual void start(Handler::IHandler& handler) = 0;
 
     /**
      * @brief Signals the strategy to stop execution.
@@ -36,4 +38,8 @@ public:
     [[nodiscard]] virtual bool isRunning() const noexcept = 0;
 };
 
+} // namespace Core::Threading
+
+namespace Core {
+using Threading::IExecutionStrategy;
 } // namespace Core

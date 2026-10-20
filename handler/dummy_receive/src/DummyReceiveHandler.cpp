@@ -1,13 +1,13 @@
 #include "DummyReceiveHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
 
 namespace Proxy::Handler {
 
-bool DummyReceiveHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool DummyReceiveHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     auto inChannel = backend.createInputChannel(m_channelName, config);

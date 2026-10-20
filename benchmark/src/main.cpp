@@ -4,7 +4,7 @@
 #include "backend/shm/ShmBackend.hpp"
 #include "backend/socket/SocketBackend.hpp"
 #include "backend/uds/UdsBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 
 #include <algorithm>
@@ -179,7 +179,7 @@ int main(int argc, char* argv[])
         confFile << "xml.output_channel=udp_verified\n";
         confFile.close();
 
-        Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_socket.conf");
+        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_socket.conf");
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Socket::SocketBackend>();
         backend->configure(config);
 
@@ -282,7 +282,7 @@ int main(int argc, char* argv[])
         confFile << "xml.output_channel=uds_verified\n";
         confFile.close();
 
-        Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_uds.conf");
+        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_uds.conf");
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Uds::UdsBackend>();
         backend->configure(config);
 
@@ -389,7 +389,7 @@ int main(int argc, char* argv[])
         std::filesystem::remove("/tmp/bench_shm_raw.dat");
         std::filesystem::remove("/tmp/bench_shm_verified.dat");
 
-        Core::Configuration config = Core::Configuration::fromFile("/tmp/bench_shm.conf");
+        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_shm.conf");
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Shm::ShmBackend>();
         backend->configure(config);
 

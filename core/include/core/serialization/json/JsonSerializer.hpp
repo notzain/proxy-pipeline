@@ -1,14 +1,14 @@
 #pragma once
 
-#include "core/serialization/Converter.hpp"
-#include "core/serialization/JsonFormat.hpp"
-#include "core/serialization/Value.hpp"
+#include "core/serialization/ir/Converter.hpp"
+#include "core/serialization/ir/Value.hpp"
+#include "core/serialization/json/JsonFormat.hpp"
 
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Json {
 
 /**
  * @brief Serializes a value of type T into a JSON string using intermediate representation.
@@ -29,7 +29,7 @@ public:
      */
     static std::string serialize(const T& value, const Options& options = { })
     {
-        Value ir = toIntermediate(value);
+        Ir::Value ir = Ir::toIntermediate(value);
         return JsonFormat::encode(ir, options);
     }
 
@@ -62,7 +62,7 @@ public:
         if (!ir) {
             return std::nullopt;
         }
-        return fromIntermediate<T>(*ir);
+        return Ir::fromIntermediate<T>(*ir);
     }
 
     /**
@@ -74,4 +74,9 @@ public:
     }
 };
 
+} // namespace Core::Serialization::Json
+
+namespace Core::Serialization {
+using Json::JsonDeserializer;
+using Json::JsonSerializer;
 } // namespace Core::Serialization

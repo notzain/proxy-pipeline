@@ -1,14 +1,14 @@
-#include "core/IHandler.hpp"
-#include "core/DedicatedThreadStrategy.hpp"
-#include "core/SequentialStrategy.hpp"
-#include "core/ThreadPoolStrategy.hpp"
+#include "core/handler/IHandler.hpp"
+#include "core/threading/DedicatedThreadStrategy.hpp"
+#include "core/threading/SequentialStrategy.hpp"
+#include "core/threading/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
 #include <csignal>
 #include <mutex>
 
 namespace {
 // Global pointer to active handler instance for C signal dispatching
-std::atomic<Core::IHandler*> g_activeHandler { nullptr };
+std::atomic<Core::Handler::IHandler*> g_activeHandler { nullptr };
 
 extern "C" void proxySignalHandler(int signal)
 {
@@ -20,7 +20,7 @@ extern "C" void proxySignalHandler(int signal)
 }
 } // namespace
 
-namespace Core {
+namespace Core::Handler {
 
 ExecutionModel parseExecutionModel(std::string_view name)
 {
@@ -40,7 +40,7 @@ IHandler::~IHandler()
     unregisterSignalHandler();
 }
 
-bool IHandler::configure(const Configuration&, ::Backend::IBackend&)
+bool IHandler::configure(const Config::Configuration&, ::Backend::IBackend&)
 {
     return true;
 }
@@ -150,19 +150,19 @@ void IHandler::setExecutionModel(ExecutionModel model, std::size_t poolSize)
 {
     switch (model) {
     case ExecutionModel::Sequential:
-        m_strategy = std::make_unique<SequentialStrategy>();
+        m_strategy = std::make_unique<Threading::SequentialStrategy>();
         break;
     case ExecutionModel::ThreadPool:
-        m_strategy = std::make_unique<ThreadPoolStrategy>(poolSize);
+        m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(poolSize);
         break;
     case ExecutionModel::Dedicated:
     default:
-        m_strategy = std::make_unique<DedicatedThreadStrategy>();
+        m_strategy = std::make_unique<Threading::DedicatedThreadStrategy>();
         break;
     }
 }
 
-void IHandler::setExecutionStrategy(std::unique_ptr<IExecutionStrategy> strategy)
+void IHandler::setExecutionStrategy(std::unique_ptr<Threading::IExecutionStrategy> strategy)
 {
     m_strategy = std::move(strategy);
 }
@@ -170,7 +170,7 @@ void IHandler::setExecutionStrategy(std::unique_ptr<IExecutionStrategy> strategy
 void IHandler::ensureStrategy()
 {
     if (!m_strategy) {
-        m_strategy = std::make_unique<DedicatedThreadStrategy>();
+        m_strategy = std::make_unique<Threading::DedicatedThreadStrategy>();
     }
 }
 
@@ -183,7 +183,7 @@ void IHandler::registerSignalHandler()
 
 void IHandler::unregisterSignalHandler()
 {
-    Core::IHandler* expected = this;
+    Core::Handler::IHandler* expected = this;
     if (g_activeHandler.compare_exchange_strong(expected, nullptr, std::memory_order_acq_rel)) {
         std::signal(SIGINT, SIG_DFL);
         std::signal(SIGTERM, SIG_DFL);
@@ -225,4 +225,4 @@ bool IHandler::isRunning() const noexcept
     return m_strategy && m_strategy->isRunning();
 }
 
-} // namespace Core
+} // namespace Core::Handler

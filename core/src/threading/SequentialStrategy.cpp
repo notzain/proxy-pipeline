@@ -1,12 +1,12 @@
-#include "core/SequentialStrategy.hpp"
-#include "core/IHandler.hpp"
+#include "core/threading/SequentialStrategy.hpp"
+#include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
 #include <chrono>
 #include <span>
 #include <thread>
 
-namespace Core {
+namespace Core::Threading {
 
 SequentialStrategy::SequentialStrategy() = default;
 
@@ -16,10 +16,10 @@ SequentialStrategy::~SequentialStrategy()
     wait();
 }
 
-void SequentialStrategy::start(IHandler& handler)
+void SequentialStrategy::start(Handler::IHandler& handler)
 {
     m_running.store(true, std::memory_order_release);
-    constexpr IHandler::Timeout channelTimeout { 50 };
+    constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto& channels = handler.getInputChannels();
     Proxy::Log::info("[SequentialStrategy] Started loop for {} channel(s)", channels.size());
@@ -57,7 +57,7 @@ void SequentialStrategy::start(IHandler& handler)
 
                             if (hasOversized) {
                                 static thread_local std::array<std::byte, 65535> jumboBuffer;
-                                constexpr IHandler::Timeout zeroTimeout { 0 };
+                                constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
                                 std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuffer, zeroTimeout);
                                 if (jumboBytes > 0) {
                                     handler.onMessageReceived(namedChannel.name, std::span<const std::byte>(jumboBuffer.data(), jumboBytes));
@@ -94,4 +94,4 @@ bool SequentialStrategy::isRunning() const noexcept
     return m_running.load(std::memory_order_acquire);
 }
 
-} // namespace Core
+} // namespace Core::Threading

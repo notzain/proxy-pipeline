@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <string>
 
 namespace Proxy::Handler {
@@ -8,7 +8,7 @@ namespace Proxy::Handler {
 /**
  * @brief Test handler that registers an input channel and prints received messages.
  */
-class DummyReceiveHandler : public Core::IHandler {
+class DummyReceiveHandler : public Core::Handler::IHandler {
 public:
     DummyReceiveHandler() = default;
     ~DummyReceiveHandler() override = default;
@@ -20,7 +20,7 @@ public:
      * @param backend Backend instance.
      * @return true If input channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Callback invoked when a message arrives on an input channel.

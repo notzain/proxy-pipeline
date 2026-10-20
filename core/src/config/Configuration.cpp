@@ -1,8 +1,8 @@
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include <fstream>
 #include <string_view>
 
-namespace Core {
+namespace Core::Config {
 
 Configuration Configuration::fromFile(const std::filesystem::path& filePath)
 {
@@ -65,4 +65,4 @@ bool Configuration::has(std::string_view key) const noexcept
     return m_entries.contains(std::string(key));
 }
 
-} // namespace Core
+} // namespace Core::Config

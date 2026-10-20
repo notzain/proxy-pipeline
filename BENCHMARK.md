@@ -517,7 +517,7 @@ if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeo
   - **Auto-Reconnect Egress Resilience**: When `::send()` detects `ECONNREFUSED`, `ENETUNREACH`, or `ENETDOWN`, `SocketOutputChannel` immediately refreshes the peer connection via `::connect()` and retries transmission before seamlessly falling back to `::sendto()`.
 
 ```cpp
-// core/src/IHandler.cpp
+// core/src/handler/IHandler.cpp
 bool IHandler::send(std::string_view channelName, std::span<const std::byte> message)
 {
     std::shared_lock lock(m_outputMutex);

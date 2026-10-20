@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <chrono>
 #include <string>
 
@@ -9,7 +9,7 @@ namespace Proxy::Handler {
 /**
  * @brief Test handler that registers an output channel and repeatedly sends a text blob with a delay.
  */
-class DummySendHandler : public Core::IHandler {
+class DummySendHandler : public Core::Handler::IHandler {
 public:
     DummySendHandler() = default;
     DummySendHandler(std::string channelName, std::string messageText, std::chrono::milliseconds delay);
@@ -22,7 +22,7 @@ public:
      * @param backend Backend instance.
      * @return true If output channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Periodic step callback executed by IHandler's event loop.

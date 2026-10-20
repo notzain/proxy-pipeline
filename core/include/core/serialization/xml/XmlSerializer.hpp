@@ -1,14 +1,14 @@
 #pragma once
 
-#include "core/serialization/Converter.hpp"
-#include "core/serialization/Value.hpp"
-#include "core/serialization/XmlFormat.hpp"
+#include "core/serialization/ir/Converter.hpp"
+#include "core/serialization/ir/Value.hpp"
+#include "core/serialization/xml/XmlFormat.hpp"
 
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Xml {
 
 /**
  * @brief Serializes a value of type T into an XML string using intermediate representation.
@@ -29,7 +29,7 @@ public:
      */
     static std::string serialize(const T& value, const Options& options = { })
     {
-        Value ir = toIntermediate(value);
+        Ir::Value ir = Ir::toIntermediate(value);
         return XmlFormat::encode(ir, options);
     }
 
@@ -65,7 +65,7 @@ public:
         if (!ir) {
             return std::nullopt;
         }
-        return fromIntermediate<T>(*ir);
+        return Ir::fromIntermediate<T>(*ir);
     }
 
     /**
@@ -82,7 +82,7 @@ public:
         if (!ir) {
             return std::nullopt;
         }
-        return fromIntermediate<T>(*ir);
+        return Ir::fromIntermediate<T>(*ir);
     }
 
     /**
@@ -94,4 +94,9 @@ public:
     }
 };
 
+} // namespace Core::Serialization::Xml
+
+namespace Core::Serialization {
+using Xml::XmlDeserializer;
+using Xml::XmlSerializer;
 } // namespace Core::Serialization

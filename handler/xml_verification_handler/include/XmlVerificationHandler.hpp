@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <filesystem>
 #include <memory>
 #include <span>
@@ -21,7 +21,7 @@ class XmlSchemaValidator;
  * Messages that satisfy the schema are forwarded to the configured output channel.
  * Messages that fail schema validation or contain malformed XML are rejected/discarded.
  */
-class XmlVerificationHandler : public Core::IHandler {
+class XmlVerificationHandler : public Core::Handler::IHandler {
 public:
     XmlVerificationHandler();
 
@@ -43,7 +43,7 @@ public:
      * @param backend Backend instance.
      * @return true If configuration, schema loading, and channel initialization succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Ingress callback for incoming messages.

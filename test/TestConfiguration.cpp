@@ -1,11 +1,11 @@
 #include "backend/IConfig.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 TEST_CASE("IConfig strongly-typed getters via Core::Configuration", "[config]")
 {
-    Core::Configuration config;
+    Core::Config::Configuration config;
     config.set("app.name", "ProxyApp");
     config.set("server.port", "8080");
     config.set("server.timeout_ms", "-500");

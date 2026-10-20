@@ -1,6 +1,9 @@
-#include "core/serialization/JsonSerializer.hpp"
+#include "core/serialization/Serializer.hpp"
 #include "core/serialization/TypeTraits.hpp"
-#include "core/serialization/XmlSerializer.hpp"
+#include "core/serialization/ir/Converter.hpp"
+#include "core/serialization/ir/Value.hpp"
+#include "core/serialization/json/JsonSerializer.hpp"
+#include "core/serialization/xml/XmlSerializer.hpp"
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
@@ -113,10 +116,10 @@ TEST_CASE("JsonSerializer and JsonDeserializer with simple POD", "[serialization
 {
     Point p { .x = 10, .y = -25 };
 
-    std::string json = Core::Serialization::JsonSerializer<Point>::serialize(p);
+    std::string json = Core::Serialization::Json::JsonSerializer<Point>::serialize(p);
     REQUIRE(!json.empty());
 
-    auto restored = Core::Serialization::JsonDeserializer<Point>::deserialize(json);
+    auto restored = Core::Serialization::Json::JsonDeserializer<Point>::deserialize(json);
     REQUIRE(restored.has_value());
     CHECK(restored->x == 10);
     CHECK(restored->y == -25);
@@ -130,10 +133,10 @@ TEST_CASE("JsonSerializer and JsonDeserializer with nested PODs", "[serializatio
         .radius = 3.14159
     };
 
-    std::string json = Core::Serialization::JsonSerializer<Circle>::serialize(c, { .indent = 2 });
+    std::string json = Core::Serialization::Json::JsonSerializer<Circle>::serialize(c, { .indent = 2 });
     REQUIRE(!json.empty());
 
-    auto restored = Core::Serialization::JsonDeserializer<Circle>::deserialize(json);
+    auto restored = Core::Serialization::Json::JsonDeserializer<Circle>::deserialize(json);
     REQUIRE(restored.has_value());
     CHECK(restored->center.x == 5);
     CHECK(restored->center.y == 12);
@@ -156,10 +159,10 @@ TEST_CASE("JsonSerializer and JsonDeserializer with std containers and optionals
                 .radius = 50.0 }
         };
 
-        std::string json = Core::Serialization::JsonSerializer<ComplexModel>::serialize(model, { .indent = 2 });
+        std::string json = Core::Serialization::Json::JsonSerializer<ComplexModel>::serialize(model, { .indent = 2 });
         REQUIRE(!json.empty());
 
-        auto restored = Core::Serialization::JsonDeserializer<ComplexModel>::deserialize(json);
+        auto restored = Core::Serialization::Json::JsonDeserializer<ComplexModel>::deserialize(json);
         REQUIRE(restored.has_value());
         CHECK(*restored == model);
         CHECK(restored->description.has_value());
@@ -182,10 +185,10 @@ TEST_CASE("JsonSerializer and JsonDeserializer with std containers and optionals
                 .radius = 1.0 }
         };
 
-        std::string json = Core::Serialization::JsonSerializer<ComplexModel>::serialize(model);
+        std::string json = Core::Serialization::Json::JsonSerializer<ComplexModel>::serialize(model);
         REQUIRE(!json.empty());
 
-        auto restored = Core::Serialization::JsonDeserializer<ComplexModel>::deserialize(json);
+        auto restored = Core::Serialization::Json::JsonDeserializer<ComplexModel>::deserialize(json);
         REQUIRE(restored.has_value());
         CHECK(*restored == model);
         CHECK_FALSE(restored->description.has_value());
@@ -198,19 +201,19 @@ TEST_CASE("JsonDeserializer error handling on invalid input", "[serialization][j
 {
     SECTION("Invalid JSON syntax")
     {
-        auto restored = Core::Serialization::JsonDeserializer<Point>::deserialize("{ not valid json }");
+        auto restored = Core::Serialization::Json::JsonDeserializer<Point>::deserialize("{ not valid json }");
         CHECK_FALSE(restored.has_value());
     }
 
     SECTION("Mismatched data types")
     {
-        auto restored = Core::Serialization::JsonDeserializer<Point>::deserialize(R"({"x": "not a number", "y": 20})");
+        auto restored = Core::Serialization::Json::JsonDeserializer<Point>::deserialize(R"({"x": "not a number", "y": 20})");
         CHECK_FALSE(restored.has_value());
     }
 
     SECTION("Missing required fields")
     {
-        auto restored = Core::Serialization::JsonDeserializer<Point>::deserialize(R"({"x": 10})");
+        auto restored = Core::Serialization::Json::JsonDeserializer<Point>::deserialize(R"({"x": 10})");
         CHECK_FALSE(restored.has_value());
     }
 }
@@ -220,13 +223,13 @@ TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[se
     SECTION("Simple POD serialization and deserialization")
     {
         Point p { .x = 42, .y = 84 };
-        std::string xml = Core::Serialization::XmlSerializer<Point>::serialize(p, { .rootName = "Point" });
+        std::string xml = Core::Serialization::Xml::XmlSerializer<Point>::serialize(p, { .rootName = "Point" });
         REQUIRE(!xml.empty());
         CHECK(xml.find("<Point") != std::string::npos);
         CHECK(xml.find("<x>42</x>") != std::string::npos);
         CHECK(xml.find("<y>84</y>") != std::string::npos);
 
-        auto restored = Core::Serialization::XmlDeserializer<Point>::deserialize(xml, { .rootName = "Point" });
+        auto restored = Core::Serialization::Xml::XmlDeserializer<Point>::deserialize(xml, { .rootName = "Point" });
         REQUIRE(restored.has_value());
         CHECK(restored->x == 42);
         CHECK(restored->y == 84);
@@ -244,7 +247,7 @@ TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[se
             .location = { .x = 10, .y = 20 }
         };
 
-        std::string xml = Core::Serialization::XmlSerializer<UserProfile>::serialize(profile, { .rootName = "UserProfile" });
+        std::string xml = Core::Serialization::Xml::XmlSerializer<UserProfile>::serialize(profile, { .rootName = "UserProfile" });
         REQUIRE(!xml.empty());
 
         // Validate that attributes are rendered inside tag
@@ -260,7 +263,7 @@ TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[se
         CHECK(xml.find("<y>20</y>") != std::string::npos);
 
         // Deserialize back
-        auto restored = Core::Serialization::XmlDeserializer<UserProfile>::deserialize(xml, { .rootName = "UserProfile" });
+        auto restored = Core::Serialization::Xml::XmlDeserializer<UserProfile>::deserialize(xml, { .rootName = "UserProfile" });
         REQUIRE(restored.has_value());
         CHECK(restored->id == 1337);
         CHECK(restored->role == "admin");
@@ -274,7 +277,33 @@ TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[se
 
     SECTION("XML error handling on invalid syntax")
     {
-        auto restored = Core::Serialization::XmlDeserializer<Point>::deserialize("<Point><x>10</Point>");
+        auto restored = Core::Serialization::Xml::XmlDeserializer<Point>::deserialize("<Point><x>10</Point>");
         CHECK_FALSE(restored.has_value());
     }
+}
+
+TEST_CASE("Intermediate representation (IR) value trees and generic facade", "[serialization][ir]")
+{
+    Point p { .x = 42, .y = 99 };
+    Core::Serialization::Ir::Value ir = Core::Serialization::Ir::toIntermediate(p);
+    REQUIRE(ir.isObject());
+    REQUIRE(ir.findField("x") != nullptr);
+    CHECK(ir.findField("x")->asInt() == 42);
+    REQUIRE(ir.findField("y") != nullptr);
+    CHECK(ir.findField("y")->asInt() == 99);
+
+    auto restored = Core::Serialization::Ir::fromIntermediate<Point>(ir);
+    REQUIRE(restored.has_value());
+    CHECK(restored->x == 42);
+    CHECK(restored->y == 99);
+
+    std::string json = Core::Serialization::serialize<Core::Serialization::Json::JsonFormat>(p);
+    auto fromJson = Core::Serialization::deserialize<Core::Serialization::Json::JsonFormat, Point>(json);
+    REQUIRE(fromJson.has_value());
+    CHECK(*fromJson == p);
+
+    std::string xml = Core::Serialization::serialize<Core::Serialization::Xml::XmlFormat>(p, { .rootName = "Point" });
+    auto fromXml = Core::Serialization::deserialize<Core::Serialization::Xml::XmlFormat, Point>(xml, { .rootName = "Point" });
+    REQUIRE(fromXml.has_value());
+    CHECK(*fromXml == p);
 }

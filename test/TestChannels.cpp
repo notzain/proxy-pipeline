@@ -1,7 +1,7 @@
-#include "core/DedicatedThreadStrategy.hpp"
-#include "core/IHandler.hpp"
-#include "core/SequentialStrategy.hpp"
-#include "core/ThreadPoolStrategy.hpp"
+#include "core/handler/IHandler.hpp"
+#include "core/threading/DedicatedThreadStrategy.hpp"
+#include "core/threading/SequentialStrategy.hpp"
+#include "core/threading/ThreadPoolStrategy.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <fmt/core.h>
 #include <memory>
@@ -93,7 +93,7 @@ public:
     std::vector<std::string> sentMessages;
 };
 
-class TestChainedHandler : public Core::IHandler {
+class TestChainedHandler : public Core::Handler::IHandler {
 public:
     void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
     {
@@ -143,7 +143,7 @@ TEST_CASE("IHandler output channel registration and dispatch", "[channel][core]"
 TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 {
     TestChainedHandler handler;
-    handler.setExecutionModel(Core::ExecutionModel::Sequential);
+    handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -168,7 +168,7 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 TEST_CASE("IHandler Dedicated thread execution model with async start", "[channel][core]")
 {
     TestChainedHandler handler;
-    handler.setExecutionModel(Core::ExecutionModel::Dedicated);
+    handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -189,7 +189,7 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
 TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 {
     TestChainedHandler handler;
-    handler.setExecutionModel(Core::ExecutionModel::ThreadPool, 2);
+    handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -230,7 +230,7 @@ TEST_CASE("IHandler sendAll broadcasts to all registered channels", "[channel][c
 
 TEST_CASE("MergeHandler redirects multiple input channels to single output channel", "[channel][core]")
 {
-    class MockMergeHandler : public Core::IHandler {
+    class MockMergeHandler : public Core::Handler::IHandler {
     public:
         explicit MockMergeHandler(std::string outChannel)
             : m_outChannel(std::move(outChannel))
@@ -325,7 +325,7 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
 
 TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes", "[channel][core][jumbo]")
 {
-    class JumboVerifyHandler : public Core::IHandler {
+    class JumboVerifyHandler : public Core::Handler::IHandler {
     public:
         void onMessageReceived(std::string_view channelName, std::span<const std::byte> buffer) override
         {
@@ -351,7 +351,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     SECTION("ThreadPool execution model receives oversized 4096-byte packet")
     {
         JumboVerifyHandler handler;
-        handler.setExecutionModel(Core::ExecutionModel::ThreadPool, 2);
+        handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
 
         // Generate a 4096-byte payload (exceeds 2048-byte default batch slot)
         std::string jumboPayload(4096, 'X');
@@ -369,7 +369,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     SECTION("Dedicated thread model receives oversized 8192-byte packet")
     {
         JumboVerifyHandler handler;
-        handler.setExecutionModel(Core::ExecutionModel::Dedicated);
+        handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
 
         std::string jumboPayload(8192, 'Y');
         auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
@@ -386,7 +386,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     SECTION("Sequential model receives oversized 4096-byte packet")
     {
         JumboVerifyHandler handler;
-        handler.setExecutionModel(Core::ExecutionModel::Sequential);
+        handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
         std::string jumboPayload(4096, 'Z');
         auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });

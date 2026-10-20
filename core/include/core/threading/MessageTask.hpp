@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Core {
+namespace Core::Threading {
 
 /**
  * @brief Representation of a message task passed to background thread pool workers.
@@ -75,4 +75,8 @@ private:
     std::vector<std::byte> m_heapBuffer;
 };
 
+} // namespace Core::Threading
+
+namespace Core {
+using Threading::MessageTask;
 } // namespace Core

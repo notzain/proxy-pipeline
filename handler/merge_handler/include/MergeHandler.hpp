@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <string>
 #include <string_view>
 
@@ -10,7 +10,7 @@ namespace Proxy::Handler {
  * @brief Merge / Fan-in handler that consumes messages from multiple input channels
  * and redirects each incoming message to a single output channel.
  */
-class MergeHandler : public Core::IHandler {
+class MergeHandler : public Core::Handler::IHandler {
 public:
     MergeHandler() = default;
     explicit MergeHandler(std::string outputChannelName);
@@ -23,7 +23,7 @@ public:
      * @param backend Backend instance.
      * @return true If channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Callback invoked when a message arrives on any registered input channel.

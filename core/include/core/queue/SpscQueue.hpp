@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace Core {
+namespace Core::Queue {
 
 /**
  * @brief High-performance lockless Single-Producer Single-Consumer (SPSC) ring buffer.
@@ -254,4 +254,8 @@ private:
     alignas(64) std::array<T, Capacity> m_ring;
 };
 
+} // namespace Core::Queue
+
+namespace Core {
+using Queue::SpscQueue;
 } // namespace Core

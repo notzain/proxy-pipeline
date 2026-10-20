@@ -1,10 +1,10 @@
 #pragma once
 
-#include "core/IExecutionStrategy.hpp"
+#include "core/threading/IExecutionStrategy.hpp"
 #include <atomic>
 #include <thread>
 
-namespace Core {
+namespace Core::Threading {
 
 /**
  * @brief Single-threaded round-robin execution strategy.
@@ -17,7 +17,7 @@ public:
     SequentialStrategy();
     ~SequentialStrategy() override;
 
-    void start(IHandler& handler) override;
+    void start(Handler::IHandler& handler) override;
     void stop() override;
     void wait() override;
     [[nodiscard]] bool isRunning() const noexcept override;
@@ -27,4 +27,8 @@ private:
     std::jthread m_workerThread;
 };
 
+} // namespace Core::Threading
+
+namespace Core {
+using Threading::SequentialStrategy;
 } // namespace Core

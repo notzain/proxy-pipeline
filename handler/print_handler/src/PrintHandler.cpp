@@ -1,6 +1,6 @@
 #include "PrintHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
@@ -8,7 +8,7 @@
 
 namespace Proxy::Handler {
 
-bool PrintHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool PrintHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_channelName = config.getOr<std::string>("print.channel", "default");
     auto inChannel = backend.createInputChannel(m_channelName, config);

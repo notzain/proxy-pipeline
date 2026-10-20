@@ -1,16 +1,16 @@
 #pragma once
 
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <span>
 #include <string_view>
 
 namespace Proxy::Handler {
 
 /**
- * @brief Handler that implements Core::IHandler and Core::IMessageReceiver,
+ * @brief Handler that implements Core::Handler::IHandler,
  * printing any received messages to standard output.
  */
-class PrintHandler : public Core::IHandler {
+class PrintHandler : public Core::Handler::IHandler {
 public:
     PrintHandler() = default;
     ~PrintHandler() override = default;
@@ -22,7 +22,7 @@ public:
      * @param backend Backend instance.
      * @return true If input channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Prints the received message buffer to standard output using fmt.

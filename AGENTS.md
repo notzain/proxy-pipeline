@@ -109,7 +109,7 @@ cmake --build build
 ## 6. Project Structure & Naming Conventions
 
 - **Directory Layout for Subprojects**:
-  - `include/`: Public headers exposed to consumers of the library (e.g. `include/log/Log.hpp`, `include/core/IHandler.hpp`, `include/backend/IBackend.hpp`, `include/backend/IConfig.hpp`).
+  - `include/`: Public headers exposed to consumers of the library (e.g. `include/log/Log.hpp`, `include/core/handler/IHandler.hpp`, `include/backend/IBackend.hpp`, `include/backend/IConfig.hpp`).
   - `src/`: Implementation files (`.cpp`) and private/internal headers (`.hpp`).
 - **Separation of Declarations & Implementations**:
   - All non-templated function and method implementations must reside in source files (`.cpp`). Headers (`.hpp`) are reserved for declarations only. Templated classes/functions are the only exception to this rule.
@@ -117,7 +117,7 @@ cmake --build build
   - Substantial or standalone classes (e.g. validator classes, format encoders/decoders, strategy engines, or complex helper types) must **never** be defined as in-line private implementations within a parent class's source file.
   - Each significant class must have its own dedicated pair of files (`<ClassName>.hpp` and `<ClassName>.cpp`). Internal or implementation-detail classes belong in `src/` (or private subdirectories) if not intended for public consumption.
 - **Header Include Policy (Interface vs. Concrete Implementation)**:
-  - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::IHandler`, `Core::IExecutionStrategy`).
+  - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::Handler::IHandler`, `Core::Threading::IExecutionStrategy`).
   - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files; they must be included in source files (`.cpp`) only.
 - **Naming Conventions**:
   - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g., `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
@@ -167,10 +167,15 @@ cmake --build build
     - `backend-file`: Implements `FileBackend`, `FileInputChannel`, and `FileOutputChannel` watching/writing directory paths configured via `channel.<name>.path` or `file.path`. In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::FileLogSink>(logPath, logConsole))`.
     - `backend-socket`: Implements `SocketBackend`, `SocketInputChannel` (UDP listening/recvfrom), and `SocketOutputChannel` (UDP sending/sendto) configured via `channel.<name>.host`, `channel.<name>.port`, `channel.<name>.dest_host`, `channel.<name>.dest_port` or `socket.*`. In `configure()`, initializes logging via `Proxy::Log::init(std::make_unique<Proxy::Log::SocketLogSink>(logHost, logPort, logConsole))`.
     - Backends implement default constructors, `configure(const IConfig&)`, and define the factory function `Backend::createBackend()`. Backends never depend on specific handlers.
-  - `core`: Defines foundational domain classes and serializers (depends on `backend-interface` and `proxylog`):
-    - `IHandler`: Unified message processing lifecycle and polling event loop. Combines channel ingress (`registerInputChannel`, `onMessageReceived`), thread-safe egress (`registerOutputChannel`, `send`, `sendAll`), and background work (`step`). Supports pluggable runtime execution strategies (`SequentialStrategy`, `DedicatedThreadStrategy`, `ThreadPoolStrategy`), non-blocking asynchronous running via `startAsync()` and `wait()`, and graceful signal handling (SIGINT/SIGTERM).
-    - `Configuration`: Key-value configuration store loaded from file (`Configuration::fromFile(path)`), implementing `Backend::IConfig`.
-    - `Serialization`: Strongly-typed, trait-based JSON (`JsonSerializer<T>`, `JsonDeserializer<T>`) and XML (`XmlSerializer<T>`, `XmlDeserializer<T>`) serialization through an intermediate representation (`Value`), supporting PODs, attributes, and standard containers without inheritance or macros.
+  - `core`: Defines foundational domain classes, execution strategies, queues, configuration, and serializers (depends on `backend-interface` and `proxylog`):
+    - `Core::Handler` (`include/core/handler/`, `src/handler/`): `IHandler` unified message processing lifecycle and polling event loop. Combines channel ingress (`registerInputChannel`, `onMessageReceived`), thread-safe egress (`registerOutputChannel`, `send`, `sendAll`), and background work (`step`). Supports pluggable runtime execution strategies (`SequentialStrategy`, `DedicatedThreadStrategy`, `ThreadPoolStrategy`), non-blocking asynchronous running via `startAsync()` and `wait()`, and graceful signal handling (SIGINT/SIGTERM).
+    - `Core::Threading` (`include/core/threading/`, `src/threading/`): Concurrency primitives and execution models (`IExecutionStrategy`, `SequentialStrategy`, `DedicatedThreadStrategy`, `ThreadPoolStrategy`, `MessageTask`).
+    - `Core::Queue` (`include/core/queue/`): High-performance lockless Single-Producer Single-Consumer (`SpscQueue`) ring buffer.
+    - `Core::Config` (`include/core/config/`, `src/config/`): Key-value configuration store loaded from file (`Configuration::fromFile(path)`), implementing `Backend::IConfig`.
+    - `Core::Serialization` (`include/core/serialization/`): Strongly-typed, trait-based serialization system (`TypeTraits<T>`, `serialize<Format, T>`, `deserialize<Format, T>`) organized by format and intermediate representation:
+      - `Core::Serialization::Ir` (`include/core/serialization/ir/`): Dynamically-typed intermediate representation value tree (`Value`, `Converter` / `toIntermediate`, `fromIntermediate`).
+      - `Core::Serialization::Json` (`include/core/serialization/json/`, `src/serialization/json/`): JSON format policy (`JsonFormat`) and serializers (`JsonSerializer<T>`, `JsonDeserializer<T>`).
+      - `Core::Serialization::Xml` (`include/core/serialization/xml/`, `src/serialization/xml/`): XML format policy (`XmlFormat`) and serializers (`XmlSerializer<T>`, `XmlDeserializer<T>`).
   - `handler/*`: Concrete handlers and application executables. All handlers cleanly inherit solely from `IHandler`. Handler source files **must not** contain backend `#ifdef`s or include any concrete backend headers.
     - `print_handler`: Implements `PrintHandler` printing received messages.
     - `dummy_send`: Implements `DummySendHandler` registering an output channel and sending configured text blobs with a delay.

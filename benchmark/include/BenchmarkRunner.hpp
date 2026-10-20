@@ -2,7 +2,7 @@
 
 #include "backend/IBackend.hpp"
 #include "backend/IConfig.hpp"
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <chrono>
 #include <cstddef>
@@ -32,7 +32,7 @@ struct BenchmarkResult {
 /**
  * @brief Receiver handler recording timestamps of verified messages.
  */
-class BenchmarkReceiver : public Core::IHandler {
+class BenchmarkReceiver : public Core::Handler::IHandler {
 public:
     explicit BenchmarkReceiver(std::size_t expectedCount);
 

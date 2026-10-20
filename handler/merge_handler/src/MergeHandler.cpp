@@ -1,6 +1,6 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <utility>
@@ -30,7 +30,7 @@ MergeHandler::MergeHandler(std::string outputChannelName)
 {
 }
 
-bool MergeHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_outputChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
     auto outputChannel = backend.createOutputChannel(m_outputChannelName, config);

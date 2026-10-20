@@ -1,11 +1,11 @@
 #pragma once
 
-#include "core/serialization/Value.hpp"
+#include "core/serialization/ir/Value.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Xml {
 
 struct XmlOptions {
     std::string rootName = "root";
@@ -29,7 +29,7 @@ public:
      * @param options Formatting options (root tag name, indentation, etc.).
      * @return Encoded XML string.
      */
-    [[nodiscard]] static std::string encode(const Value& ir, const Options& options = { });
+    [[nodiscard]] static std::string encode(const Ir::Value& ir, const Options& options = { });
 
     /**
      * @brief Decodes an XML string into an intermediate Value.
@@ -38,7 +38,7 @@ public:
      * @param options Parsing options (root tag name, etc.).
      * @return Deserialized Value if parsing succeeds, std::nullopt otherwise.
      */
-    [[nodiscard]] static std::optional<Value> decode(std::string_view input, const Options& options = { });
+    [[nodiscard]] static std::optional<Ir::Value> decode(std::string_view input, const Options& options = { });
 
     /**
      * @brief Decodes a mutable XML buffer in-place into an intermediate Value without copying.
@@ -48,7 +48,12 @@ public:
      * @param options Parsing options (root tag name, etc.).
      * @return Deserialized Value if parsing succeeds, std::nullopt otherwise.
      */
-    [[nodiscard]] static std::optional<Value> decodeInPlace(void* data, std::size_t size, const Options& options = { });
+    [[nodiscard]] static std::optional<Ir::Value> decodeInPlace(void* data, std::size_t size, const Options& options = { });
 };
 
+} // namespace Core::Serialization::Xml
+
+namespace Core::Serialization {
+using Xml::XmlFormat;
+using Xml::XmlOptions;
 } // namespace Core::Serialization

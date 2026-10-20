@@ -1,11 +1,11 @@
 #pragma once
 
-#include "core/serialization/Value.hpp"
+#include "core/serialization/ir/Value.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Json {
 
 struct JsonOptions {
     int indent = -1; // -1 for compact, >= 0 for pretty printed
@@ -25,7 +25,7 @@ public:
      * @param options Formatting options.
      * @return Encoded JSON string.
      */
-    [[nodiscard]] static std::string encode(const Value& ir, const Options& options = { });
+    [[nodiscard]] static std::string encode(const Ir::Value& ir, const Options& options = { });
 
     /**
      * @brief Decodes a JSON string into an intermediate Value.
@@ -33,7 +33,12 @@ public:
      * @param input JSON string or view.
      * @return Deserialized Value if parsing succeeds, std::nullopt otherwise.
      */
-    [[nodiscard]] static std::optional<Value> decode(std::string_view input);
+    [[nodiscard]] static std::optional<Ir::Value> decode(std::string_view input);
 };
 
+} // namespace Core::Serialization::Json
+
+namespace Core::Serialization {
+using Json::JsonFormat;
+using Json::JsonOptions;
 } // namespace Core::Serialization

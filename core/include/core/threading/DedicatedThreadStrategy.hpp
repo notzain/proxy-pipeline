@@ -1,11 +1,11 @@
 #pragma once
 
-#include "core/IExecutionStrategy.hpp"
+#include "core/threading/IExecutionStrategy.hpp"
 #include <atomic>
 #include <thread>
 #include <vector>
 
-namespace Core {
+namespace Core::Threading {
 
 /**
  * @brief Multi-threaded execution strategy assigning a dedicated polling thread to each input channel.
@@ -19,7 +19,7 @@ public:
     DedicatedThreadStrategy();
     ~DedicatedThreadStrategy() override;
 
-    void start(IHandler& handler) override;
+    void start(Handler::IHandler& handler) override;
     void stop() override;
     void wait() override;
     [[nodiscard]] bool isRunning() const noexcept override;
@@ -29,4 +29,8 @@ private:
     std::vector<std::jthread> m_workerThreads;
 };
 
+} // namespace Core::Threading
+
+namespace Core {
+using Threading::DedicatedThreadStrategy;
 } // namespace Core

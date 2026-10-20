@@ -1,7 +1,7 @@
 #include "XmlVerificationHandler.hpp"
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 
 namespace Proxy::Handler {
@@ -17,7 +17,7 @@ XmlVerificationHandler::XmlVerificationHandler(std::filesystem::path schemaPath,
 
 XmlVerificationHandler::~XmlVerificationHandler() = default;
 
-bool XmlVerificationHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool XmlVerificationHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     std::string xsdPath = config.getOr<std::string>("xml.xsd_path", "");
     if (xsdPath.empty()) {

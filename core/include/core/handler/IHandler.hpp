@@ -2,7 +2,8 @@
 
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
-#include "core/IExecutionStrategy.hpp"
+#include "core/config/Configuration.hpp"
+#include "core/threading/IExecutionStrategy.hpp"
 #include <chrono>
 #include <cstddef>
 #include <memory>
@@ -18,8 +19,7 @@ class IConfig;
 class IBackend;
 } // namespace Backend
 
-namespace Core {
-class Configuration;
+namespace Core::Handler {
 
 /**
  * @brief Concurrency and execution model for the handler event loop.
@@ -77,7 +77,7 @@ public:
      * @param backend Underlying transport backend for creating channels.
      * @return true If configuration and channel initialization succeeded, false otherwise.
      */
-    virtual bool configure(const Configuration& config, ::Backend::IBackend& backend);
+    virtual bool configure(const Config::Configuration& config, ::Backend::IBackend& backend);
 
     // --- Input Channel Management (Ingress) ---
 
@@ -197,7 +197,7 @@ public:
      *
      * @param strategy Custom implementation of IExecutionStrategy.
      */
-    void setExecutionStrategy(std::unique_ptr<IExecutionStrategy> strategy);
+    void setExecutionStrategy(std::unique_ptr<Threading::IExecutionStrategy> strategy);
 
     // --- Lifecycle Execution Control ---
 
@@ -237,11 +237,17 @@ protected:
     std::vector<NamedInputChannel> m_inputChannels;
     mutable std::shared_mutex m_outputMutex;
     std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
-    std::unique_ptr<IExecutionStrategy> m_strategy;
+    std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
 
     void registerSignalHandler();
     void unregisterSignalHandler();
     void ensureStrategy();
 };
 
+} // namespace Core::Handler
+
+namespace Core {
+using Handler::ExecutionModel;
+using Handler::IHandler;
+using Handler::parseExecutionModel;
 } // namespace Core

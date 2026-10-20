@@ -1,15 +1,15 @@
 #pragma once
 
-#include "core/IExecutionStrategy.hpp"
-#include "core/MessageTask.hpp"
-#include "core/SpscQueue.hpp"
+#include "core/queue/SpscQueue.hpp"
+#include "core/threading/IExecutionStrategy.hpp"
+#include "core/threading/MessageTask.hpp"
 #include <atomic>
 #include <cstddef>
 #include <memory>
 #include <thread>
 #include <vector>
 
-namespace Core {
+namespace Core::Threading {
 
 /**
  * @brief Thread-pool based execution strategy.
@@ -28,7 +28,7 @@ public:
     explicit ThreadPoolStrategy(std::size_t numWorkerThreads = 0);
     ~ThreadPoolStrategy() override;
 
-    void start(IHandler& handler) override;
+    void start(Handler::IHandler& handler) override;
     void stop() override;
     void wait() override;
     [[nodiscard]] bool isRunning() const noexcept override;
@@ -37,7 +37,7 @@ private:
     std::size_t m_numWorkerThreads;
     std::atomic<bool> m_running { false };
 
-    using QueueType = SpscQueue<MessageTask, 1024>;
+    using QueueType = Queue::SpscQueue<MessageTask, 1024>;
     std::vector<std::unique_ptr<QueueType>> m_workerQueues;
     std::atomic<std::size_t> m_nextWorker { 0 };
 
@@ -46,4 +46,8 @@ private:
     std::jthread m_stepThread;
 };
 
+} // namespace Core::Threading
+
+namespace Core {
+using Threading::ThreadPoolStrategy;
 } // namespace Core

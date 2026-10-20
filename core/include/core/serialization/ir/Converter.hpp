@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/serialization/TypeTraits.hpp"
-#include "core/serialization/Value.hpp"
+#include "core/serialization/ir/Value.hpp"
 
 #include <array>
 #include <charconv>
@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Ir {
 
 // Forward declarations
 template <typename T>
@@ -377,4 +377,9 @@ std::optional<T> fromIntermediate(const Value& value)
     }
 }
 
+} // namespace Core::Serialization::Ir
+
+namespace Core::Serialization {
+using Ir::fromIntermediate;
+using Ir::toIntermediate;
 } // namespace Core::Serialization

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Order.hpp"
-#include "core/IHandler.hpp"
+#include "core/handler/IHandler.hpp"
 #include <optional>
 #include <span>
 #include <string>
@@ -16,7 +16,7 @@ namespace Proxy::Handler {
  * Messages that satisfy validation criteria are forwarded to the configured output channel.
  * Messages that fail XML deserialization or semantic validation criteria are rejected.
  */
-class OrderValidationHandler : public Core::IHandler {
+class OrderValidationHandler : public Core::Handler::IHandler {
 public:
     OrderValidationHandler() = default;
 
@@ -36,7 +36,7 @@ public:
      * @param backend Backend instance.
      * @return true If configuration and channel initialization succeeded, false otherwise.
      */
-    bool configure(const Core::Configuration& config, ::Backend::IBackend& backend) override;
+    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
     /**
      * @brief Ingress callback for incoming messages.

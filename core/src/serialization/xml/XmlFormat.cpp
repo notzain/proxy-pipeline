@@ -1,9 +1,11 @@
-#include "core/serialization/XmlFormat.hpp"
+#include "core/serialization/xml/XmlFormat.hpp"
 
 #include <pugixml.hpp>
 #include <sstream>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Xml {
+
+using namespace Core::Serialization::Ir;
 
 namespace {
 
@@ -139,7 +141,7 @@ namespace {
 
 } // namespace
 
-std::string XmlFormat::encode(const Value& ir, const Options& options)
+std::string XmlFormat::encode(const Ir::Value& ir, const Options& options)
 {
     pugi::xml_document doc;
     pugi::xml_node rootNode = doc.append_child(options.rootName.c_str());
@@ -152,7 +154,7 @@ std::string XmlFormat::encode(const Value& ir, const Options& options)
     return oss.str();
 }
 
-std::optional<Value> XmlFormat::decode(std::string_view input, const Options& options)
+std::optional<Ir::Value> XmlFormat::decode(std::string_view input, const Options& options)
 {
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_buffer(input.data(), input.size());
@@ -171,7 +173,7 @@ std::optional<Value> XmlFormat::decode(std::string_view input, const Options& op
     return parseXmlNode(rootNode, /*inPlace=*/false);
 }
 
-std::optional<Value> XmlFormat::decodeInPlace(void* data, std::size_t size, const Options& options)
+std::optional<Ir::Value> XmlFormat::decodeInPlace(void* data, std::size_t size, const Options& options)
 {
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_buffer_inplace(data, size);
@@ -190,4 +192,4 @@ std::optional<Value> XmlFormat::decodeInPlace(void* data, std::size_t size, cons
     return parseXmlNode(rootNode, /*inPlace=*/true);
 }
 
-} // namespace Core::Serialization
+} // namespace Core::Serialization::Xml

@@ -1,6 +1,6 @@
 #include "SplitHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <string>
@@ -25,7 +25,7 @@ std::vector<std::string> splitString(std::string_view str, char delimiter)
 
 namespace Proxy::Handler {
 
-bool SplitHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
     auto inputChannel = backend.createInputChannel(m_inputChannelName, config);

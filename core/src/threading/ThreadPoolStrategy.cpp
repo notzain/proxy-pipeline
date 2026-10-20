@@ -1,5 +1,5 @@
-#include "core/ThreadPoolStrategy.hpp"
-#include "core/IHandler.hpp"
+#include "core/threading/ThreadPoolStrategy.hpp"
+#include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -10,7 +10,7 @@
 #include <queue>
 #include <span>
 
-namespace Core {
+namespace Core::Threading {
 
 ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads)
     : m_numWorkerThreads(numWorkerThreads)
@@ -31,10 +31,10 @@ ThreadPoolStrategy::~ThreadPoolStrategy()
     wait();
 }
 
-void ThreadPoolStrategy::start(IHandler& handler)
+void ThreadPoolStrategy::start(Handler::IHandler& handler)
 {
     m_running.store(true, std::memory_order_release);
-    constexpr IHandler::Timeout channelTimeout { 50 };
+    constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto& channels = handler.getInputChannels();
     Proxy::Log::info("[ThreadPoolStrategy] Starting with {} pool workers and {} channel poller(s)...",
@@ -125,7 +125,7 @@ void ThreadPoolStrategy::start(IHandler& handler)
 
                 if (produced > 0 && hasOversized) {
                     // Oversized datagram: fetch the full payload via full-MTU fallback (heap path)
-                    constexpr IHandler::Timeout zeroTimeout { 0 };
+                    constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
                     std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuffer, zeroTimeout);
                     if (jumboBytes > 0) {
                         std::array<std::span<const std::byte>, 1> jumboSpan = { std::span<const std::byte>(jumboBuffer.data(), jumboBytes) };
@@ -191,4 +191,4 @@ bool ThreadPoolStrategy::isRunning() const noexcept
     return m_running.load(std::memory_order_acquire);
 }
 
-} // namespace Core
+} // namespace Core::Threading

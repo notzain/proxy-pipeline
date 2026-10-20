@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-namespace Core::Serialization {
+namespace Core::Serialization::Ir {
 
 class Value;
 
@@ -267,4 +267,12 @@ private:
     AttributeMapType m_attributes;
 };
 
+} // namespace Core::Serialization::Ir
+
+namespace Core::Serialization {
+using Ir::ArrayType;
+using Ir::AttributeMapType;
+using Ir::NullType;
+using Ir::ObjectType;
+using Ir::Value;
 } // namespace Core::Serialization

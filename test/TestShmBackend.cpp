@@ -2,7 +2,7 @@
 #include "backend/shm/ShmInputChannel.hpp"
 #include "backend/shm/ShmOutputChannel.hpp"
 #include "backend/shm/ShmRingBuffer.hpp"
-#include "core/Configuration.hpp"
+#include "core/config/Configuration.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
@@ -194,7 +194,7 @@ TEST_CASE("ShmBackend: Factory and Dynamic Channel Creation", "[shm]")
         f << "channel.beta.dest_path=/tmp/test_shm_beta.dat\n";
     }
 
-    auto config = Core::Configuration::fromFile(confPath);
+    auto config = Core::Config::Configuration::fromFile(confPath);
     ShmBackend backend;
     backend.configure(config);
 

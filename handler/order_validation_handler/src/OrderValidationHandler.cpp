@@ -1,7 +1,7 @@
 #include "OrderValidationHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/Configuration.hpp"
-#include "core/serialization/XmlSerializer.hpp"
+#include "core/config/Configuration.hpp"
+#include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
 
 #include <algorithm>
@@ -31,7 +31,7 @@ OrderValidationHandler::OrderValidationHandler(std::string outputChannelName)
 
 OrderValidationHandler::~OrderValidationHandler() = default;
 
-bool OrderValidationHandler::configure(const Core::Configuration& config, ::Backend::IBackend& backend)
+bool OrderValidationHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
     m_inputChannelName = config.getOr<std::string>("order.input_channel", config.getOr<std::string>("channel.input", "order_in"));
     m_outputChannelName = config.getOr<std::string>("order.output_channel", config.getOr<std::string>("channel.output", "order_out"));
@@ -60,7 +60,7 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(std::span<
     }
 
     std::string_view xmlStr(reinterpret_cast<const char*>(xmlData.data()), xmlData.size());
-    return Core::Serialization::XmlDeserializer<Proxy::Model::Order>::deserialize(xmlStr, { .rootName = "order" });
+    return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::Order>::deserialize(xmlStr, { .rootName = "order" });
 }
 
 std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(std::span<const std::byte> xmlData) const
@@ -70,7 +70,7 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(st
     }
 
     std::string_view xmlStr(reinterpret_cast<const char*>(xmlData.data()), xmlData.size());
-    return Core::Serialization::XmlDeserializer<Proxy::Model::OrderView>::deserialize(xmlStr, { .rootName = "order" });
+    return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::OrderView>::deserialize(xmlStr, { .rootName = "order" });
 }
 
 std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInPlace(std::span<std::byte> xmlData) const
@@ -79,7 +79,7 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInP
         return std::nullopt;
     }
 
-    return Core::Serialization::XmlDeserializer<Proxy::Model::OrderView>::deserializeInPlace(
+    return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::OrderView>::deserializeInPlace(
         xmlData.data(),
         xmlData.size(),
         { .rootName = "order" });

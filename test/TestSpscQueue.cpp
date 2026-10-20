@@ -1,5 +1,5 @@
-#include "core/MessageTask.hpp"
-#include "core/SpscQueue.hpp"
+#include "core/queue/SpscQueue.hpp"
+#include "core/threading/MessageTask.hpp"
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -9,6 +9,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+using Core::Queue::SpscQueue;
+using Core::Threading::MessageTask;
 
 namespace {
 
@@ -26,7 +29,7 @@ std::vector<int> drainAll(Queue& q, std::size_t expected)
 
 TEST_CASE("SpscQueue preserves FIFO order across many wrap-arounds", "[spsc]")
 {
-    Core::SpscQueue<int, 8> q;
+    SpscQueue<int, 8> q;
     int next = 0;
     std::vector<int> received;
     for (int round = 0; round < 100; ++round) {
@@ -42,7 +45,7 @@ TEST_CASE("SpscQueue preserves FIFO order across many wrap-arounds", "[spsc]")
 
 TEST_CASE("SpscQueue drainContiguous splits at the physical ring boundary", "[spsc]")
 {
-    Core::SpscQueue<int, 4> q;
+    SpscQueue<int, 4> q;
     REQUIRE(q.pushBatch(3, [](int& s, std::size_t i) { s = static_cast<int>(i); }));
     drainAll(q, 3); // head = tail = 3
 
@@ -63,7 +66,7 @@ TEST_CASE("SpscQueue drainContiguous splits at the physical ring boundary", "[sp
 
 TEST_CASE("SpscQueue minimum power-of-two capacity (2) works at the mask boundary", "[spsc]")
 {
-    Core::SpscQueue<int, 2> q;
+    SpscQueue<int, 2> q;
     STATIC_REQUIRE(decltype(q)::Mask == 1);
     for (int i = 0; i < 50; ++i) {
         REQUIRE(q.pushBatch(2, [&](int& s, std::size_t k) { s = i * 2 + static_cast<int>(k); }));
@@ -74,7 +77,7 @@ TEST_CASE("SpscQueue minimum power-of-two capacity (2) works at the mask boundar
 
 TEST_CASE("SpscQueue rejects invalid batch sizes", "[spsc]")
 {
-    Core::SpscQueue<int, 4> q;
+    SpscQueue<int, 4> q;
     CHECK_FALSE(q.pushBatch(0, [](int&, std::size_t) { }));
     CHECK_FALSE(q.pushBatch(5, [](int&, std::size_t) { }));
     CHECK(q.empty());
@@ -82,7 +85,7 @@ TEST_CASE("SpscQueue rejects invalid batch sizes", "[spsc]")
 
 TEST_CASE("SpscQueue producer blocks when full and resumes after drain", "[spsc]")
 {
-    Core::SpscQueue<int, 4> q;
+    SpscQueue<int, 4> q;
     REQUIRE(q.pushBatch(4, [](int& s, std::size_t i) { s = static_cast<int>(i); }));
 
     std::atomic<bool> pushed { false };
@@ -105,7 +108,7 @@ TEST_CASE("SpscQueue serializes simultaneous multi-producer pushes without loss"
 {
     constexpr int producers = 4;
     constexpr int perProducer = 20000;
-    Core::SpscQueue<int, 256> q;
+    SpscQueue<int, 256> q;
 
     std::vector<std::jthread> threads;
     for (int p = 0; p < producers; ++p) {
@@ -133,7 +136,7 @@ TEST_CASE("SpscQueue serializes simultaneous multi-producer pushes without loss"
 
 TEST_CASE("SpscQueue stop() wakes a blocked consumer", "[spsc][cancellation]")
 {
-    Core::SpscQueue<int, 8> q;
+    SpscQueue<int, 8> q;
     std::stop_source src;
     std::atomic<bool> returned { false };
 
@@ -153,7 +156,7 @@ TEST_CASE("SpscQueue stop() wakes a blocked consumer", "[spsc][cancellation]")
 
 TEST_CASE("SpscQueue stop() wakes a producer blocked on a full queue", "[spsc][cancellation]")
 {
-    Core::SpscQueue<int, 2> q;
+    SpscQueue<int, 2> q;
     REQUIRE(q.pushBatch(2, [](int& s, std::size_t) { s = 0; }));
 
     std::stop_source src;
@@ -172,7 +175,7 @@ TEST_CASE("SpscQueue stop() wakes a producer blocked on a full queue", "[spsc][c
 
 TEST_CASE("SpscQueue pushInPlace exposes contiguous slots and publishes only filled count", "[spsc][inplace]")
 {
-    Core::SpscQueue<int, 8> q;
+    SpscQueue<int, 8> q;
 
     std::size_t exposed = 0;
     auto n = q.pushInPlace(16, [&](std::span<int> slots) {
@@ -194,7 +197,7 @@ TEST_CASE("SpscQueue pushInPlace exposes contiguous slots and publishes only fil
 
 TEST_CASE("SpscQueue pushInPlace span is bounded by the physical ring end", "[spsc][inplace]")
 {
-    Core::SpscQueue<int, 8> q;
+    SpscQueue<int, 8> q;
     REQUIRE(q.pushBatch(6, [](int& s, std::size_t) { s = 0; }));
     drainAll(q, 6); // tail index = 6
 
@@ -211,7 +214,7 @@ TEST_CASE("SpscQueue pushInPlace span is bounded by the physical ring end", "[sp
 
 TEST_CASE("SpscQueue tryPushInPlace returns nullopt when another producer holds the lock", "[spsc][inplace]")
 {
-    Core::SpscQueue<int, 8> q;
+    SpscQueue<int, 8> q;
     std::atomic<bool> holding { false };
     std::atomic<bool> release { false };
 
@@ -243,10 +246,10 @@ TEST_CASE("SpscQueue tryPushInPlace returns nullopt when another producer holds 
 
 TEST_CASE("SpscQueue zero-copy MessageTask round-trip via prepareInline/commitInline", "[spsc][inplace]")
 {
-    Core::SpscQueue<Core::MessageTask, 4> q;
+    SpscQueue<MessageTask, 4> q;
     const std::string payload = "zero-copy payload";
 
-    q.pushInPlace(1, [&](std::span<Core::MessageTask> slots) {
+    q.pushInPlace(1, [&](std::span<MessageTask> slots) {
         auto buf = slots[0].prepareInline("chan");
         std::memcpy(buf.data(), payload.data(), payload.size());
         slots[0].commitInline(payload.size());
@@ -255,7 +258,7 @@ TEST_CASE("SpscQueue zero-copy MessageTask round-trip via prepareInline/commitIn
 
     std::string gotPayload;
     std::string gotName;
-    q.drainContiguous(4, [&](std::span<const Core::MessageTask> tasks) {
+    q.drainContiguous(4, [&](std::span<const MessageTask> tasks) {
         auto p = tasks[0].payload();
         gotPayload.assign(reinterpret_cast<const char*>(p.data()), p.size());
         gotName = tasks[0].channelName();
