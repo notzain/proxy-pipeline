@@ -78,6 +78,17 @@ def find_bin_dir(root_dir: Path, requested_bin_dir: str | None = None) -> Path:
     )
 
 
+def flatten_dict(d: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]:
+    items: list[tuple[str, Any]] = []
+    for k, v in d.items():
+        full_key = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, full_key))
+        else:
+            items.append((full_key, v))
+    return items
+
+
 def generate_handler_config(
     global_config: dict[str, Any],
     backend_name: str,
@@ -95,8 +106,8 @@ def generate_handler_config(
         "# Global / backend settings",
     ]
 
-    # Add global configuration
-    for key, val in global_config.items():
+    # Add global configuration (flattening nested dictionary sections)
+    for key, val in flatten_dict(global_config):
         if isinstance(val, bool):
             lines.append(f"{key}={str(val).lower()}")
         else:
@@ -107,12 +118,13 @@ def generate_handler_config(
     lines.append("# Handler-specific settings")
 
     # Convenience shortcuts:
-    # input_channel -> dummy.channel / print.channel / split.input_channel
+    # input_channel -> channel.input / dummy.channel / print.channel / split.input_channel / xml.input_channel
     # input_channels -> merge.input_channels
-    # output_channel -> dummy.channel / merge.output_channel
+    # output_channel -> channel.output / ingress.output_channel / dummy.channel / merge.output_channel / xml.output_channel
     # output_channels -> split.output_channels
     if "input_channel" in handler_spec:
         in_ch = handler_spec["input_channel"]
+        lines.append(f"channel.input={in_ch}")
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
         lines.append(f"split.input_channel={in_ch}")
@@ -125,6 +137,8 @@ def generate_handler_config(
             lines.append(f"merge.input_channels={in_chs}")
     if "output_channel" in handler_spec:
         out_ch = handler_spec["output_channel"]
+        lines.append(f"channel.output={out_ch}")
+        lines.append(f"ingress.output_channel={out_ch}")
         lines.append(f"dummy.channel={out_ch}")
         lines.append(f"merge.output_channel={out_ch}")
         lines.append(f"xml.output_channel={out_ch}")
@@ -137,7 +151,7 @@ def generate_handler_config(
 
     # Direct config key-values inside handler spec
     params = handler_spec.get("config", {})
-    for key, val in params.items():
+    for key, val in flatten_dict(params):
         if isinstance(val, bool):
             lines.append(f"{key}={str(val).lower()}")
         else:

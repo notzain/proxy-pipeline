@@ -36,6 +36,7 @@ add_subdirectory(handler/split_handler)
 add_subdirectory(handler/merge_handler)
 add_subdirectory(handler/xml_verification_handler)
 add_subdirectory(handler/order_validation_handler)
+add_subdirectory(handler/udp_ingress_handler)
 
 # Tests and Benchmarks
 enable_testing()

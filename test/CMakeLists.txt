@@ -20,11 +20,13 @@ add_executable(proxy_tests
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/src/XmlVerificationHandler.cpp"
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/src/XmlSchemaValidator.cpp"
     "${CMAKE_SOURCE_DIR}/handler/order_validation_handler/src/OrderValidationHandler.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/udp_ingress_handler/src/UdpIngressHandler.cpp"
 )
 
 target_include_directories(proxy_tests PRIVATE
     "${CMAKE_SOURCE_DIR}/handler/xml_verification_handler/include"
     "${CMAKE_SOURCE_DIR}/handler/order_validation_handler/include"
+    "${CMAKE_SOURCE_DIR}/handler/udp_ingress_handler/include"
 )
 
 target_link_libraries(proxy_tests PRIVATE

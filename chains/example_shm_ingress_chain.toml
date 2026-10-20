@@ -1,0 +1,35 @@
+# Demonstrates Network Stream Ingress (UDP) kicking off a Shared Memory (SHM) Pipeline
+# The entire internal pipeline communicates over high-performance SHM ring buffers.
+backend = "shm"
+
+[config]
+"shm.path" = "/tmp/proxy_shm_default.dat"
+"channel.orders_raw.path" = "/tmp/proxy_shm_orders_raw.dat"
+"channel.orders_verified.path" = "/tmp/proxy_shm_orders_verified.dat"
+
+# Ingress: Listens for incoming UDP datagrams from the network, strips network transport,
+# and outputs raw XML order payloads directly into the pipeline's SHM channel "orders_raw".
+[[handlers]]
+name = "network_ingress"
+type = "udp_ingress_handler"
+output_channel = "orders_raw"
+[handlers.config]
+"ingress.host" = "127.0.0.1"
+"ingress.port" = 9123
+
+# Verification: Consumes raw orders from SHM, validates against XSD schema,
+# and forwards valid XML orders to SHM channel "orders_verified".
+[[handlers]]
+name = "xml_validator"
+type = "xml_verification_handler"
+input_channel = "orders_raw"
+output_channel = "orders_verified"
+[handlers.config]
+"xml.xsd_path" = "chains/order.xsd"
+
+# Consumer / Sink: Consumes validated orders from SHM and prints them to stdout.
+[[handlers]]
+name = "verified_order_printer"
+type = "print_handler"
+input_channel = "orders_verified"
+
