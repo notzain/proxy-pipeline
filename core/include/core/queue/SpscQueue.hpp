@@ -3,14 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <stop_token>
-#include <type_traits>
 #include <utility>
 
 namespace Core::Queue {
@@ -255,7 +253,3 @@ private:
 };
 
 } // namespace Core::Queue
-
-namespace Core {
-using Queue::SpscQueue;
-} // namespace Core

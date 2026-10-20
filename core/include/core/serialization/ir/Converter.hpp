@@ -378,8 +378,3 @@ std::optional<T> fromIntermediate(const Value& value)
 }
 
 } // namespace Core::Serialization::Ir
-
-namespace Core::Serialization {
-using Ir::fromIntermediate;
-using Ir::toIntermediate;
-} // namespace Core::Serialization

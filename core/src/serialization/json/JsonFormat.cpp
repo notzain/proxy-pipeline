@@ -4,11 +4,9 @@
 
 namespace Core::Serialization::Json {
 
-using namespace Core::Serialization::Ir;
-
 namespace {
 
-    nlohmann::json toNlohmann(const Value& val)
+    nlohmann::json toNlohmann(const Ir::Value& val)
     {
         if (val.isNull()) {
             return nullptr;
@@ -45,42 +43,42 @@ namespace {
         return nullptr;
     }
 
-    Value fromNlohmann(const nlohmann::json& j)
+    Ir::Value fromNlohmann(const nlohmann::json& j)
     {
         if (j.is_null()) {
-            return Value(NullType { });
+            return Ir::Value(Ir::NullType { });
         }
         if (j.is_boolean()) {
-            return Value(j.get<bool>());
+            return Ir::Value(j.get<bool>());
         }
         if (j.is_number_unsigned()) {
-            return Value(j.get<std::uint64_t>());
+            return Ir::Value(j.get<std::uint64_t>());
         }
         if (j.is_number_integer()) {
-            return Value(j.get<std::int64_t>());
+            return Ir::Value(j.get<std::int64_t>());
         }
         if (j.is_number_float()) {
-            return Value(j.get<double>());
+            return Ir::Value(j.get<double>());
         }
         if (j.is_string()) {
-            return Value(j.get<std::string>());
+            return Ir::Value(j.get<std::string>());
         }
         if (j.is_array()) {
-            ArrayType arr;
+            Ir::ArrayType arr;
             arr.reserve(j.size());
             for (const auto& item : j) {
                 arr.push_back(fromNlohmann(item));
             }
-            return Value(std::move(arr));
+            return Ir::Value(std::move(arr));
         }
         if (j.is_object()) {
-            ObjectType obj;
+            Ir::ObjectType obj;
             for (auto it = j.begin(); it != j.end(); ++it) {
                 obj[it.key()] = fromNlohmann(it.value());
             }
-            return Value(std::move(obj));
+            return Ir::Value(std::move(obj));
         }
-        return Value(NullType { });
+        return Ir::Value(Ir::NullType { });
     }
 
 } // namespace

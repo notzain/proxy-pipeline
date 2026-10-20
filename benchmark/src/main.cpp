@@ -159,7 +159,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run Socket (UDP) benchmark with a specific execution strategy
-    auto runSocketBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runSocketBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
         std::size_t socketMessages = numMessages;
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running Socket (UDP) chain ({}) with {} messages...\n", strategyName, socketMessages);
 
@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run IPC (UDS) benchmark with a specific execution strategy
-    auto runUdsBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runUdsBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
         std::size_t udsMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running IPC (UDS) chain ({}) with {} messages...\n", strategyName, udsMessages);
 
@@ -370,7 +370,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run Kernel Bypass IPC (SHM) benchmark with a specific execution strategy
-    auto runShmBenchmark = [&](Core::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runShmBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
         std::size_t shmMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running Kernel Bypass IPC (SHM) chain ({}) with {} messages...\n", strategyName, shmMessages);
 
@@ -487,40 +487,40 @@ int main(int argc, char* argv[])
             runDirectBenchmark();
         }
         if (strategy == "all" || strategy == "udp-dedicated" || strategy == "dedicated") {
-            runSocketBenchmark(Core::ExecutionModel::Dedicated, "UDP (Dedicated)");
+            runSocketBenchmark(Core::Handler::ExecutionModel::Dedicated, "UDP (Dedicated)");
         }
         if (strategy == "all" || strategy == "uds-dedicated") {
-            runUdsBenchmark(Core::ExecutionModel::Dedicated, "UDS (Dedicated)");
+            runUdsBenchmark(Core::Handler::ExecutionModel::Dedicated, "UDS (Dedicated)");
         }
         if (strategy == "all" || strategy == "shm-dedicated" || strategy == "shm") {
-            runShmBenchmark(Core::ExecutionModel::Dedicated, "SHM (Dedicated)");
+            runShmBenchmark(Core::Handler::ExecutionModel::Dedicated, "SHM (Dedicated)");
         }
         if (strategy == "all" || strategy == "udp-sequential" || strategy == "sequential") {
-            runSocketBenchmark(Core::ExecutionModel::Sequential, "UDP (Sequential)");
+            runSocketBenchmark(Core::Handler::ExecutionModel::Sequential, "UDP (Sequential)");
         }
         if (strategy == "all" || strategy == "uds-sequential") {
-            runUdsBenchmark(Core::ExecutionModel::Sequential, "UDS (Sequential)");
+            runUdsBenchmark(Core::Handler::ExecutionModel::Sequential, "UDS (Sequential)");
         }
         if (strategy == "all" || strategy == "shm-sequential" || strategy == "shm") {
-            runShmBenchmark(Core::ExecutionModel::Sequential, "SHM (Sequential)");
+            runShmBenchmark(Core::Handler::ExecutionModel::Sequential, "SHM (Sequential)");
         }
         if (strategy == "all" || strategy == "udp-threadpool4" || strategy == "threadpool4") {
-            runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
+            runSocketBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
         }
         if (strategy == "all" || strategy == "uds-threadpool4") {
-            runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 4)", 4);
+            runUdsBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDS (ThreadPool 4)", 4);
         }
         if (strategy == "all" || strategy == "shm-threadpool4" || strategy == "shm") {
-            runShmBenchmark(Core::ExecutionModel::ThreadPool, "SHM (ThreadPool 4)", 4);
+            runShmBenchmark(Core::Handler::ExecutionModel::ThreadPool, "SHM (ThreadPool 4)", 4);
         }
         if (strategy == "all" || strategy == "udp-threadpool8" || strategy == "threadpool8") {
-            runSocketBenchmark(Core::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
+            runSocketBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
         }
         if (strategy == "all" || strategy == "uds-threadpool8") {
-            runUdsBenchmark(Core::ExecutionModel::ThreadPool, "UDS (ThreadPool 8)", 8);
+            runUdsBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDS (ThreadPool 8)", 8);
         }
         if (strategy == "all" || strategy == "shm-threadpool8" || strategy == "shm") {
-            runShmBenchmark(Core::ExecutionModel::ThreadPool, "SHM (ThreadPool 8)", 8);
+            runShmBenchmark(Core::Handler::ExecutionModel::ThreadPool, "SHM (ThreadPool 8)", 8);
         }
     };
 

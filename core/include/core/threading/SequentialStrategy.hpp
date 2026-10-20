@@ -28,7 +28,3 @@ private:
 };
 
 } // namespace Core::Threading
-
-namespace Core {
-using Threading::SequentialStrategy;
-} // namespace Core

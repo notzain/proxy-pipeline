@@ -75,7 +75,8 @@ Guidelines and conventions for AI agents and developers working on this project.
   ```
 - **Tooling Constraint**: Never invoke `clangd` directly in background scripts or commands. Rely on compiler diagnostics and `clang-format` for code layout.
 - **Git Commit Workflow**:
-  - Always create a **Conventional Commit** (`feat:`, `fix:`, `refactor:`, `chore:`, etc.) immediately after each change is accepted/verified.
+  - **Explicit Approval Required**: Never create a git commit without the user's explicit prior approval. Always ask for permission and get confirmation before executing `git commit`.
+  - When approved, create a **Conventional Commit** (`feat:`, `fix:`, `refactor:`, `chore:`, etc.).
   - Structure commit messages with a clear summary line, followed by bulleted details of the changes made.
 
 ---

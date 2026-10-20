@@ -30,7 +30,3 @@ private:
 };
 
 } // namespace Core::Threading
-
-namespace Core {
-using Threading::DedicatedThreadStrategy;
-} // namespace Core

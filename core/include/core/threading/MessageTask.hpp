@@ -76,7 +76,3 @@ private:
 };
 
 } // namespace Core::Threading
-
-namespace Core {
-using Threading::MessageTask;
-} // namespace Core

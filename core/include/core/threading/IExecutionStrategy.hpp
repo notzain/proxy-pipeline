@@ -39,7 +39,3 @@ public:
 };
 
 } // namespace Core::Threading
-
-namespace Core {
-using Threading::IExecutionStrategy;
-} // namespace Core

@@ -95,8 +95,3 @@ public:
 };
 
 } // namespace Core::Serialization::Xml
-
-namespace Core::Serialization {
-using Xml::XmlDeserializer;
-using Xml::XmlSerializer;
-} // namespace Core::Serialization

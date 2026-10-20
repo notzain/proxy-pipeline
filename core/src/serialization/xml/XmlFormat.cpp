@@ -5,11 +5,9 @@
 
 namespace Core::Serialization::Xml {
 
-using namespace Core::Serialization::Ir;
-
 namespace {
 
-    void buildXmlNode(const Value& val, pugi::xml_node& node)
+    void buildXmlNode(const Ir::Value& val, pugi::xml_node& node)
     {
         // Add attributes
         for (const auto& [attrName, attrValue] : val.attributes()) {
@@ -55,9 +53,9 @@ namespace {
         }
     }
 
-    Value parseXmlNode(const pugi::xml_node& node, bool inPlace)
+    Ir::Value parseXmlNode(const pugi::xml_node& node, bool inPlace)
     {
-        Value val;
+        Ir::Value val;
 
         // Parse attributes
         for (const auto& attr : node.attributes()) {
@@ -83,7 +81,7 @@ namespace {
             auto start = text.find_first_not_of(" \t\r\n");
             if (start == std::string::npos) {
                 // Empty element or attribute-only
-                val.raw() = ObjectType { };
+                val.raw() = Ir::ObjectType { };
                 return val;
             }
             auto end = text.find_last_not_of(" \t\r\n");
@@ -117,7 +115,7 @@ namespace {
 
         if (allItems && childCount > 0) {
             // Array of items
-            ArrayType arr;
+            Ir::ArrayType arr;
             arr.reserve(childCount);
             for (const auto& child : node.children()) {
                 if (child.type() == pugi::node_element) {
@@ -129,7 +127,7 @@ namespace {
         }
 
         // Object with child element fields
-        ObjectType obj;
+        Ir::ObjectType obj;
         for (const auto& child : node.children()) {
             if (child.type() == pugi::node_element) {
                 obj[child.name()] = parseXmlNode(child, inPlace);

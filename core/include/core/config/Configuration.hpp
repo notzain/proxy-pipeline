@@ -57,7 +57,3 @@ private:
 };
 
 } // namespace Core::Config
-
-namespace Core {
-using Config::Configuration;
-} // namespace Core

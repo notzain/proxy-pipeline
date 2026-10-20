@@ -52,8 +52,3 @@ public:
 };
 
 } // namespace Core::Serialization::Xml
-
-namespace Core::Serialization {
-using Xml::XmlFormat;
-using Xml::XmlOptions;
-} // namespace Core::Serialization

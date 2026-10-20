@@ -245,9 +245,3 @@ protected:
 };
 
 } // namespace Core::Handler
-
-namespace Core {
-using Handler::ExecutionModel;
-using Handler::IHandler;
-using Handler::parseExecutionModel;
-} // namespace Core

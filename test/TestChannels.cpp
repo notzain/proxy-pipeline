@@ -1,7 +1,4 @@
 #include "core/handler/IHandler.hpp"
-#include "core/threading/DedicatedThreadStrategy.hpp"
-#include "core/threading/SequentialStrategy.hpp"
-#include "core/threading/ThreadPoolStrategy.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <fmt/core.h>
 #include <memory>

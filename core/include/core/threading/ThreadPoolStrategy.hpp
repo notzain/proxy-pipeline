@@ -47,7 +47,3 @@ private:
 };
 
 } // namespace Core::Threading
-
-namespace Core {
-using Threading::ThreadPoolStrategy;
-} // namespace Core

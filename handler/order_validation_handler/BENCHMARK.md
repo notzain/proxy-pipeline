@@ -65,7 +65,7 @@ Side-by-side micro-benchmark of XML parsing and DOM / SAX traversal into the C++
 
 ### Option 3 (Direct DOM Traversal & In-Place Parsing)
 1. **Bypassing Intermediate Representation (IR)**:
-   - Baseline and Option 1 relied on `Core::Serialization::XmlDeserializer`, which builds an intermediate `Value` IR map/tree before mapping into the model struct.
+   - Baseline and Option 1 relied on `Core::Serialization::Xml::XmlDeserializer`, which builds an intermediate `Value` IR map/tree before mapping into the model struct.
    - Option 3 uses `pugi::xml_document::load_buffer_inplace` and queries child nodes (`<customer>`, `<item>`, `<quantity>`) directly, coupled with zero-allocation `std::from_chars` for integer parsing.
 2. **Throughput & Latency Impact**:
    - Deserialization latency dropped dramatically from **562.11 ns** to **175.22 ns** (**-68.8% reduction** compared to Option 1, **-72.1% overall reduction** compared to baseline).

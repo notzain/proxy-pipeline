@@ -268,11 +268,3 @@ private:
 };
 
 } // namespace Core::Serialization::Ir
-
-namespace Core::Serialization {
-using Ir::ArrayType;
-using Ir::AttributeMapType;
-using Ir::NullType;
-using Ir::ObjectType;
-using Ir::Value;
-} // namespace Core::Serialization
