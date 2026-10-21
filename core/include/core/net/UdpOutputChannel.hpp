@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include "backend/SocketAddress.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <netinet/in.h>
 #include <span>
 #include <string>
 
@@ -48,6 +48,11 @@ public:
     std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
 
     /**
+     * @brief Sends a datagram directly to a specified SocketAddress (IPv4 or IPv6).
+     */
+    bool sendTo(std::span<const std::byte> message, const ::Backend::SocketAddress& destination);
+
+    /**
      * @brief Sends a datagram directly to a specified destination address in network byte order.
      *
      * @param message Message payload bytes.
@@ -70,12 +75,14 @@ public:
 private:
     void openSocket();
     void closeSocket();
+    int ensureSocketForFamily(::Backend::AddressFamily family);
 
     std::string m_defaultHost;
     std::uint16_t m_defaultPort { 0 };
     std::size_t m_sendBufferSize { 8 * 1024 * 1024 };
     int m_socketFd { -1 };
-    sockaddr_in m_defaultAddr { };
+    int m_socketFdV6 { -1 };
+    ::Backend::SocketAddress m_defaultAddr { };
     bool m_hasDefaultAddr { false };
 };
 

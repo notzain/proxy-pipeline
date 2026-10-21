@@ -43,10 +43,20 @@ namespace {
         header.timestampNs = getCurrentTimeNs();
 
         Message::UdpMetadata meta { };
-        meta.srcIp = clientAddr.ipv4Net();
         meta.srcPort = clientAddr.portNet();
-        meta.dstIp = boundAddr.ipv4Net();
         meta.dstPort = boundAddr.portNet();
+        if (clientAddr.family() == Backend::AddressFamily::Ipv6) {
+            meta.addressFamily = 6;
+            std::memcpy(meta.srcIpv6, clientAddr.ipv6Bytes(), sizeof(meta.srcIpv6));
+        } else {
+            meta.addressFamily = 4;
+            meta.srcIp = clientAddr.ipv4Net();
+        }
+        if (boundAddr.family() == Backend::AddressFamily::Ipv6) {
+            std::memcpy(meta.dstIpv6, boundAddr.ipv6Bytes(), sizeof(meta.dstIpv6));
+        } else {
+            meta.dstIp = boundAddr.ipv4Net();
+        }
 
         std::memcpy(destination.data(), &header, sizeof(Message::EnvelopeHeader));
         std::memcpy(destination.data() + sizeof(Message::EnvelopeHeader), &meta, sizeof(Message::UdpMetadata));
@@ -106,7 +116,17 @@ void UdpInputChannel::openAndBindSocket()
 {
     closeSocket();
 
-    m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (m_host == "0.0.0.0" || m_host.empty()) {
+        m_boundAddr = Backend::SocketAddress::fromIpv4Net(INADDR_ANY, htons(m_port));
+    } else if (m_host == "::") {
+        in6_addr any6 = IN6ADDR_ANY_INIT;
+        m_boundAddr = Backend::SocketAddress::fromIpv6Net(reinterpret_cast<const std::uint8_t*>(&any6), htons(m_port));
+    } else {
+        m_boundAddr = Backend::SocketAddress::fromString(m_host, m_port);
+    }
+
+    const int domain = (m_boundAddr.family() == Backend::AddressFamily::Ipv6) ? AF_INET6 : AF_INET;
+    m_socketFd = ::socket(domain, SOCK_DGRAM, 0);
     if (m_socketFd < 0) {
         Proxy::Log::error("[UdpInputChannel] Failed to create UDP socket: {}", std::strerror(errno));
         return;
@@ -120,10 +140,6 @@ void UdpInputChannel::openAndBindSocket()
 
     int rcvbuf = static_cast<int>(m_receiveBufferSize);
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
-
-    m_boundAddr = (m_host == "0.0.0.0" || m_host.empty())
-        ? Backend::SocketAddress::fromIpv4Net(INADDR_ANY, htons(m_port))
-        : Backend::SocketAddress::fromString(m_host, m_port);
 
     sockaddr_storage ss { };
     std::size_t nativeLen = m_boundAddr.toNative(&ss, sizeof(ss));

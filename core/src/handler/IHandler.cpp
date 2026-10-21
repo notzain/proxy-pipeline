@@ -86,17 +86,18 @@ std::size_t IHandler::sendBatch(std::string_view channelName, std::span<const Me
     }
     std::array<std::span<const std::byte>, 32> rawSpans;
     std::size_t count = 0;
+    std::size_t totalSent = 0;
     for (const auto& msg : messages) {
         rawSpans[count++] = msg.rawBuffer();
         if (count == rawSpans.size()) {
-            sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+            totalSent += sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
             count = 0;
         }
     }
     if (count > 0) {
-        sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
+        totalSent += sendBatch(channelName, std::span<const std::span<const std::byte>>(rawSpans.data(), count));
     }
-    return messages.size();
+    return totalSent;
 }
 
 ::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
@@ -114,10 +115,9 @@ std::size_t IHandler::sendBatch(std::string_view channelName, std::span<const Me
 bool IHandler::send(std::string_view channelName, std::span<const std::byte> message)
 {
     std::shared_lock lock(m_outputMutex);
-    for (const auto& [name, channel] : m_outputChannels) {
-        if (name == channelName && channel) {
-            return channel->send(message);
-        }
+    auto it = m_outputChannels.find(channelName);
+    if (it != m_outputChannels.end() && it->second) {
+        return it->second->send(message);
     }
     Proxy::Log::error("[IHandler] Output channel '{}' not found", channelName);
     return false;
@@ -129,10 +129,9 @@ std::size_t IHandler::sendBatch(std::string_view channelName, std::span<const st
         return 0;
     }
     std::shared_lock lock(m_outputMutex);
-    for (const auto& [name, channel] : m_outputChannels) {
-        if (name == channelName && channel) {
-            return channel->sendBatch(messages);
-        }
+    auto it = m_outputChannels.find(channelName);
+    if (it != m_outputChannels.end() && it->second) {
+        return it->second->sendBatch(messages);
     }
     Proxy::Log::error("[IHandler] Output channel '{}' not found for sendBatch", channelName);
     return 0;
@@ -155,7 +154,7 @@ std::size_t IHandler::sendAll(std::span<const std::byte> message)
 bool IHandler::hasOutputChannel(std::string_view channelName) const noexcept
 {
     std::shared_lock lock(m_outputMutex);
-    return m_outputChannels.find(std::string(channelName)) != m_outputChannels.end();
+    return m_outputChannels.find(channelName) != m_outputChannels.end();
 }
 
 std::vector<std::string> IHandler::getOutputChannelNames() const
@@ -173,14 +172,14 @@ void IHandler::step()
 {
 }
 
-void IHandler::setExecutionModel(ExecutionModel model, std::size_t poolSize)
+void IHandler::setExecutionModel(ExecutionModel model, std::size_t poolSize, bool strictFifo)
 {
     switch (model) {
     case ExecutionModel::Sequential:
         m_strategy = std::make_unique<Threading::SequentialStrategy>();
         break;
     case ExecutionModel::ThreadPool:
-        m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(poolSize);
+        m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(poolSize, strictFifo);
         break;
     case ExecutionModel::Dedicated:
     default:

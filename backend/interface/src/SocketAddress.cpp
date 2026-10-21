@@ -34,6 +34,11 @@ std::uint32_t SocketAddress::ipv4Net() const noexcept
     return m_ipv4Net;
 }
 
+const std::uint8_t* SocketAddress::ipv6Bytes() const noexcept
+{
+    return m_ipv6;
+}
+
 std::string SocketAddress::host() const
 {
     if (m_family == AddressFamily::Ipv4) {
@@ -65,6 +70,17 @@ SocketAddress SocketAddress::fromIpv4Net(std::uint32_t ipNetOrder, std::uint16_t
     SocketAddress addr;
     addr.m_family = AddressFamily::Ipv4;
     addr.m_ipv4Net = ipNetOrder;
+    addr.m_portNet = portNetOrder;
+    return addr;
+}
+
+SocketAddress SocketAddress::fromIpv6Net(const std::uint8_t ipv6NetOrder[16], std::uint16_t portNetOrder) noexcept
+{
+    SocketAddress addr;
+    addr.m_family = AddressFamily::Ipv6;
+    if (ipv6NetOrder) {
+        std::memcpy(addr.m_ipv6, ipv6NetOrder, sizeof(addr.m_ipv6));
+    }
     addr.m_portNet = portNetOrder;
     return addr;
 }

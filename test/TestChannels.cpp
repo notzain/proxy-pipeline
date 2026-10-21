@@ -56,16 +56,10 @@ public:
         }
         std::size_t count = 0;
         while (count < destinations.size() && m_index < m_messages.size()) {
-            const auto& msg = m_messages[m_index];
-            if (msg.size() > destinations[count].size()) {
-                std::memcpy(destinations[count].data(), msg.data(), destinations[count].size());
-                outSizes[count] = destinations[count].size();
-                ++count;
-                break;
-            }
-            std::memcpy(destinations[count].data(), msg.data(), msg.size());
-            outSizes[count] = msg.size();
-            m_index++;
+            const auto& msg = m_messages[m_index++];
+            const auto bytesToCopy = std::min(destinations[count].size(), msg.size());
+            std::memcpy(destinations[count].data(), msg.data(), bytesToCopy);
+            outSizes[count] = bytesToCopy;
             ++count;
         }
         return count;
@@ -436,4 +430,47 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
         std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), outSizes[i]);
         CHECK(recStr == messages[i]);
     }
+}
+
+TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per channel", "[channel][core][ordering]")
+{
+    class OrderVerifyHandler : public Core::Handler::IHandler {
+    public:
+        explicit OrderVerifyHandler(std::size_t expectedCount)
+            : m_expectedCount(expectedCount)
+        {
+        }
+
+        void onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
+        {
+            std::lock_guard lock(m_mutex);
+            received.emplace_back(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
+            if (received.size() >= m_expectedCount) {
+                stop();
+            }
+        }
+
+        std::mutex m_mutex;
+        std::vector<std::string> received;
+
+    private:
+        std::size_t m_expectedCount;
+    };
+
+    constexpr std::size_t kTotalMessages = 64;
+    std::vector<std::string> expected;
+    expected.reserve(kTotalMessages);
+    for (std::size_t i = 0; i < kTotalMessages; ++i) {
+        expected.push_back(fmt::format("seq_{}", i));
+    }
+
+    OrderVerifyHandler handler(kTotalMessages);
+    handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 4);
+    handler.registerInputChannel("ordered_chan", std::make_unique<MockInputChannel>(expected));
+
+    handler.startAsync();
+    handler.wait();
+
+    REQUIRE(handler.received.size() == kTotalMessages);
+    CHECK(handler.received == expected);
 }

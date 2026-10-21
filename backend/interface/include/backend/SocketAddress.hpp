@@ -48,6 +48,11 @@ public:
     [[nodiscard]] std::uint32_t ipv4Net() const noexcept;
 
     /**
+     * @brief Gets a pointer to the 16-byte IPv6 address in network byte order.
+     */
+    [[nodiscard]] const std::uint8_t* ipv6Bytes() const noexcept;
+
+    /**
      * @brief Gets the host address formatted as a string (e.g. "127.0.0.1").
      */
     [[nodiscard]] std::string host() const;
@@ -61,6 +66,11 @@ public:
      * @brief Creates a SocketAddress from IPv4 and port in network byte order.
      */
     static SocketAddress fromIpv4Net(std::uint32_t ipNetOrder, std::uint16_t portNetOrder) noexcept;
+
+    /**
+     * @brief Creates a SocketAddress from a 16-byte IPv6 address and port in network byte order.
+     */
+    static SocketAddress fromIpv6Net(const std::uint8_t ipv6NetOrder[16], std::uint16_t portNetOrder) noexcept;
 
     /**
      * @brief Creates a SocketAddress from a hostname/IP string and host-order port.

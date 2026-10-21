@@ -56,23 +56,24 @@ void UdpEgressHandler::onMessageReceived(std::string_view channelName, const Cor
     if (m_replyToOrigin && message.protocol() == Core::Message::ProtocolId::Udp) {
         const auto* meta = message.getMetadata<Core::Message::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
-            char ipStr[INET_ADDRSTRLEN] { };
-            in_addr inAddr { };
-            inAddr.s_addr = meta->srcIp;
-            ::inet_ntop(AF_INET, &inAddr, ipStr, sizeof(ipStr));
+            const auto originAddr = (meta->addressFamily == 6)
+                ? ::Backend::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)
+                : ::Backend::SocketAddress::fromIpv4Net(meta->srcIp, meta->srcPort);
 
-            Proxy::Log::info("[UdpEgressHandler] Channel '{}': Replying {} payload bytes directly to origin client {}:{}",
-                channelName, payload.size(), ipStr, ntohs(meta->srcPort));
+            if (Proxy::Log::shouldLog(Proxy::Log::Level::Debug)) {
+                Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Replying {} payload bytes directly to origin client {}",
+                    channelName, payload.size(), originAddr.toString());
+            }
 
-            if (!m_udpOut->sendTo(payload, meta->srcIp, meta->srcPort)) {
-                Proxy::Log::warn("[UdpEgressHandler] Failed to send reply to origin client {}:{}", ipStr, ntohs(meta->srcPort));
+            if (!m_udpOut->sendTo(payload, originAddr)) {
+                Proxy::Log::warn("[UdpEgressHandler] Failed to send reply to origin client {}", originAddr.toString());
             }
             return;
         }
     }
 
     // Default or forward mode
-    Proxy::Log::info("[UdpEgressHandler] Channel '{}': Forwarding {} payload bytes to {}:{}",
+    Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Forwarding {} payload bytes to {}:{}",
         channelName, payload.size(), m_destHost, m_destPort);
 
     if (!m_udpOut->send(payload)) {

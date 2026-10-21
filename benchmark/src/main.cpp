@@ -73,6 +73,7 @@ int main(int argc, char* argv[])
     std::size_t numMessages = 10000;
     std::size_t iterations = 1;
     std::string targetStrategy = "all";
+    bool strictFifo = false; // default false for benchmarks to allow full parallel queue utilization
 
     for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
@@ -82,6 +83,7 @@ int main(int argc, char* argv[])
             fmt::print("  --messages <N>        Number of messages to send (default: 10000)\n");
             fmt::print("  --iterations <N>      Number of benchmark runs (default: 1)\n");
             fmt::print("  --strategy <NAME>     Strategy to run: all, direct, dedicated, sequential, threadpool4, threadpool8 (default: all)\n");
+            fmt::print("  --strict-fifo         Enforce per-flow/channel strict FIFO ordering in ThreadPool (default: false)\n");
             fmt::print("  --help, -h            Show this help message\n");
             return 0;
         } else if (arg == "--messages" && i + 1 < argc) {
@@ -90,6 +92,10 @@ int main(int argc, char* argv[])
             iterations = std::stoul(argv[++i]);
         } else if (arg == "--strategy" && i + 1 < argc) {
             targetStrategy = argv[++i];
+        } else if (arg == "--strict-fifo") {
+            strictFifo = true;
+        } else if (arg == "--no-strict-fifo") {
+            strictFifo = false;
         } else if (arg.rfind("--messages=", 0) == 0) {
             numMessages = std::stoul(std::string(arg.substr(11)));
         } else if (arg.rfind("--iterations=", 0) == 0) {
@@ -190,13 +196,13 @@ int main(int argc, char* argv[])
         auto verifierIn = backend->createInputChannel("udp_raw", config);
         auto verifierOut = backend->createOutputChannel("udp_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "udp_verified");
-        verifier.setExecutionModel(model, poolSize);
+        verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("udp_raw", std::move(verifierIn));
         verifier.registerOutputChannel("udp_verified", std::move(verifierOut));
 
         auto receiverIn = backend->createInputChannel("udp_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(socketMessages);
-        receiver.setExecutionModel(model, poolSize);
+        receiver.setExecutionModel(model, poolSize, strictFifo);
         receiver.registerInputChannel("udp_verified", std::move(receiverIn));
 
         auto senderOut = backend->createOutputChannel("udp_raw", config);
@@ -294,13 +300,13 @@ int main(int argc, char* argv[])
         // Instantiate components: create receiver's input channel first so its socket path is bound
         auto receiverIn = backend->createInputChannel("uds_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(udsMessages);
-        receiver.setExecutionModel(model, poolSize);
+        receiver.setExecutionModel(model, poolSize, strictFifo);
         receiver.registerInputChannel("uds_verified", std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("uds_raw", config);
         auto verifierOut = backend->createOutputChannel("uds_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "uds_verified");
-        verifier.setExecutionModel(model, poolSize);
+        verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("uds_raw", std::move(verifierIn));
         verifier.registerOutputChannel("uds_verified", std::move(verifierOut));
 
@@ -402,13 +408,13 @@ int main(int argc, char* argv[])
 
         auto receiverIn = backend->createInputChannel("shm_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(shmMessages);
-        receiver.setExecutionModel(model, poolSize);
+        receiver.setExecutionModel(model, poolSize, strictFifo);
         receiver.registerInputChannel("shm_verified", std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("shm_raw", config);
         auto verifierOut = backend->createOutputChannel("shm_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "shm_verified");
-        verifier.setExecutionModel(model, poolSize);
+        verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("shm_raw", std::move(verifierIn));
         verifier.registerOutputChannel("shm_verified", std::move(verifierOut));
 

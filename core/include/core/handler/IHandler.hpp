@@ -211,8 +211,9 @@ public:
      *
      * @param model Desired execution model (Sequential, Dedicated, or ThreadPool).
      * @param poolSize Worker thread count (only used when model is ThreadPool, 0 for hardware concurrency).
+     * @param strictFifo Enforces strict per-flow FIFO order in ThreadPoolStrategy (default: true).
      */
-    void setExecutionModel(ExecutionModel model, std::size_t poolSize = 0);
+    void setExecutionModel(ExecutionModel model, std::size_t poolSize = 0, bool strictFifo = true);
 
     /**
      * @brief Injects a custom execution strategy.
@@ -256,9 +257,25 @@ public:
     [[nodiscard]] bool isRunning() const noexcept;
 
 protected:
+    /**
+     * @brief Transparent hasher enabling C++20 heterogeneous lookup in `m_outputChannels`.
+     *
+     * By providing `using is_transparent = void;`, `std::unordered_map::find` can look up
+     * channels directly using `std::string_view` without allocating temporary `std::string`
+     * objects on the heap during hot egress dispatch.
+     */
+    struct TransparentStringHash {
+        using is_transparent = void;
+
+        [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept
+        {
+            return std::hash<std::string_view> { }(sv);
+        }
+    };
+
     std::vector<NamedInputChannel> m_inputChannels;
     mutable std::shared_mutex m_outputMutex;
-    std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
+    std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>, TransparentStringHash, std::equal_to<>> m_outputChannels;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
 
     void registerSignalHandler();

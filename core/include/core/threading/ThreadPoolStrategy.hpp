@@ -24,9 +24,20 @@ public:
      * @brief Constructs ThreadPoolStrategy with a specified number of worker threads.
      *
      * @param numWorkerThreads Number of pool workers. Defaults to hardware concurrency.
+     * @param strictFifo When true (default), messages from the same client flow/channel are pinned to the same worker to guarantee strict FIFO ordering. When false, batches are distributed round-robin across worker queues for unconstrained parallel throughput.
      */
-    explicit ThreadPoolStrategy(std::size_t numWorkerThreads = 0);
+    explicit ThreadPoolStrategy(std::size_t numWorkerThreads = 0, bool strictFifo = true);
     ~ThreadPoolStrategy() override;
+
+    /**
+     * @brief Enables or disables strict per-flow/channel FIFO ordering.
+     */
+    void setStrictFifo(bool enable) noexcept;
+
+    /**
+     * @brief Returns whether strict FIFO ordering is enabled.
+     */
+    [[nodiscard]] bool isStrictFifo() const noexcept;
 
     void start(Handler::IHandler& handler) override;
     void stop() override;
@@ -35,6 +46,7 @@ public:
 
 private:
     std::size_t m_numWorkerThreads;
+    bool m_strictFifo { true };
     std::atomic<bool> m_running { false };
 
     using QueueType = Queue::SpscQueue<MessageTask, 1024>;

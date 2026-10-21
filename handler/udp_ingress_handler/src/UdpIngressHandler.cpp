@@ -48,7 +48,7 @@ bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::B
 
 void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
-    Proxy::Log::info("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
+    Proxy::Log::debug("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
         message.payload().size(), message.metadata().size(), channelName, m_outputChannelName);
 
     if (m_outputChannel) {
@@ -64,7 +64,7 @@ void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Co
 
 void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
 {
-    Proxy::Log::info("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
+    Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, m_outputChannelName);
 
     if (m_outputChannel) {

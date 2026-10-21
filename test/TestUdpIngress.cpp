@@ -357,3 +357,60 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
 
     ::close(clientFd);
 }
+
+TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply over UDPv6", "[handler][egress][ipv6]")
+{
+    int clientFd = ::socket(AF_INET6, SOCK_DGRAM, 0);
+    if (clientFd < 0) {
+        return; // Skip if IPv6 is disabled on the host kernel
+    }
+
+    sockaddr_in6 clientAddr { };
+    clientAddr.sin6_family = AF_INET6;
+    clientAddr.sin6_addr = in6addr_loopback;
+    clientAddr.sin6_port = 0;
+    if (::bind(clientFd, reinterpret_cast<sockaddr*>(&clientAddr), sizeof(clientAddr)) != 0) {
+        ::close(clientFd);
+        return;
+    }
+
+    socklen_t addrLen = sizeof(clientAddr);
+    REQUIRE(::getsockname(clientFd, reinterpret_cast<sockaddr*>(&clientAddr), &addrLen) == 0);
+
+    Core::Message::UdpMetadata meta { };
+    meta.addressFamily = 6;
+    std::memcpy(meta.srcIpv6, &clientAddr.sin6_addr, sizeof(meta.srcIpv6));
+    meta.srcPort = clientAddr.sin6_port;
+    meta.dstPort = htons(9999);
+
+    std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
+    auto envelope = Core::Message::MessageEnvelope::packUdp(
+        meta,
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(expectedPayload.data()), expectedPayload.size()));
+
+    DummyTestBackend backend;
+    std::vector<std::vector<std::byte>> queuedMsgs { envelope };
+    backend.queueInputChannel(std::make_unique<MockTestInputChannel>(std::move(queuedMsgs)));
+
+    Core::Config::Configuration config;
+    config.set("egress.mode", "reply_to_origin");
+    config.set("egress.input_channel", "pipeline_out");
+
+    Proxy::Handler::UdpEgressHandler egressHandler;
+    REQUIRE(egressHandler.configure(config, backend));
+
+    egressHandler.startAsync();
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    egressHandler.stop();
+    egressHandler.wait();
+
+    char recvBuf[256] { };
+    timeval tv { .tv_sec = 1, .tv_usec = 0 };
+    ::setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ssize_t received = ::recv(clientFd, recvBuf, sizeof(recvBuf), 0);
+
+    REQUIRE(received == static_cast<ssize_t>(expectedPayload.size()));
+    CHECK(std::string_view(recvBuf, received) == expectedPayload);
+
+    ::close(clientFd);
+}

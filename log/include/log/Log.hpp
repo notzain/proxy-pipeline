@@ -29,6 +29,17 @@ void setLevel(Level level);
 [[nodiscard]] Level getLevel();
 
 /**
+ * @brief Lock-free check for whether a message at @p level would be emitted.
+ *
+ * Used by the formatted logging templates to skip `fmt::format` entirely when
+ * the target severity is below the active sink threshold.
+ *
+ * @param level Severity level to test.
+ * @return true if @p level is enabled and will be logged.
+ */
+[[nodiscard]] bool shouldLog(Level level) noexcept;
+
+/**
  * @brief Flushes all log sinks immediately.
  */
 void flush();
@@ -78,6 +89,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void trace(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Trace)) {
+        return;
+    }
     log(Level::Trace, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 
@@ -88,6 +102,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void debug(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Debug)) {
+        return;
+    }
     log(Level::Debug, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 
@@ -98,6 +115,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void info(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Info)) {
+        return;
+    }
     log(Level::Info, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 
@@ -108,6 +128,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void warn(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Warn)) {
+        return;
+    }
     log(Level::Warn, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 
@@ -118,6 +141,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void error(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Error)) {
+        return;
+    }
     log(Level::Error, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 
@@ -128,6 +154,9 @@ template <typename... Args>
     requires(sizeof...(Args) > 0)
 void critical(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
+    if (!shouldLog(Level::Critical)) {
+        return;
+    }
     log(Level::Critical, fmt::format(fmtStr, std::forward<Args>(args)...));
 }
 

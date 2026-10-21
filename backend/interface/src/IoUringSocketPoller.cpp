@@ -10,6 +10,9 @@ namespace Backend {
 
 struct IoUringSocketPoller::RingImpl {
     struct io_uring ring { };
+    sockaddr_storage ss { };
+    struct iovec iov { };
+    struct msghdr msg { };
     bool initialized { false };
 };
 
@@ -43,26 +46,56 @@ std::size_t IoUringSocketPoller::receive(
         return 0;
     }
 
+    // Fast-path: speculative non-blocking read avoids ring submission when data is ready
+    {
+        sockaddr_storage directSs { };
+        socklen_t addrLen = sizeof(directSs);
+        sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&directSs) : nullptr;
+        socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
+
+        ssize_t directBytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destination.data()),
+            destination.size(),
+            MSG_DONTWAIT,
+            saPtr,
+            saLenPtr);
+
+        if (directBytes > 0) {
+            if (outSourceAddress) {
+                outSourceAddress->setFromNative(&directSs, addrLen);
+            }
+            return static_cast<std::size_t>(directBytes);
+        }
+    }
+
+    if (timeout.count() == 0) {
+        return 0;
+    }
+
     struct io_uring_sqe* sqe = io_uring_get_sqe(&m_impl->ring);
     if (!sqe) {
         return 0;
     }
 
-    sockaddr_storage ss { };
-    struct iovec iov { };
-    iov.iov_base = destination.data();
-    iov.iov_len = destination.size();
+    constexpr std::uint64_t kRecvUserData = 1;
+    constexpr std::uint64_t kCancelUserData = 2;
 
-    struct msghdr msg { };
-    msg.msg_iov = &iov;
-    msg.msg_iovlen = 1;
+    m_impl->ss = sockaddr_storage { };
+    m_impl->iov = iovec { };
+    m_impl->iov.iov_base = destination.data();
+    m_impl->iov.iov_len = destination.size();
+
+    m_impl->msg = msghdr { };
+    m_impl->msg.msg_iov = &m_impl->iov;
+    m_impl->msg.msg_iovlen = 1;
     if (outSourceAddress) {
-        msg.msg_name = &ss;
-        msg.msg_namelen = sizeof(ss);
+        m_impl->msg.msg_name = &m_impl->ss;
+        m_impl->msg.msg_namelen = sizeof(m_impl->ss);
     }
 
-    io_uring_prep_recvmsg(sqe, socketFd, &msg, 0);
-    io_uring_sqe_set_data(sqe, nullptr);
+    io_uring_prep_recvmsg(sqe, socketFd, &m_impl->msg, 0);
+    io_uring_sqe_set_data64(sqe, kRecvUserData);
 
     int ret = io_uring_submit(&m_impl->ring);
     if (ret < 0) {
@@ -77,16 +110,48 @@ std::size_t IoUringSocketPoller::receive(
     struct io_uring_cqe* cqe = nullptr;
     ret = io_uring_wait_cqe_timeout(&m_impl->ring, &cqe, &ts);
 
+    std::size_t bytesRead = 0;
+
     if (ret < 0) {
-        return 0;
+        // Timeout or interruption: cancel the in-flight recvmsg SQE and reap all CQEs
+        // before returning so the kernel never writes to m_impl->msg or destination after return.
+        struct io_uring_sqe* cancelSqe = io_uring_get_sqe(&m_impl->ring);
+        bool cancelSubmitted = false;
+        if (cancelSqe) {
+            io_uring_prep_cancel64(cancelSqe, kRecvUserData, 0);
+            io_uring_sqe_set_data64(cancelSqe, kCancelUserData);
+            cancelSubmitted = (io_uring_submit(&m_impl->ring) >= 0);
+        }
+
+        bool recvReaped = false;
+        bool cancelReaped = !cancelSubmitted;
+        while (!recvReaped || !cancelReaped) {
+            struct io_uring_cqe* drainCqe = nullptr;
+            if (io_uring_wait_cqe(&m_impl->ring, &drainCqe) < 0 || !drainCqe) {
+                break;
+            }
+            const auto tag = io_uring_cqe_get_data64(drainCqe);
+            if (tag == kRecvUserData) {
+                if (drainCqe->res > 0) {
+                    bytesRead = static_cast<std::size_t>(drainCqe->res);
+                    if (outSourceAddress) {
+                        outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
+                    }
+                }
+                recvReaped = true;
+            } else if (tag == kCancelUserData) {
+                cancelReaped = true;
+            }
+            io_uring_cqe_seen(&m_impl->ring, drainCqe);
+        }
+        return bytesRead;
     }
 
-    std::size_t bytesRead = 0;
     if (cqe) {
         if (cqe->res > 0) {
             bytesRead = static_cast<std::size_t>(cqe->res);
             if (outSourceAddress) {
-                outSourceAddress->setFromNative(&ss, msg.msg_namelen);
+                outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
             }
         }
         io_uring_cqe_seen(&m_impl->ring, cqe);
