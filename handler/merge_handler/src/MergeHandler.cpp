@@ -1,6 +1,7 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
@@ -66,8 +67,33 @@ void MergeHandler::onMessageReceived(std::string_view channelName, const Core::M
         if (!m_outputChannel->send(message.rawBuffer())) {
             Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", m_outputChannelName);
         }
-    } else if (!send(m_outputChannelName, message)) {
-        Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", m_outputChannelName);
+    } else {
+        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", m_outputChannelName);
+    }
+}
+
+void MergeHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+{
+    if (messages.empty()) {
+        return;
+    }
+
+    Core::Memory::SmallSpanBuffer spans(messages.size());
+    for (std::size_t i = 0; i < messages.size(); ++i) {
+        spans[i] = messages[i].rawBuffer();
+    }
+
+    Proxy::Log::debug("[MergeHandler] Input channel '{}' received batch of {} messages, redirecting to '{}'...",
+        channelName, messages.size(), m_outputChannelName);
+
+    if (m_outputChannel) {
+        std::size_t sent = m_outputChannel->sendBatch(spans.span(messages.size()));
+        if (sent < messages.size()) {
+            Proxy::Log::warn("[MergeHandler] Only {}/{} messages redirected to output channel '{}'",
+                sent, messages.size(), m_outputChannelName);
+        }
+    } else {
+        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
     }
 }
 

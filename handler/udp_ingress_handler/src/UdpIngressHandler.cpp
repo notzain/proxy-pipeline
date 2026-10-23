@@ -2,6 +2,7 @@
 #include "backend/IBackend.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "log/Log.hpp"
@@ -56,32 +57,27 @@ void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Co
             Proxy::Log::warn("[UdpIngressHandler] Failed to forward datagram to '{}'", m_outputChannelName);
         }
     } else {
-        if (!send(m_outputChannelName, message)) {
-            Proxy::Log::warn("[UdpIngressHandler] Failed to send datagram to '{}'", m_outputChannelName);
-        }
+        Proxy::Log::warn("[UdpIngressHandler] Output channel '{}' not found", m_outputChannelName);
     }
 }
 
 void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
 {
+    if (messages.empty()) {
+        return;
+    }
+
     Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, m_outputChannelName);
 
     if (m_outputChannel) {
-        std::array<std::span<const std::byte>, 32> rawSpans;
-        std::size_t count = 0;
-        for (const auto& msg : messages) {
-            rawSpans[count++] = msg.rawBuffer();
-            if (count == rawSpans.size()) {
-                m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(rawSpans.data(), count));
-                count = 0;
-            }
+        Core::Memory::SmallSpanBuffer spans(messages.size());
+        for (std::size_t i = 0; i < messages.size(); ++i) {
+            spans[i] = messages[i].rawBuffer();
         }
-        if (count > 0) {
-            m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(rawSpans.data(), count));
-        }
+        m_outputChannel->sendBatch(spans.span(messages.size()));
     } else {
-        sendBatch(m_outputChannelName, messages);
+        Proxy::Log::warn("[UdpIngressHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
     }
 }
 

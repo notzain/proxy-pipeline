@@ -75,7 +75,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                 destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
             }
             // alignas(64): Aligns the size array to a cache line so atomic/SIMD fills don't false-share with loop control state.
-            alignas(64) std::array<std::size_t, 16> batchSizes {};
+            alignas(64) std::array<std::size_t, 16> batchSizes { };
             std::size_t invalidEnvelopeCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {

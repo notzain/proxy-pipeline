@@ -90,14 +90,19 @@ public:
 
 class TestChainedHandler : public Core::Handler::IHandler {
 public:
+    void setOutChannel(::Backend::IOutputChannel* out)
+    {
+        m_outChannel = out;
+    }
+
     void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
     {
         std::lock_guard lock(m_handlerMutex);
         std::string text(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
         receivedMessages.push_back(fmt::format("{}:{}", channelName, text));
 
-        if (hasOutputChannel("out")) {
-            send("out", message);
+        if (m_outChannel) {
+            m_outChannel->send(message.rawBuffer());
         }
 
         m_count++;
@@ -110,26 +115,26 @@ public:
     std::vector<std::string> receivedMessages;
 
 private:
+    ::Backend::IOutputChannel* m_outChannel { nullptr };
     int m_count { 0 };
 };
 
 } // namespace
 
-TEST_CASE("IHandler output channel registration and dispatch", "[channel][core]")
+TEST_CASE("IHandler output channel registration and direct dispatch", "[channel][core]")
 {
     TestChainedHandler handler;
     auto mockChan = std::make_unique<MockOutputChannel>();
     auto* rawChan = mockChan.get();
 
-    handler.registerOutputChannel("out_1", std::move(mockChan));
-    CHECK(handler.hasOutputChannel("out_1"));
-    CHECK_FALSE(handler.hasOutputChannel("out_2"));
+    auto* registered = handler.registerOutputChannel("out_1", std::move(mockChan));
+    CHECK(registered == rawChan);
+    CHECK(handler.registerOutputChannel("out_null", nullptr) == nullptr);
 
     std::string msg = "Hello Sender";
     std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
 
-    CHECK(handler.send("out_1", byteSpan));
-    CHECK_FALSE(handler.send("out_2", byteSpan));
+    CHECK(registered->send(byteSpan));
 
     REQUIRE(rawChan->sentMessages.size() == 1);
     CHECK(rawChan->sentMessages[0] == "Hello Sender");
@@ -147,7 +152,7 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.registerOutputChannel("out", std::move(outChan));
+    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
 
     handler.start();
 
@@ -172,7 +177,7 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.registerOutputChannel("out", std::move(outChan));
+    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
 
     handler.startAsync();
     handler.wait();
@@ -193,7 +198,7 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.registerOutputChannel("out", std::move(outChan));
+    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
 
     handler.startAsync();
     handler.wait();
@@ -202,21 +207,26 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
     REQUIRE(rawOutChan->sentMessages.size() == 2);
 }
 
-TEST_CASE("IHandler sendAll broadcasts to all registered channels", "[channel][core]")
+TEST_CASE("Direct output channel multi-dispatch", "[channel][core]")
 {
-    TestChainedHandler handler;
     auto chanA = std::make_unique<MockOutputChannel>();
     auto chanB = std::make_unique<MockOutputChannel>();
     auto* rawA = chanA.get();
     auto* rawB = chanB.get();
 
-    handler.registerOutputChannel("out_a", std::move(chanA));
-    handler.registerOutputChannel("out_b", std::move(chanB));
+    std::vector<::Backend::IOutputChannel*> channels = { rawA, rawB };
 
     std::string msg = "Broadcast Message";
     std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
 
-    CHECK(handler.sendAll(byteSpan) == 2);
+    std::size_t sentCount = 0;
+    for (auto* ch : channels) {
+        if (ch->send(byteSpan)) {
+            sentCount++;
+        }
+    }
+
+    CHECK(sentCount == 2);
     REQUIRE(rawA->sentMessages.size() == 1);
     CHECK(rawA->sentMessages[0] == "Broadcast Message");
     REQUIRE(rawB->sentMessages.size() == 1);
@@ -227,14 +237,16 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 {
     class MockMergeHandler : public Core::Handler::IHandler {
     public:
-        explicit MockMergeHandler(std::string outChannel)
-            : m_outChannel(std::move(outChannel))
+        void setOutChannel(::Backend::IOutputChannel* out)
         {
+            m_outChannel = out;
         }
 
         void onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
         {
-            send(m_outChannel, message);
+            if (m_outChannel) {
+                m_outChannel->send(message.rawBuffer());
+            }
             m_count++;
             if (m_count >= 2) {
                 stop();
@@ -242,11 +254,11 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
         }
 
     private:
-        std::string m_outChannel;
+        ::Backend::IOutputChannel* m_outChannel { nullptr };
         std::atomic<int> m_count { 0 };
     };
 
-    MockMergeHandler merge("merged_out");
+    MockMergeHandler merge;
     auto inA = std::make_unique<MockInputChannel>(std::vector<std::string> { "input1" });
     auto inB = std::make_unique<MockInputChannel>(std::vector<std::string> { "input2" });
     auto outChan = std::make_unique<MockOutputChannel>();
@@ -254,7 +266,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 
     merge.registerInputChannel("in_a", std::move(inA));
     merge.registerInputChannel("in_b", std::move(inB));
-    merge.registerOutputChannel("merged_out", std::move(outChan));
+    merge.setOutChannel(merge.registerOutputChannel("merged_out", std::move(outChan)));
 
     merge.start();
 

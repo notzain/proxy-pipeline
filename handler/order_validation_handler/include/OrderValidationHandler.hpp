@@ -29,6 +29,11 @@ public:
 
     ~OrderValidationHandler() override;
 
+    void setOutputChannel(::Backend::IOutputChannel* outChannel) noexcept
+    {
+        m_cachedOutputChannel = outChannel;
+    }
+
     /**
      * @brief Configures OrderValidationHandler and creates input and output channels via the backend.
      *
@@ -46,6 +51,15 @@ public:
      * @param buffer Byte buffer of the message payload.
      */
     void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+
+    /**
+     * @brief Batch ingress callback for incoming messages.
+     * Validates orders and forwards valid messages using vectorized batch transmission.
+     *
+     * @param channelName Name of the receiving channel.
+     * @param messages Batch of enveloped message views.
+     */
+    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
 
     /**
      * @brief Deserializes an XML buffer into an Order model.

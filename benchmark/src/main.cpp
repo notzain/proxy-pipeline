@@ -198,7 +198,7 @@ int main(int argc, char* argv[])
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "udp_verified");
         verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("udp_raw", std::move(verifierIn));
-        verifier.registerOutputChannel("udp_verified", std::move(verifierOut));
+        verifier.setOutputChannel(verifier.registerOutputChannel("udp_verified", std::move(verifierOut)));
 
         auto receiverIn = backend->createInputChannel("udp_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(socketMessages);
@@ -308,7 +308,7 @@ int main(int argc, char* argv[])
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "uds_verified");
         verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("uds_raw", std::move(verifierIn));
-        verifier.registerOutputChannel("uds_verified", std::move(verifierOut));
+        verifier.setOutputChannel(verifier.registerOutputChannel("uds_verified", std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("uds_raw", config);
 
@@ -416,7 +416,7 @@ int main(int argc, char* argv[])
         Proxy::Handler::XmlVerificationHandler verifier(xsdPath, "shm_verified");
         verifier.setExecutionModel(model, poolSize, strictFifo);
         verifier.registerInputChannel("shm_raw", std::move(verifierIn));
-        verifier.registerOutputChannel("shm_verified", std::move(verifierOut));
+        verifier.setOutputChannel(verifier.registerOutputChannel("shm_verified", std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("shm_raw", config);
 

@@ -49,7 +49,7 @@ void DummySendHandler::step()
         if (m_outputChannel) {
             m_outputChannel->send(envelope);
         } else {
-            send(m_channelName, envelope);
+            Proxy::Log::warn("[DummySend] Output channel '{}' not found", m_channelName);
         }
     }
 }

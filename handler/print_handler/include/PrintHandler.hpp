@@ -32,6 +32,14 @@ public:
      */
     void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
+    /**
+     * @brief Batch printing hook for incoming message batches.
+     *
+     * @param channelName Name of the channel that received the messages.
+     * @param messages Non-owning view of received enveloped messages.
+     */
+    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+
 private:
     std::string m_channelName;
     ::Backend::IInputChannel* m_inputChannel { nullptr };

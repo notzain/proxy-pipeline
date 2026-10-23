@@ -38,7 +38,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
     Proxy::Handler::OrderValidationHandler handler("validated_orders");
     auto mockOut = std::make_unique<TestMockOutputChannel>();
     auto* mockOutPtr = mockOut.get();
-    handler.registerOutputChannel("validated_orders", std::move(mockOut));
+    handler.setOutputChannel(handler.registerOutputChannel("validated_orders", std::move(mockOut)));
 
     SECTION("Valid order passes deserialization and validation")
     {
@@ -211,7 +211,7 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
 {
     Proxy::Handler::OrderValidationHandler handler("bench_out");
     auto mockOut = std::make_unique<TestMockOutputChannel>();
-    handler.registerOutputChannel("bench_out", std::move(mockOut));
+    handler.setOutputChannel(handler.registerOutputChannel("bench_out", std::move(mockOut)));
 
     std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
     std::span<const std::byte> span(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());

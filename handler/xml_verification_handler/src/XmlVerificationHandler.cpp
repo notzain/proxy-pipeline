@@ -2,6 +2,7 @@
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 
@@ -71,8 +72,8 @@ void XmlVerificationHandler::onMessageReceived(std::string_view channelName, con
             if (!m_outputChannel->send(message.rawBuffer())) {
                 Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", m_outputChannelName);
             }
-        } else if (!send(m_outputChannelName, message)) {
-            Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", m_outputChannelName);
+        } else {
+            Proxy::Log::warn("[XmlVerificationHandler] Output channel '{}' not found", m_outputChannelName);
         }
     } else {
         Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
@@ -82,20 +83,16 @@ void XmlVerificationHandler::onMessageReceived(std::string_view channelName, con
 
 void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
 {
-    std::array<std::span<const std::byte>, 32> validSpans;
+    if (messages.empty()) {
+        return;
+    }
+
+    Core::Memory::SmallSpanBuffer spans(messages.size());
     std::size_t validCount = 0;
 
     for (const auto& msg : messages) {
         if (validate(msg.payload())) {
-            validSpans[validCount++] = msg.rawBuffer();
-            if (validCount == validSpans.size()) {
-                if (m_outputChannel) {
-                    m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
-                } else {
-                    sendBatch(m_outputChannelName, std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
-                }
-                validCount = 0;
-            }
+            spans[validCount++] = msg.rawBuffer();
         } else {
             Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
                 channelName, msg.payload().size(), m_schemaPath.string());
@@ -104,9 +101,9 @@ void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::
 
     if (validCount > 0) {
         if (m_outputChannel) {
-            m_outputChannel->sendBatch(std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+            m_outputChannel->sendBatch(spans.span(validCount));
         } else {
-            sendBatch(m_outputChannelName, std::span<const std::span<const std::byte>>(validSpans.data(), validCount));
+            Proxy::Log::warn("[XmlVerificationHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
         }
     }
 }

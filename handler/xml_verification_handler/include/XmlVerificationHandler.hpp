@@ -77,6 +77,11 @@ public:
      */
     [[nodiscard]] bool isSchemaLoaded() const noexcept;
 
+    void setOutputChannel(::Backend::IOutputChannel* outChannel) noexcept
+    {
+        m_outputChannel = outChannel;
+    }
+
 private:
     std::filesystem::path m_schemaPath;
     std::string m_inputChannelName;

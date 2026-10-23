@@ -1,6 +1,7 @@
 #include "OrderValidationHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
@@ -915,8 +916,48 @@ void OrderValidationHandler::onMessageReceived(std::string_view channelName, con
     Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
         order->customer, order->item, order->quantity, m_outputChannelName);
 
-    if (!send(m_outputChannelName, message)) {
-        Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
+    if (m_cachedOutputChannel) {
+        if (!m_cachedOutputChannel->send(message.rawBuffer())) {
+            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
+        }
+    } else {
+        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found", m_outputChannelName);
+    }
+}
+
+void OrderValidationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+{
+    if (messages.empty()) {
+        return;
+    }
+
+    Core::Memory::SmallSpanBuffer spans(messages.size());
+    std::size_t validCount = 0;
+    for (const auto& msg : messages) {
+        auto order = parseOrder(msg.payload());
+        if (!order.has_value()) {
+            Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization. Discarding.",
+                channelName, msg.payload().size());
+            continue;
+        }
+
+        if (!validateOrder(*order)) {
+            Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
+                order->customer, order->item, order->quantity);
+            continue;
+        }
+
+        spans[validCount++] = msg.rawBuffer();
+    }
+
+    if (validCount == 0) {
+        return;
+    }
+
+    if (m_cachedOutputChannel) {
+        m_cachedOutputChannel->sendBatch(spans.span(validCount));
+    } else {
+        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
     }
 }
 
@@ -933,14 +974,6 @@ void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName,
         Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed fast domain validation. Discarding.",
             order->customer, order->item, order->quantity);
         return;
-    }
-
-    if (!m_cachedOutputChannel) {
-        std::shared_lock lock(m_outputMutex);
-        auto it = m_outputChannels.find(m_outputChannelName);
-        if (it != m_outputChannels.end()) {
-            m_cachedOutputChannel = it->second.get();
-        }
     }
 
     if (m_cachedOutputChannel) {

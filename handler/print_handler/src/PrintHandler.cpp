@@ -41,4 +41,12 @@ void PrintHandler::onMessageReceived(std::string_view channelName, const Core::M
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
 }
 
+void PrintHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+{
+    Proxy::Log::info("[PrintHandler] Channel '{}' received batch of {} message(s)", channelName, messages.size());
+    for (const auto& msg : messages) {
+        onMessageReceived(channelName, msg);
+    }
+}
+
 } // namespace Proxy::Handler

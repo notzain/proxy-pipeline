@@ -53,4 +53,3 @@ TEST_CASE("Core::Memory::BufferPool multi-threaded concurrent churn", "[memory]"
     workers.clear();
     CHECK(pool->available() == 16);
 }
-

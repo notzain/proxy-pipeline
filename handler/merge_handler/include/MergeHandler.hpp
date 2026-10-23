@@ -34,6 +34,15 @@ public:
      */
     void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
+    /**
+     * @brief Callback invoked when a batch of messages arrives on any registered input channel.
+     * Forwards the messages in the batch to the target output channel via vectorized sendBatch().
+     *
+     * @param channelName Name of the input channel that received the messages.
+     * @param messages Non-owning view of received enveloped messages.
+     */
+    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+
 private:
     std::string m_outputChannelName;
     ::Backend::IOutputChannel* m_outputChannel { nullptr };

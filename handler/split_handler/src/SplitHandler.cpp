@@ -1,6 +1,7 @@
 #include "SplitHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
@@ -57,16 +58,32 @@ void SplitHandler::onMessageReceived(std::string_view channelName, const Core::M
     Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
         channelName, message.payload().size());
     std::size_t forwarded = 0;
-    if (!m_outputChannelsList.empty()) {
-        for (auto* outChan : m_outputChannelsList) {
-            if (outChan && outChan->send(message.rawBuffer())) {
-                forwarded++;
-            }
+    for (auto* outChan : m_outputChannelsList) {
+        if (outChan && outChan->send(message.rawBuffer())) {
+            forwarded++;
         }
-    } else {
-        forwarded = sendAll(message.rawBuffer());
     }
     Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
+}
+
+void SplitHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+{
+    if (messages.empty()) {
+        return;
+    }
+
+    Core::Memory::SmallSpanBuffer spans(messages.size());
+    for (std::size_t i = 0; i < messages.size(); ++i) {
+        spans[i] = messages[i].rawBuffer();
+    }
+
+    Proxy::Log::debug("[SplitHandler] Channel '{}' received batch of {} messages, splitting...", channelName, messages.size());
+
+    for (auto* outChan : m_outputChannelsList) {
+        if (outChan) {
+            outChan->sendBatch(spans.span(messages.size()));
+        }
+    }
 }
 
 } // namespace Proxy::Handler

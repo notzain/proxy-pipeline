@@ -105,4 +105,3 @@ TEST_CASE("Core::Queue::MpmcQueue multi-producer multi-consumer concurrent stres
 
     CHECK(allReceived.size() == TotalItems);
 }
-

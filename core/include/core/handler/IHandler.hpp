@@ -49,7 +49,7 @@ ExecutionModel parseExecutionModel(std::string_view name);
  * IHandler provides:
  * - Configuration & Channel Binding: configure() creates and binds backend channels.
  * - Ingress: Registers IInputChannel instances, dispatches received messages via onMessageReceived().
- * - Egress: Thread-safe registration of IOutputChannel instances, sending via send() and sendAll().
+ * - Egress: Thread-safe registration of IOutputChannel instances returning non-owning pointers for direct sending.
  * - Background work: Periodic step() hook.
  * - Runtime Execution Models: Configurable via setExecutionModel() (Sequential, Dedicated, ThreadPool).
  * - Async lifecycle: start(), startAsync(), wait(), stop(), isRunning().
@@ -134,67 +134,6 @@ public:
      */
     ::Backend::IOutputChannel* registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
 
-    /**
-     * @brief Sends an enveloped message to a registered output channel in a thread-safe manner.
-     *
-     * @param channelName Name of the channel to send the message to.
-     * @param message The message view whose rawBuffer() is dispatched.
-     * @return true If the channel was found and message sent successfully, false otherwise.
-     */
-    bool send(std::string_view channelName, const Message::MessageView& message);
-
-    /**
-     * @brief Sends a batch of enveloped messages to a registered output channel in a thread-safe manner.
-     *
-     * @param channelName Name of the channel to send the messages to.
-     * @param messages Views of messages to transmit.
-     * @return std::size_t Number of messages successfully dispatched.
-     */
-    std::size_t sendBatch(std::string_view channelName, std::span<const Message::MessageView> messages);
-
-    /**
-     * @brief Sends a message to a registered output channel in a thread-safe manner.
-     *
-     * @param channelName Name of the channel to send the message to.
-     * @param message View of the byte buffer to send.
-     * @return true If the channel was found and message sent successfully, false otherwise.
-     */
-    bool send(std::string_view channelName, std::span<const std::byte> message);
-
-    /**
-     * @brief Sends a batch of messages to a registered output channel in a thread-safe manner.
-     *
-     * Acquires the channel lock once for the entire batch.
-     *
-     * @param channelName Name of the channel to send the messages to.
-     * @param messages View of message byte spans to send.
-     * @return std::size_t Number of messages successfully dispatched.
-     */
-    std::size_t sendBatch(std::string_view channelName, std::span<const std::span<const std::byte>> messages);
-
-    /**
-     * @brief Sends a message to all registered output channels in a thread-safe manner.
-     *
-     * @param message View of the byte buffer to send.
-     * @return std::size_t Number of output channels the message was successfully dispatched to.
-     */
-    std::size_t sendAll(std::span<const std::byte> message);
-
-    /**
-     * @brief Checks if an output channel is registered with the given name.
-     *
-     * @param channelName Name of the channel.
-     * @return true If registered, false otherwise.
-     */
-    [[nodiscard]] bool hasOutputChannel(std::string_view channelName) const noexcept;
-
-    /**
-     * @brief Returns a list of all registered output channel names.
-     *
-     * @return std::vector<std::string> Registered channel names.
-     */
-    [[nodiscard]] std::vector<std::string> getOutputChannelNames() const;
-
     // --- Periodic Processing Hook ---
 
     /**
@@ -256,13 +195,13 @@ public:
      */
     [[nodiscard]] bool isRunning() const noexcept;
 
-protected:
+private:
     /**
      * @brief Transparent hasher enabling C++20 heterogeneous lookup in `m_outputChannels`.
      *
      * By providing `using is_transparent = void;`, `std::unordered_map::find` can look up
      * channels directly using `std::string_view` without allocating temporary `std::string`
-     * objects on the heap during hot egress dispatch.
+     * objects on the heap.
      */
     struct TransparentStringHash {
         using is_transparent = void;
