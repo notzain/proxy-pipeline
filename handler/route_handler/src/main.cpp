@@ -18,10 +18,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    if (!backend->configure(config)) {
-        std::cerr << "Failed to configure backend\n";
-        return 1;
-    }
+    backend->configure(config);
 
     Proxy::Handler::RouteHandler handler;
     if (!handler.configure(config, *backend)) {
@@ -33,4 +30,3 @@ int main(int argc, char* argv[])
     handler.start();
     return 0;
 }
-

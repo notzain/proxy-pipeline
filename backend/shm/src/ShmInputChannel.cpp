@@ -61,7 +61,11 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
     }
 
     // Fast-path: non-blocking immediate dequeue
-    std::size_t bytes = m_ring->popInto(destination);
+    bool wasFull = false;
+    std::size_t bytes = m_ring->popInto(destination, &wasFull);
+    if (wasFull && bytes > 0) {
+        ShmSignaler::notifyOne(m_ring->notFullSync());
+    }
     if (bytes > 0 || timeout.count() == 0) {
         return bytes;
     }
@@ -69,20 +73,32 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
     auto start = std::chrono::steady_clock::now();
     auto deadline = start + timeout;
 
-    // Adaptive spin for ultra-low latency before falling back to thread sleep
+    // Adaptive spin for ultra-low latency before falling back to cross-process signaling wait
     for (int spin = 0; spin < 64; ++spin) {
         cpuPause();
-        bytes = m_ring->popInto(destination);
+        bytes = m_ring->popInto(destination, &wasFull);
         if (bytes > 0) {
+            if (wasFull) {
+                ShmSignaler::notifyOne(m_ring->notFullSync());
+            }
             return bytes;
         }
     }
 
-    // Backoff sleep until message arrives or timeout expires
+    // Kernel bypass event signaling wait (futex / pshared cond)
     while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::microseconds(50));
-        bytes = m_ring->popInto(destination);
+        auto remaining = std::chrono::duration_cast<Timeout>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0) {
+            break;
+        }
+        auto waitDuration = std::min(remaining, Timeout(10));
+        ShmSignaler::wait(m_ring->notEmptySync(), waitDuration);
+
+        bytes = m_ring->popInto(destination, &wasFull);
         if (bytes > 0) {
+            if (wasFull) {
+                ShmSignaler::notifyOne(m_ring->notFullSync());
+            }
             return bytes;
         }
     }
@@ -100,7 +116,11 @@ std::size_t ShmInputChannel::receiveBatch(
     }
 
     // Fast-path: speculative burst dequeue
-    std::size_t count = m_ring->popBatch(destinations, outSizes);
+    bool wasFull = false;
+    std::size_t count = m_ring->popBatch(destinations, outSizes, &wasFull);
+    if (wasFull && count > 0) {
+        ShmSignaler::notifyOne(m_ring->notFullSync());
+    }
     if (count > 0 || timeout.count() == 0) {
         return count;
     }
@@ -111,17 +131,29 @@ std::size_t ShmInputChannel::receiveBatch(
     // Adaptive spin for high-speed burst transitions
     for (int spin = 0; spin < 64; ++spin) {
         cpuPause();
-        count = m_ring->popBatch(destinations, outSizes);
+        count = m_ring->popBatch(destinations, outSizes, &wasFull);
         if (count > 0) {
+            if (wasFull) {
+                ShmSignaler::notifyOne(m_ring->notFullSync());
+            }
             return count;
         }
     }
 
-    // Sleep backoff until batch arrives or timeout expires
+    // Kernel bypass event signaling wait (futex / pshared cond)
     while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::microseconds(50));
-        count = m_ring->popBatch(destinations, outSizes);
+        auto remaining = std::chrono::duration_cast<Timeout>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0) {
+            break;
+        }
+        auto waitDuration = std::min(remaining, Timeout(10));
+        ShmSignaler::wait(m_ring->notEmptySync(), waitDuration);
+
+        count = m_ring->popBatch(destinations, outSizes, &wasFull);
         if (count > 0) {
+            if (wasFull) {
+                ShmSignaler::notifyOne(m_ring->notFullSync());
+            }
             return count;
         }
     }

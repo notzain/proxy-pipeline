@@ -44,11 +44,15 @@ bool ShmOutputChannel::send(std::span<const std::byte> message)
 
     std::lock_guard lock(m_sendMutex);
 
-    if (m_ring->push(message)) {
+    bool wasEmpty = false;
+    if (m_ring->push(message, &wasEmpty)) {
+        if (wasEmpty) {
+            ShmSignaler::notifyOne(m_ring->notEmptySync());
+        }
         return true;
     }
 
-    // Adaptive backpressure: spin, then yield, then sleep with deadline
+    // Adaptive backpressure: spin, then yield, then wait on notFullSync
     auto start = std::chrono::steady_clock::now();
     constexpr auto timeout = std::chrono::seconds(2);
 
@@ -58,10 +62,13 @@ bool ShmOutputChannel::send(std::span<const std::byte> message)
         } else if (retry < 256) {
             std::this_thread::yield();
         } else {
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
+            ShmSignaler::wait(m_ring->notFullSync(), std::chrono::milliseconds(2));
         }
 
-        if (m_ring->push(message)) {
+        if (m_ring->push(message, &wasEmpty)) {
+            if (wasEmpty) {
+                ShmSignaler::notifyOne(m_ring->notEmptySync());
+            }
             return true;
         }
     }
@@ -77,7 +84,11 @@ std::size_t ShmOutputChannel::sendBatch(std::span<const std::span<const std::byt
 
     std::lock_guard lock(m_sendMutex);
 
-    std::size_t total = m_ring->pushBatch(messages);
+    bool wasEmpty = false;
+    std::size_t total = m_ring->pushBatch(messages, &wasEmpty);
+    if (wasEmpty && total > 0) {
+        ShmSignaler::notifyOne(m_ring->notEmptySync());
+    }
     if (total == messages.size()) {
         return total;
     }
@@ -92,9 +103,13 @@ std::size_t ShmOutputChannel::sendBatch(std::span<const std::span<const std::byt
         } else if (retry < 256) {
             std::this_thread::yield();
         } else {
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
+            ShmSignaler::wait(m_ring->notFullSync(), std::chrono::milliseconds(2));
         }
-        std::size_t chunk = m_ring->pushBatch(messages.subspan(total));
+        bool chunkWasEmpty = false;
+        std::size_t chunk = m_ring->pushBatch(messages.subspan(total), &chunkWasEmpty);
+        if (chunkWasEmpty && chunk > 0) {
+            ShmSignaler::notifyOne(m_ring->notEmptySync());
+        }
         total += chunk;
     }
 

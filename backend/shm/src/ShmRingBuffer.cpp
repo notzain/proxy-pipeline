@@ -114,6 +114,9 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
         m_header->slotPayloadSize = static_cast<uint32_t>(MaxPayloadBytes);
         m_header->writeIndex.store(0, std::memory_order_relaxed);
         m_header->readIndex.store(0, std::memory_order_relaxed);
+
+        ShmSignaler::init(&m_header->notEmptySync);
+        ShmSignaler::init(&m_header->notFullSync);
     }
 }
 
@@ -131,7 +134,7 @@ void ShmRingBuffer::unmapMemory()
     m_slots = nullptr;
 }
 
-bool ShmRingBuffer::push(std::span<const std::byte> message)
+bool ShmRingBuffer::push(std::span<const std::byte> message, bool* wasEmpty)
 {
     if (!isValid() || message.size() > MaxPayloadBytes) {
         return false;
@@ -144,6 +147,10 @@ bool ShmRingBuffer::push(std::span<const std::byte> message)
         return false;
     }
 
+    if (wasEmpty) {
+        *wasEmpty = (w == r);
+    }
+
     uint32_t slotIdx = static_cast<uint32_t>(w & (m_header->capacity - 1));
     ShmSlot& slot = m_slots[slotIdx];
 
@@ -154,7 +161,7 @@ bool ShmRingBuffer::push(std::span<const std::byte> message)
     return true;
 }
 
-std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>> messages, bool* wasEmpty)
 {
     if (!isValid() || messages.empty()) {
         return 0;
@@ -166,6 +173,14 @@ std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>>
     uint64_t occupied = (w >= r) ? (w - r) : 0;
     uint64_t available = (m_header->capacity > occupied) ? (m_header->capacity - occupied) : 0;
     std::size_t toWrite = std::min<std::size_t>(messages.size(), available);
+
+    if (toWrite == 0) {
+        return 0;
+    }
+
+    if (wasEmpty) {
+        *wasEmpty = (w == r);
+    }
 
     uint32_t mask = m_header->capacity - 1;
     for (std::size_t i = 0; i < toWrite; ++i) {
@@ -186,7 +201,7 @@ std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>>
     return toWrite;
 }
 
-std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination)
+std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination, bool* wasFull)
 {
     if (!isValid()) {
         return 0;
@@ -197,6 +212,10 @@ std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination)
 
     if (r >= w) {
         return 0;
+    }
+
+    if (wasFull) {
+        *wasFull = (w - r >= m_header->capacity);
     }
 
     uint32_t slotIdx = static_cast<uint32_t>(r & (m_header->capacity - 1));
@@ -211,7 +230,8 @@ std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination)
 
 std::size_t ShmRingBuffer::popBatch(
     std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes)
+    std::span<std::size_t> outSizes,
+    bool* wasFull)
 {
     if (!isValid() || destinations.empty() || outSizes.empty()) {
         return 0;
@@ -222,6 +242,10 @@ std::size_t ShmRingBuffer::popBatch(
 
     if (r >= w) {
         return 0;
+    }
+
+    if (wasFull) {
+        *wasFull = (w - r >= m_header->capacity);
     }
 
     uint64_t ready = w - r;

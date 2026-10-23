@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/shm/sync/ShmSignaler.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +29,7 @@ static_assert(sizeof(ShmSlot) == 2048, "ShmSlot must be exactly 2048 bytes");
  */
 struct alignas(64) ShmHeader {
     static constexpr uint32_t Magic = 0x50525859; // 'PRXY'
-    static constexpr uint32_t Version = 1;
+    static constexpr uint32_t Version = 2; // Incremented for signaling sync block
 
     uint32_t magic { Magic };
     uint32_t version { Version };
@@ -42,9 +43,10 @@ struct alignas(64) ShmHeader {
 
     alignas(64) std::atomic<uint64_t> readIndex { 0 };
     uint8_t reserved3[56] { 0 };
-};
 
-static_assert(sizeof(ShmHeader) == 192, "ShmHeader must be 192 bytes");
+    alignas(64) ShmSyncBlock notEmptySync;
+    alignas(64) ShmSyncBlock notFullSync;
+};
 
 /**
  * @brief Lockless single-producer single-consumer (SPSC) shared memory circular ring buffer.
@@ -80,36 +82,41 @@ public:
      * @brief Writes a message into the next available ring buffer slot.
      *
      * @param message Raw payload span to write.
+     * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
      * @return true if written successfully; false if queue is full or message is oversized.
      */
-    bool push(std::span<const std::byte> message);
+    bool push(std::span<const std::byte> message, bool* wasEmpty = nullptr);
 
     /**
      * @brief Vectorized transmission writing a batch of messages in a single atomic sequence update.
      *
      * @param messages Slices of messages to write.
+     * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
      * @return Number of messages successfully written.
      */
-    std::size_t pushBatch(std::span<const std::span<const std::byte>> messages);
+    std::size_t pushBatch(std::span<const std::span<const std::byte>> messages, bool* wasEmpty = nullptr);
 
     /**
      * @brief Reads the next available message from the ring buffer into the destination buffer.
      *
      * @param destination Target buffer receiving the message bytes.
+     * @param wasFull Optional out-parameter set to true if the ring buffer was completely full prior to this pop.
      * @return Number of bytes copied, or 0 if queue is empty.
      */
-    std::size_t popInto(std::span<std::byte> destination);
+    std::size_t popInto(std::span<std::byte> destination, bool* wasFull = nullptr);
 
     /**
      * @brief Vectorized reception draining up to destinations.size() messages from the ring buffer.
      *
      * @param destinations Slices of destination memory to receive messages.
      * @param outSizes Array receiving the byte length of each transferred message.
+     * @param wasFull Optional out-parameter set to true if the ring buffer was completely full prior to this pop.
      * @return Number of messages successfully received.
      */
     std::size_t popBatch(
         std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes);
+        std::span<std::size_t> outSizes,
+        bool* wasFull = nullptr);
 
     /**
      * @brief Returns current number of unread messages in the ring buffer.
@@ -135,6 +142,12 @@ public:
      * @brief Returns the path of the shared memory file.
      */
     [[nodiscard]] const std::string& getPath() const noexcept;
+
+    /**
+     * @brief Accessors for cross-process signaling sync blocks.
+     */
+    [[nodiscard]] ShmSyncBlock* notEmptySync() noexcept { return m_header ? &m_header->notEmptySync : nullptr; }
+    [[nodiscard]] ShmSyncBlock* notFullSync() noexcept { return m_header ? &m_header->notFullSync : nullptr; }
 
 private:
     std::string m_path;

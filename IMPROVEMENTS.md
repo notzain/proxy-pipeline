@@ -33,8 +33,8 @@ Tracking checklist for ongoing performance optimizations, transport backend enha
   - Portable POSIX: `PosixSocketPoller` non-blocking speculative loop.
 - [ ] **Unified `io_uring` Asynchronous Backend (Linux)**
   - Unify disk file I/O, socket recv/send, and timer events into a single `io_uring` instance, removing thread-per-channel polling.
-- [ ] **Futex / Eventfd Kernel Bypass Signaling in `backend-shm`**
-  - Upgrade atomic spin-wait / yield polling in `backend-shm` with cross-process futex / eventfd event notification for near-zero idle CPU consumption.
+- [x] **Futex / Eventfd Kernel Bypass Signaling in `backend-shm`**
+  - Upgraded atomic spin-wait / yield polling in `backend-shm` with cross-process signaling (`ShmSignaler` using Linux `SYS_futex` and process-shared `pthread_cond` on POSIX/macOS) for near-zero idle CPU consumption and microsecond-level wakeups under burst boundaries.
 
 ---
 
