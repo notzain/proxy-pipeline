@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/memory/BufferPool.hpp"
 #include "core/queue/MpmcQueue.hpp"
 #include "core/queue/SpscQueue.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
@@ -56,6 +57,7 @@ private:
 
     using SharedQueueType = Queue::MpmcQueue<MessageTask, 4096>;
     std::unique_ptr<SharedQueueType> m_sharedQueue;
+    std::shared_ptr<Memory::BufferPool> m_bufferPool;
 
     std::vector<std::jthread> m_channelThreads;
     std::vector<std::jthread> m_workerThreads;

@@ -6,6 +6,7 @@ namespace Core::Threading {
 void MessageTask::assign(std::string_view name, std::span<const std::byte> data)
 {
     m_channelName = name;
+    m_pooledSlice.reset();
     if (data.size() <= SmallBufferSize) {
         m_inlineSize = data.size();
         m_heapBuffer.clear();
@@ -14,6 +15,15 @@ void MessageTask::assign(std::string_view name, std::span<const std::byte> data)
         m_inlineSize = 0;
         m_heapBuffer.assign(data.begin(), data.end());
     }
+}
+
+void MessageTask::assignSlice(std::string_view name, Memory::BufferSlice slice, std::size_t size)
+{
+    m_channelName = name;
+    m_inlineSize = 0;
+    m_heapBuffer.clear();
+    slice.resize(size);
+    m_pooledSlice = std::move(slice);
 }
 
 std::span<std::byte> MessageTask::prepareInline(std::string_view name)
@@ -27,6 +37,7 @@ std::span<std::byte> MessageTask::prepareInline(std::string_view name)
 void MessageTask::commitInline(std::size_t size) noexcept
 {
     m_inlineSize = std::min(size, SmallBufferSize);
+    m_pooledSlice.reset();
     m_heapBuffer.clear();
 }
 
@@ -45,6 +56,7 @@ MessageTask::MessageTask(std::string name, std::span<const std::byte> data)
 MessageTask::MessageTask(MessageTask&& other) noexcept
     : m_channelName(std::move(other.m_channelName))
     , m_inlineSize(other.m_inlineSize)
+    , m_pooledSlice(std::move(other.m_pooledSlice))
     , m_heapBuffer(std::move(other.m_heapBuffer))
 {
     if (m_inlineSize > 0) {
@@ -57,6 +69,7 @@ MessageTask& MessageTask::operator=(MessageTask&& other) noexcept
     if (this != &other) {
         m_channelName = std::move(other.m_channelName);
         m_inlineSize = other.m_inlineSize;
+        m_pooledSlice = std::move(other.m_pooledSlice);
         m_heapBuffer = std::move(other.m_heapBuffer);
         if (m_inlineSize > 0) {
             std::memcpy(m_inlineBuffer.data(), other.m_inlineBuffer.data(), m_inlineSize);
@@ -74,6 +87,9 @@ std::span<const std::byte> MessageTask::payload() const noexcept
 {
     if (m_inlineSize > 0) {
         return std::span<const std::byte>(m_inlineBuffer.data(), m_inlineSize);
+    }
+    if (m_pooledSlice) {
+        return m_pooledSlice.span();
     }
     return std::span<const std::byte>(m_heapBuffer.data(), m_heapBuffer.size());
 }

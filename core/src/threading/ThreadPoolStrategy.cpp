@@ -94,6 +94,7 @@ namespace {
         SharedQueueType* sharedQueue,
         std::span<const std::unique_ptr<QueueType>> queues,
         std::atomic<std::size_t>& nextWorker,
+        const std::shared_ptr<Memory::BufferPool>& bufferPool,
         Handler::IHandler::Timeout timeout,
         std::stop_token stoken)
     {
@@ -113,7 +114,18 @@ namespace {
 
             for (std::size_t i = 0; i < received; ++i) {
                 MessageTask task;
-                task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), sizes[i]));
+                const std::size_t msgSize = sizes[i];
+                if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
+                    if (auto slice = bufferPool->acquire()) {
+                        std::memcpy(slice->data(), batchBuffers[i].data(), msgSize);
+                        task.assignSlice(namedChannel.name, std::move(*slice), msgSize);
+                    } else {
+                        task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), msgSize));
+                    }
+                } else {
+                    task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), msgSize));
+                }
+
                 if (!sharedQueue->tryPush(std::move(task))) {
                     sharedQueue->push(std::move(task), stoken);
                 }
@@ -160,9 +172,6 @@ namespace {
         }
 
         if (hasOversized && targetQueue) {
-            // Sized to 65,535 B to capture the full MTU payload when a packet overflows MessageTask's 2048 B inline buffer.
-            // alignas(64): Prevents unaligned boundary traversal when copying jumbo datagrams into the heap buffer.
-            // static thread_local: Avoids allocating 65 KB on this poller's stack on every oversized message burst.
             alignas(64) static thread_local std::array<std::byte, 65535> jumboBuf;
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
             std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuf, zeroTimeout);
@@ -170,6 +179,13 @@ namespace {
                 targetQueue->pushBatch(
                     1,
                     [&](MessageTask& slot, std::size_t) {
+                        if (jumboBytes > MessageTask::SmallBufferSize && bufferPool) {
+                            if (auto slice = bufferPool->acquire()) {
+                                std::memcpy(slice->data(), jumboBuf.data(), jumboBytes);
+                                slot.assignSlice(namedChannel.name, std::move(*slice), jumboBytes);
+                                return;
+                            }
+                        }
                         slot.assign(namedChannel.name, std::span<const std::byte>(jumboBuf.data(), jumboBytes));
                     },
                     stoken);
@@ -184,6 +200,7 @@ namespace {
         const Handler::IHandler::NamedInputChannel& namedChannel,
         std::size_t channelIdx,
         std::span<const std::unique_ptr<QueueType>> queues,
+        const std::shared_ptr<Memory::BufferPool>& bufferPool,
         Handler::IHandler::Timeout timeout,
         std::stop_token stoken)
     {
@@ -229,7 +246,15 @@ namespace {
                 runCount,
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
-                    slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[pktIdx].data(), sizes[pktIdx]));
+                    const std::size_t pktSize = sizes[pktIdx];
+                    if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
+                        if (auto slice = bufferPool->acquire()) {
+                            std::memcpy(slice->data(), batchBuffers[pktIdx].data(), pktSize);
+                            slot.assignSlice(namedChannel.name, std::move(*slice), pktSize);
+                            return;
+                        }
+                    }
+                    slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[pktIdx].data(), pktSize));
                 },
                 stoken);
 
@@ -255,6 +280,7 @@ ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads, bool strict
     if (!m_strictFifo) {
         m_sharedQueue = std::make_unique<SharedQueueType>();
     }
+    m_bufferPool = std::make_shared<Memory::BufferPool>(65536, 256);
 }
 
 void ThreadPoolStrategy::setStrictFifo(bool enable) noexcept
@@ -324,9 +350,9 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
                 }
 
                 if (!enforceFifo) {
-                    pollUnconstrained(namedChannel, m_sharedQueue.get(), m_workerQueues, m_nextWorker, channelTimeout, stoken);
+                    pollUnconstrained(namedChannel, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken);
                 } else {
-                    pollStrictFifo(namedChannel, channelIdx, m_workerQueues, channelTimeout, stoken);
+                    pollStrictFifo(namedChannel, channelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken);
                 }
             }
         });

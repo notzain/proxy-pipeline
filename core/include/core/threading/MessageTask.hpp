@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/memory/BufferSlice.hpp"
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -15,7 +16,8 @@ namespace Core::Threading {
  *
  * Utilizes small buffer optimization (SBO) with an inline buffer sized to a full ingress
  * batch slot (2048 bytes), so channel pollers can receive datagrams directly into ring slot
- * memory (zero-copy forwarding). Larger (jumbo) payloads spill to the heap buffer.
+ * memory (zero-copy forwarding). Larger (jumbo) payloads spill to a zero-copy pooled BufferSlice
+ * or heap fallback.
  */
 class MessageTask {
 public:
@@ -27,6 +29,11 @@ public:
      * @brief Assigns channel name and payload, using inline buffer if size <= SmallBufferSize.
      */
     void assign(std::string_view name, std::span<const std::byte> data);
+
+    /**
+     * @brief Assigns a zero-copy pooled slice directly without heap allocation.
+     */
+    void assignSlice(std::string_view name, Memory::BufferSlice slice, std::size_t size);
 
     /**
      * @brief Prepares the task for an in-place write and returns its writable inline buffer.
@@ -72,6 +79,7 @@ private:
     std::string m_channelName;
     std::array<std::byte, SmallBufferSize> m_inlineBuffer;
     std::size_t m_inlineSize { 0 };
+    Memory::BufferSlice m_pooledSlice;
     std::vector<std::byte> m_heapBuffer;
 };
 
