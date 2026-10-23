@@ -59,6 +59,8 @@ Tracking checklist for ongoing performance optimizations, transport backend enha
 
 - [x] **Lock-Free Latency & Telemetry Metrics**
   - Lightweight atomic counters (`Counter`, `Gauge`), lock-free cumulative latency histogram (`Histogram`), thread-safe `MetricsRegistry`, Prometheus `/metrics` exposition format, and `StatsDExporter` UDP datagram sender.
-- [ ] **Deterministic Simulation & Mock Channel Replay**
-  - Replay pcap or record/replay log streams with cycle-accurate timing for regression testing.
+- [x] **Deterministic Simulation & Mock Channel Replay**
+  - Native zero-dependency PCAP parser (`PcapReader`) and writer (`PcapWriter`) supporting microsecond/nanosecond captures and UDP packet reconstruction.
+  - Virtual simulation clock (`SimulationClock`) supporting stepped deterministic time and realtime modes.
+  - Mock transport channels (`MockInputChannel`, `MockOutputChannel`) and mock transport backend (`SimulationBackend`) for regression test suites and cycle-accurate pipeline simulation.
 

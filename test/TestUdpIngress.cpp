@@ -51,6 +51,7 @@ class TestOutputChannel : public ::Backend::IOutputChannel {
 public:
     bool send(std::span<const std::byte> message) override
     {
+        std::lock_guard lock(m_mutex);
         std::string str(reinterpret_cast<const char*>(message.data()), message.size());
         m_sentMessages.push_back(std::move(str));
         return true;
@@ -58,26 +59,28 @@ public:
 
     std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override
     {
-        std::size_t count = 0;
+        std::lock_guard lock(m_mutex);
         for (const auto& span : messages) {
-            if (send(span)) {
-                ++count;
-            }
+            std::string str(reinterpret_cast<const char*>(span.data()), span.size());
+            m_sentMessages.push_back(std::move(str));
         }
-        return count;
+        return messages.size();
     }
 
-    const std::vector<std::string>& getSentMessages() const noexcept
+    std::vector<std::string> getSentMessages() const
     {
+        std::lock_guard lock(m_mutex);
         return m_sentMessages;
     }
 
     void clear()
     {
+        std::lock_guard lock(m_mutex);
         m_sentMessages.clear();
     }
 
 private:
+    mutable std::mutex m_mutex;
     std::vector<std::string> m_sentMessages;
 };
 
