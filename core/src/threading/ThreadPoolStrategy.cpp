@@ -84,17 +84,43 @@ namespace {
     }
 
     using QueueType = Core::Queue::SpscQueue<MessageTask, 1024>;
+    using SharedQueueType = Core::Queue::MpmcQueue<MessageTask, 4096>;
 
     /**
      * @brief Ingests datagrams directly into worker queue slot memory (zero-copy) for maximum throughput.
      */
     void pollUnconstrained(
         const Handler::IHandler::NamedInputChannel& namedChannel,
+        SharedQueueType* sharedQueue,
         std::span<const std::unique_ptr<QueueType>> queues,
         std::atomic<std::size_t>& nextWorker,
         Handler::IHandler::Timeout timeout,
         std::stop_token stoken)
     {
+        if (sharedQueue) {
+            constexpr std::size_t maxBatch = 16;
+            alignas(64) static thread_local std::array<std::array<std::byte, 65535>, maxBatch> batchBuffers;
+            std::array<std::span<std::byte>, maxBatch> destSpans;
+            for (std::size_t i = 0; i < maxBatch; ++i) {
+                destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
+            }
+            alignas(64) std::array<std::size_t, maxBatch> sizes { };
+
+            const std::size_t received = namedChannel.channel->receiveBatch(
+                std::span<const std::span<std::byte>>(destSpans.data(), maxBatch),
+                std::span<std::size_t>(sizes.data(), maxBatch),
+                timeout);
+
+            for (std::size_t i = 0; i < received; ++i) {
+                MessageTask task;
+                task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), sizes[i]));
+                if (!sharedQueue->tryPush(std::move(task))) {
+                    sharedQueue->push(std::move(task), stoken);
+                }
+            }
+            return;
+        }
+
         constexpr std::size_t maxBatch = 16;
         bool hasOversized = false;
 
@@ -225,11 +251,18 @@ ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads, bool strict
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
         m_workerQueues.emplace_back(std::make_unique<QueueType>());
     }
+
+    if (!m_strictFifo) {
+        m_sharedQueue = std::make_unique<SharedQueueType>();
+    }
 }
 
 void ThreadPoolStrategy::setStrictFifo(bool enable) noexcept
 {
     m_strictFifo = enable;
+    if (!enable && !m_sharedQueue) {
+        m_sharedQueue = std::make_unique<SharedQueueType>();
+    }
 }
 
 bool ThreadPoolStrategy::isStrictFifo() const noexcept
@@ -258,6 +291,22 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
             auto& myQueue = *m_workerQueues[i];
             std::size_t invalidEnvelopeCount = 0;
 
+            if (m_sharedQueue) {
+                std::array<MessageTask, 16> batchTasks;
+                while (!stoken.stop_requested()) {
+                    std::size_t loaded = 0;
+                    std::size_t count = m_sharedQueue->popBatch(16, [&](MessageTask&& task) {
+                        batchTasks[loaded++] = std::move(task);
+                    });
+                    if (count > 0) {
+                        drainWorkerTasks(handler, std::span<const MessageTask>(batchTasks.data(), count), invalidEnvelopeCount);
+                    } else {
+                        std::this_thread::yield();
+                    }
+                }
+                return;
+            }
+
             while (!stoken.stop_requested()) {
                 myQueue.drainContiguous(16, [&handler, &invalidEnvelopeCount](std::span<const MessageTask> tasks) { drainWorkerTasks(handler, tasks, invalidEnvelopeCount); }, stoken);
             }
@@ -275,7 +324,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
                 }
 
                 if (!enforceFifo) {
-                    pollUnconstrained(namedChannel, m_workerQueues, m_nextWorker, channelTimeout, stoken);
+                    pollUnconstrained(namedChannel, m_sharedQueue.get(), m_workerQueues, m_nextWorker, channelTimeout, stoken);
                 } else {
                     pollStrictFifo(namedChannel, channelIdx, m_workerQueues, channelTimeout, stoken);
                 }
@@ -307,6 +356,9 @@ void ThreadPoolStrategy::stop()
         t.request_stop();
     }
 
+    if (m_sharedQueue) {
+        m_sharedQueue->stop();
+    }
     for (const auto& wq : m_workerQueues) {
         wq->stop();
     }

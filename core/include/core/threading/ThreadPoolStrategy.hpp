@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/queue/MpmcQueue.hpp"
 #include "core/queue/SpscQueue.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
 #include "core/threading/MessageTask.hpp"
@@ -52,6 +53,9 @@ private:
     using QueueType = Queue::SpscQueue<MessageTask, 1024>;
     std::vector<std::unique_ptr<QueueType>> m_workerQueues;
     std::atomic<std::size_t> m_nextWorker { 0 };
+
+    using SharedQueueType = Queue::MpmcQueue<MessageTask, 4096>;
+    std::unique_ptr<SharedQueueType> m_sharedQueue;
 
     std::vector<std::jthread> m_channelThreads;
     std::vector<std::jthread> m_workerThreads;

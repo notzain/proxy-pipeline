@@ -77,29 +77,32 @@ void SequentialStrategy::start(Handler::IHandler& handler)
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-            if (!channels.empty()) {
-                for (const auto& namedChannel : channels) {
-                    if (stoken.stop_requested() || !m_running.load(std::memory_order_acquire)) {
-                        break;
-                    }
-                    if (namedChannel.channel) {
-                        std::size_t batchCount = namedChannel.channel->receiveBatch(
-                            std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
-                            batchSizes,
-                            channelTimeout);
-
-                        if (batchCount > 0) {
-                            dispatchValidatedBatch(
-                                handler,
-                                namedChannel.name,
-                                std::span<const std::array<std::byte, 65535>>(batchBuffers.data(), batchCount),
-                                std::span<const std::size_t>(batchSizes.data(), batchCount),
-                                batchCount,
-                                invalidEnvelopeCount);
-                        }
-                    }
+            for (const auto& namedChannel : channels) {
+                if (stoken.stop_requested() || !m_running.load(std::memory_order_acquire)) {
+                    break;
                 }
-            } else {
+
+                if (!namedChannel.channel) {
+                    continue;
+                }
+
+                std::size_t batchCount = namedChannel.channel->receiveBatch(
+                    std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
+                    batchSizes,
+                    channelTimeout);
+
+                if (batchCount > 0) {
+                    dispatchValidatedBatch(
+                        handler,
+                        namedChannel.name,
+                        std::span<const std::array<std::byte, 65535>>(batchBuffers.data(), batchCount),
+                        std::span<const std::size_t>(batchSizes.data(), batchCount),
+                        batchCount,
+                        invalidEnvelopeCount);
+                }
+            }
+
+            if (channels.empty()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 
