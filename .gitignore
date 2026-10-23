@@ -1,4 +1,5 @@
 # Build and binary directories
+__pycache__/
 .cache
 build/
 bin/

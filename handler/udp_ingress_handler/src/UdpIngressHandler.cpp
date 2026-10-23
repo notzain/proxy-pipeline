@@ -13,6 +13,8 @@ namespace Proxy::Handler {
 
 bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_outputChannelName = config.getOr<std::string>(
         "ingress.output_channel",
         config.getOr<std::string>(

@@ -117,6 +117,13 @@ def generate_handler_config(
     lines.append("")
     lines.append("# Handler-specific settings")
 
+    # Set telemetry prefix to include handler name (e.g. proxy.network_ingress, proxy.xml_validator)
+    # to avoid metrics colliding when multiple chain processes emit to the same StatsD collector
+    handler_name = handler_spec.get("name")
+    if handler_name:
+        global_prefix = global_config.get("telemetry", {}).get("prefix", "proxy") if isinstance(global_config.get("telemetry"), dict) else global_config.get("telemetry.prefix", "proxy")
+        lines.append(f"telemetry.prefix={global_prefix}.{handler_name}")
+
     # Convenience shortcuts:
     # input_channel -> channel.input / dummy.channel / print.channel / split.input_channel / xml.input_channel
     # input_channels -> merge.input_channels

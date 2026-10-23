@@ -9,6 +9,10 @@ backend = "shm"
 "shm.path" = "/tmp/proxy_shm_default.dat"
 "channel.orders_raw.path" = "/tmp/proxy_shm_orders_raw.dat"
 "channel.orders_verified.path" = "/tmp/proxy_shm_orders_verified.dat"
+"telemetry.statsd.host" = "127.0.0.1"
+"telemetry.statsd.port" = 8125
+"telemetry.prefix" = "proxy"
+"telemetry.interval_ms" = 1000
 
 # Ingress: Listens for incoming UDP datagrams, packs UDP origin metadata into the envelope,
 # and pushes to internal SHM channel "orders_raw".
@@ -29,6 +33,7 @@ input_channel = "orders_raw"
 output_channel = "orders_verified"
 [handlers.config]
 "xml.xsd_path" = "chains/order.xsd"
+"execution.model" = "thread_pool"      
 
 # Egress: Consumes envelopes from SHM, extracts original source address from UdpMetadata,
 # and transmits the payload over UDP back to the sender ("reply_to_origin").

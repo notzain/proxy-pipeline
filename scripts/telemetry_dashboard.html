@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Pipeline Telemetry Dashboard</title>
+    <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+    <style>
+        :root {
+            --background: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --foreground: #f8fafc;
+            --muted: #94a3b8;
+            --primary: #38bdf8;
+            --accent: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+        body {
+            background-color: var(--background);
+            color: var(--foreground);
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="p-6 min-h-screen">
+    <div class="max-w-6xl mx-auto space-y-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between border-b border-[var(--border)] pb-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-[var(--foreground)] flex items-center gap-3">
+                    <span class="inline-block w-3 h-3 rounded-full bg-[var(--accent)] animate-pulse"></span>
+                    Proxy Pipeline Telemetry
+                </h1>
+                <p class="text-sm text-[var(--muted)] mt-1">Global pipeline health and per-namespace microservice diagnostics</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="connection-status" class="px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live Monitoring
+                </span>
+                <span id="last-update" class="text-xs text-[var(--muted)] font-mono">Updated: Just now</span>
+            </div>
+        </div>
+
+        <!-- Global Summary KPI Cards (Top Bar) -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Ingress Total -->
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-[var(--muted)] uppercase tracking-wider">Ingress Messages</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800 font-mono">Global</span>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <span id="global-ingress-total" class="text-3xl font-extrabold text-[var(--foreground)] font-mono">0</span>
+                    <span id="global-ingress-rate" class="text-sm font-semibold text-[var(--primary)] font-mono">+0 msg/s</span>
+                </div>
+            </div>
+
+            <!-- Total Bandwidth -->
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-[var(--muted)] uppercase tracking-wider">Total Bandwidth</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">Volume</span>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <span id="global-bytes-total" class="text-3xl font-extrabold text-[var(--foreground)] font-mono">0 MB</span>
+                    <span id="global-bandwidth-rate" class="text-sm font-semibold text-[var(--accent)] font-mono">0.0 MB/s</span>
+                </div>
+            </div>
+
+            <!-- Dropped Envelopes -->
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-[var(--muted)] uppercase tracking-wider">Dropped Envelopes</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800 font-mono">Errors</span>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <span id="global-dropped-total" class="text-3xl font-extrabold text-[var(--danger)] font-mono">0</span>
+                    <span id="global-loss-pct" class="text-xs text-[var(--muted)] font-mono">0.0% loss</span>
+                </div>
+            </div>
+
+            <!-- Global Peak Throughput -->
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-[var(--muted)] uppercase tracking-wider">Peak Throughput</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-purple-950 text-purple-400 border border-purple-800 font-mono">Activity</span>
+                </div>
+                <div class="mt-3 flex items-baseline justify-between">
+                    <span id="global-peak-throughput" class="text-3xl font-extrabold text-purple-400 font-mono">0</span>
+                    <span class="text-xs text-[var(--muted)] font-mono">msg/s peak</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Real-time Throughput Activity Bar -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-[var(--foreground)]">Global Pipeline Throughput Activity</h2>
+                    <p class="text-xs text-[var(--muted)] mt-0.5">Rolling 30-second ingress and egress message velocity across all active nodes</p>
+                </div>
+                <span class="text-xs font-mono text-[var(--primary)]" id="current-rate-label">Rate: 0 msg/s</span>
+            </div>
+            <div class="h-32 flex items-end gap-1.5 pt-4 px-2 bg-slate-950/40 rounded-lg border border-[var(--border)]" id="throughput-chart">
+                <!-- Dynamic bars injected here -->
+            </div>
+            <div class="flex justify-between text-xs text-[var(--muted)] font-mono pt-1">
+                <span>-30s</span>
+                <span>-15s</span>
+                <span>Now</span>
+            </div>
+        </div>
+
+        <!-- Namespace Tabs Navigation -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                <div class="flex items-center gap-2" id="namespace-tabs">
+                    <!-- Tab buttons injected here e.g. [All Namespaces] [network_ingress] [xml_validator] [network_egress] -->
+                    <button class="px-4 py-2 text-xs font-semibold rounded-lg bg-sky-500 text-slate-950 shadow-sm" data-tab="all">
+                        All Namespaces
+                    </button>
+                </div>
+                <span class="text-xs text-[var(--muted)] font-mono" id="namespace-count-label">0 Namespaces Detected</span>
+            </div>
+
+            <!-- Tab Content Pane -->
+            <div id="tab-content" class="space-y-6">
+                <!-- Dynamically populated cards for the active tab -->
+            </div>
+        </div>
+
+        <!-- Raw Metric Registry Table -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden shadow-sm">
+            <div class="px-5 py-4 border-b border-[var(--border)] flex justify-between items-center">
+                <h3 class="text-sm font-semibold text-[var(--foreground)]">Registered Metrics (Current Namespace View)</h3>
+                <span class="text-xs text-[var(--muted)] font-mono">Prometheus / StatsD Registry</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm font-mono">
+                    <thead class="bg-slate-900/60 text-xs text-[var(--muted)] border-b border-[var(--border)]">
+                        <tr>
+                            <th class="py-3 px-4">Metric Identifier</th>
+                            <th class="py-3 px-4">Namespace / Handler</th>
+                            <th class="py-3 px-4">Type</th>
+                            <th class="py-3 px-4 text-right">Current Value</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[var(--border)] text-xs" id="metrics-table-body">
+                        <tr>
+                            <td class="py-3 px-4 text-[var(--muted)]" colspan="4">Awaiting telemetry stream...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const throughputHistory = new Array(30).fill(0);
+        let lastIngressTotal = 0;
+        let lastTimestamp = Date.now();
+        let peakRate = 0;
+        let activeTab = "all";
+        let latestData = { counters: {}, gauges: {}, timings: {} };
+
+        function renderThroughputBars() {
+            const container = document.getElementById("throughput-chart");
+            container.innerHTML = "";
+            const maxVal = Math.max(...throughputHistory, 100);
+            throughputHistory.forEach(val => {
+                const heightPercent = Math.min(100, Math.max(4, (val / maxVal) * 100));
+                const bar = document.createElement("div");
+                bar.className = "flex-1 bg-gradient-to-t from-sky-600 to-sky-400 rounded-t transition-all duration-300";
+                bar.style.height = `${heightPercent}%`;
+                bar.title = `${Math.round(val)} msg/s`;
+                container.appendChild(bar);
+            });
+        }
+
+        async function fetchMetrics() {
+            try {
+                const res = await fetch("/api/metrics");
+                if (!res.ok) throw new Error("HTTP error");
+                const data = await res.json();
+                latestData = data;
+                updateUI(data);
+            } catch (err) {
+                try {
+                    const fallbackRes = await fetch("http://127.0.0.1:8126/api/metrics");
+                    if (fallbackRes.ok) {
+                        const data = await fallbackRes.json();
+                        latestData = data;
+                        updateUI(data);
+                        return;
+                    }
+                } catch (_) {}
+                document.getElementById("connection-status").innerHTML =
+                    `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Listening (Waiting for UDP stream)`;
+                document.getElementById("connection-status").className =
+                    "px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
+            }
+        }
+
+        // Helper to extract namespaces from metric keys
+        // e.g. "proxy.network_ingress.messages_ingress_total" -> "network_ingress"
+        function extractNamespaces(data) {
+            const allKeys = Object.keys(data.counters || {}).concat(Object.keys(data.gauges || {}));
+            const nsSet = new Set();
+            for (const key of allKeys) {
+                const parts = key.split(".");
+                if (parts.length >= 3 && parts[0] === "proxy") {
+                    nsSet.add(parts[1]);
+                }
+            }
+            return Array.from(nsSet).sort();
+        }
+
+        function filterByNamespace(data, ns) {
+            if (ns === "all") return data;
+            const prefix = `proxy.${ns}.`;
+            const filtered = { counters: {}, gauges: {}, timings: {} };
+            for (const [k, v] of Object.entries(data.counters || {})) {
+                if (k.startsWith(prefix)) filtered.counters[k] = v;
+            }
+            for (const [k, v] of Object.entries(data.gauges || {})) {
+                if (k.startsWith(prefix)) filtered.gauges[k] = v;
+            }
+            for (const [k, v] of Object.entries(data.timings || {})) {
+                if (k.startsWith(prefix)) filtered.timings[k] = v;
+            }
+            return filtered;
+        }
+
+        function sumMetric(obj, suffix) {
+            let total = 0;
+            for (const [k, v] of Object.entries(obj || {})) {
+                if (k.endsWith(suffix) || k === suffix || k.includes(`.${suffix}`)) {
+                    total += Number(v);
+                }
+            }
+            return total;
+        }
+
+        function renderTabs(namespaces) {
+            const tabsContainer = document.getElementById("namespace-tabs");
+            const allTabs = ["all", ...namespaces];
+            document.getElementById("namespace-count-label").innerText = `${namespaces.length} Namespace(s) Active`;
+
+            tabsContainer.innerHTML = allTabs.map(tab => {
+                const isActive = tab === activeTab;
+                const label = tab === "all" ? "All Namespaces" : tab;
+                const activeClass = "bg-sky-500 text-slate-950 font-bold shadow";
+                const inactiveClass = "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white";
+                return `<button onclick="switchTab('${tab}')" class="px-3.5 py-1.5 text-xs font-mono rounded-lg transition-colors ${isActive ? activeClass : inactiveClass}">
+                    ${label}
+                </button>`;
+            }).join("");
+        }
+
+        function switchTab(tab) {
+            activeTab = tab;
+            updateUI(latestData);
+        }
+
+        function updateUI(data) {
+            const now = Date.now();
+            const dt = Math.max(0.001, (now - lastTimestamp) / 1000);
+            lastTimestamp = now;
+
+            const namespaces = extractNamespaces(data);
+            renderTabs(namespaces);
+
+            // --- 1. Top Bar Global Aggregates ---
+            const allCounters = { ...(data.counters || {}), ...(data.gauges || {}) };
+            // Compute global ingress (sum across stages or use first stage)
+            let globalIngress = 0;
+            let globalBytes = 0;
+            let globalDropped = 0;
+
+            // Ingress message sum
+            for (const [k, v] of Object.entries(allCounters)) {
+                if (k.endsWith("messages_ingress_total")) {
+                    globalIngress = Math.max(globalIngress, Number(v));
+                }
+                if (k.endsWith("bytes_ingress_total")) {
+                    globalBytes = Math.max(globalBytes, Number(v));
+                }
+                if (k.endsWith("messages_dropped_total")) {
+                    globalDropped += Number(v);
+                }
+            }
+
+            const delta = Math.max(0, globalIngress - lastIngressTotal);
+            if (lastIngressTotal === 0 && globalIngress > 0) {
+                lastIngressTotal = globalIngress;
+            } else {
+                lastIngressTotal = globalIngress;
+            }
+            const rate = delta / dt;
+
+            throughputHistory.shift();
+            throughputHistory.push(rate);
+            if (rate > peakRate) peakRate = rate;
+
+            document.getElementById("global-ingress-total").innerText = globalIngress.toLocaleString();
+            document.getElementById("global-ingress-rate").innerText = `+${Math.round(rate).toLocaleString()} msg/s`;
+            document.getElementById("global-bytes-total").innerText = `${(globalBytes / (1024 * 1024)).toFixed(2)} MB`;
+            document.getElementById("global-bandwidth-rate").innerText = `${((delta * 82) / (1024 * 1024 * dt)).toFixed(2)} MB/s`;
+            document.getElementById("global-dropped-total").innerText = globalDropped.toLocaleString();
+            const lossPct = globalIngress > 0 ? ((globalDropped / globalIngress) * 100).toFixed(2) : "0.0";
+            document.getElementById("global-loss-pct").innerText = `${lossPct}% loss`;
+            document.getElementById("global-peak-throughput").innerText = Math.round(peakRate).toLocaleString();
+            document.getElementById("current-rate-label").innerText = `Rate: ${Math.round(rate).toLocaleString()} msg/s`;
+
+            renderThroughputBars();
+
+            // --- 2. Active Namespace Tab Content ---
+            renderTabContent(data, activeTab);
+
+            // --- 3. Metric Registry Table ---
+            renderTable(data, activeTab);
+
+            document.getElementById("connection-status").innerHTML =
+                `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live (${globalIngress.toLocaleString()} msgs)`;
+            document.getElementById("connection-status").className =
+                "px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5";
+            document.getElementById("last-update").innerText = `Updated: ${new Date().toLocaleTimeString()}`;
+        }
+
+        function renderTabContent(data, ns) {
+            const container = document.getElementById("tab-content");
+            const nsData = filterByNamespace(data, ns);
+            const allItems = { ...(nsData.counters || {}), ...(nsData.gauges || {}) };
+
+            // Metrics for this namespace
+            let nsMsgs = 0;
+            let nsBytes = 0;
+            let nsDrops = 0;
+            for (const [k, v] of Object.entries(allItems)) {
+                if (k.endsWith("messages_ingress_total")) {
+                    if (ns === "all") nsMsgs = Math.max(nsMsgs, Number(v));
+                    else nsMsgs += Number(v);
+                }
+                if (k.endsWith("bytes_ingress_total")) {
+                    if (ns === "all") nsBytes = Math.max(nsBytes, Number(v));
+                    else nsBytes += Number(v);
+                }
+                if (k.endsWith("messages_dropped_total")) nsDrops += Number(v);
+            }
+
+            // Latency & Histogram parsing for this namespace
+            let b5 = 0, b25 = 0, b100 = 0, b1000 = 0, b5000 = 0, b25000 = 0, bInf = 0;
+            let histSum = 0;
+            let histCount = 0;
+
+            for (const [k, v] of Object.entries(allItems)) {
+                const val = Number(v);
+                if (k.includes(".message_processing_duration_us.sum")) histSum += val;
+                if (k.includes(".message_processing_duration_us.count")) {
+                    if (ns === "all") histCount += val;
+                    else histCount = Math.max(histCount, val);
+                }
+
+                if (k.includes(".bucket.")) {
+                    const boundStr = k.split(".bucket.")[1];
+                    const boundVal = parseFloat(boundStr);
+                    if (boundVal === 5 || boundStr.startsWith("5.000")) {
+                        if (ns === "all") b5 += val;
+                        else b5 = Math.max(b5, val);
+                    }
+                    else if (boundVal === 25 || boundStr.startsWith("25.000")) {
+                        if (ns === "all") b25 += val;
+                        else b25 = Math.max(b25, val);
+                    }
+                    else if (boundVal === 100 || boundStr.startsWith("100.000")) {
+                        if (ns === "all") b100 += val;
+                        else b100 = Math.max(b100, val);
+                    }
+                    else if (boundVal === 1000 || boundStr.startsWith("1000.000")) {
+                        if (ns === "all") b1000 += val;
+                        else b1000 = Math.max(b1000, val);
+                    }
+                    else if (boundVal === 5000 || boundStr.startsWith("5000.000")) {
+                        if (ns === "all") b5000 += val;
+                        else b5000 = Math.max(b5000, val);
+                    }
+                    else if (boundVal === 25000 || boundStr.startsWith("25000.000")) {
+                        if (ns === "all") b25000 += val;
+                        else b25000 = Math.max(b25000, val);
+                    }
+                    else if (boundStr.includes("+Inf")) {
+                        if (ns === "all") bInf += val;
+                        else bInf = Math.max(bInf, val);
+                    }
+                }
+            }
+
+            // Monotonic normalization
+            if (b25 < b5) b25 = b5;
+            if (b100 < b25) b100 = b25;
+            if (b1000 < b100) b1000 = b100;
+            if (b5000 < b1000) b5000 = b1000;
+            if (b25000 < b5000) b25000 = b5000;
+            if (bInf < b25000) bInf = Math.max(b25000, histCount);
+
+            const totalSamples = Math.max(bInf, histCount, 1);
+            const avgLatency = histCount > 0 ? (histSum / histCount).toFixed(2) : "0.00";
+
+            // Estimate p99
+            let p99 = 0;
+            if (totalSamples > 1) {
+                const target = 0.99 * totalSamples;
+                if (b5 >= target) p99 = 5.0 * (target / Math.max(1, b5));
+                else if (b25 >= target) p99 = 5.0 + 20.0 * ((target - b5) / Math.max(1, b25 - b5));
+                else if (b100 >= target) p99 = 25.0 + 75.0 * ((target - b25) / Math.max(1, b100 - b25));
+                else if (b1000 >= target) p99 = 100.0 + 900.0 * ((target - b100) / Math.max(1, b1000 - b100));
+                else if (b5000 >= target) p99 = 1000.0 + 4000.0 * ((target - b1000) / Math.max(1, b5000 - b1000));
+                else if (b25000 >= target) p99 = 5000.0 + 20000.0 * ((target - b5000) / Math.max(1, b25000 - b5000));
+                else p99 = 25000.0 + 5000.0;
+            }
+
+            // Disjoint counts
+            const c0_5 = b5;
+            const c5_25 = Math.max(0, b25 - b5);
+            const c25_100 = Math.max(0, b100 - b25);
+            const c100_1000 = Math.max(0, b1000 - b100);
+            const c1_5ms = Math.max(0, b5000 - b1000);
+            const c5_25ms = Math.max(0, b25000 - b5000);
+            const cOver25ms = Math.max(0, bInf - b25000);
+
+            const p0_5 = ((c0_5 / totalSamples) * 100).toFixed(1);
+            const p5_25 = ((c5_25 / totalSamples) * 100).toFixed(1);
+            const p25_100 = ((c25_100 / totalSamples) * 100).toFixed(1);
+            const p100_1000 = ((c100_1000 / totalSamples) * 100).toFixed(1);
+            const p1_5ms = ((c1_5ms / totalSamples) * 100).toFixed(1);
+            const p5_25ms = ((c5_25ms / totalSamples) * 100).toFixed(1);
+            const pOver25ms = ((cOver25ms / totalSamples) * 100).toFixed(1);
+
+            container.innerHTML = `
+                <!-- Namespace Cards Row -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                        <span class="text-xs text-[var(--muted)] uppercase font-mono tracking-wider">Messages Ingested</span>
+                        <div class="mt-2 text-2xl font-extrabold text-[var(--foreground)] font-mono">${nsMsgs.toLocaleString()}</div>
+                    </div>
+                    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                        <span class="text-xs text-[var(--muted)] uppercase font-mono tracking-wider">Payload Volume</span>
+                        <div class="mt-2 text-2xl font-extrabold text-[var(--accent)] font-mono">${(nsBytes / (1024 * 1024)).toFixed(2)} MB</div>
+                    </div>
+                    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                        <span class="text-xs text-[var(--muted)] uppercase font-mono tracking-wider">p99 Latency</span>
+                        <div class="mt-2 flex items-baseline justify-between">
+                            <span class="text-2xl font-extrabold text-purple-400 font-mono">${p99.toFixed(2)} µs</span>
+                            <span class="text-xs text-[var(--muted)] font-mono">avg: ${avgLatency} µs</span>
+                        </div>
+                    </div>
+                    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+                        <span class="text-xs text-[var(--muted)] uppercase font-mono tracking-wider">Dropped</span>
+                        <div class="mt-2 text-2xl font-extrabold text-[var(--danger)] font-mono">${nsDrops.toLocaleString()}</div>
+                    </div>
+                </div>
+
+                <!-- Latency Distribution for this Namespace -->
+                <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold uppercase tracking-wider text-[var(--foreground)]">
+                                Latency Bucket Distribution: <span class="text-sky-400 font-mono">${ns === 'all' ? 'All Combined Stages' : ns}</span>
+                            </h3>
+                            <p class="text-xs text-[var(--muted)] mt-0.5">Disjoint transit SLA breakdown (${totalSamples.toLocaleString()} sampled executions)</p>
+                        </div>
+                        <span class="text-xs font-mono text-[var(--muted)]">7 Disjoint Tiers</span>
+                    </div>
+
+                    <div class="space-y-2.5 pt-2">
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">0 – 5 µs (Hot Path)</span>
+                                <span class="text-[var(--foreground)]">${c0_5.toLocaleString()} (${p0_5}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-500 rounded-full" style="width: ${p0_5}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">5 – 25 µs (Normal)</span>
+                                <span class="text-[var(--foreground)]">${c5_25.toLocaleString()} (${p5_25}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-teal-500 rounded-full" style="width: ${p5_25}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">25 – 100 µs (Jitter)</span>
+                                <span class="text-[var(--foreground)]">${c25_100.toLocaleString()} (${p25_100}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-sky-500 rounded-full" style="width: ${p25_100}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">100 – 1000 µs (0.1–1 ms)</span>
+                                <span class="text-[var(--foreground)]">${c100_1000.toLocaleString()} (${p100_1000}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-indigo-500 rounded-full" style="width: ${p100_1000}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">1 – 5 ms (Mild Outlier)</span>
+                                <span class="text-[var(--foreground)]">${c1_5ms.toLocaleString()} (${p1_5ms}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-amber-500 rounded-full" style="width: ${p1_5ms}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">5 – 25 ms (Severe Delay)</span>
+                                <span class="text-[var(--foreground)]">${c5_25ms.toLocaleString()} (${p5_25ms}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-orange-500 rounded-full" style="width: ${p5_25ms}%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-xs font-mono mb-1">
+                                <span class="text-[var(--muted)]">&gt; 25 ms (Critical)</span>
+                                <span class="text-[var(--foreground)]">${cOver25ms.toLocaleString()} (${pOver25ms}%)</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-rose-500 rounded-full" style="width: ${pOver25ms}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTable(data, ns) {
+            const tbody = document.getElementById("metrics-table-body");
+            const nsData = filterByNamespace(data, ns);
+            const allItems = { ...nsData.counters, ...nsData.gauges };
+
+            let rows = "";
+            for (const [k, v] of Object.entries(allItems)) {
+                const isCounter = nsData.counters && k in nsData.counters;
+                const parts = k.split(".");
+                const stageName = parts.length >= 3 && parts[0] === "proxy" ? parts[1] : "-";
+                rows += `<tr>
+                    <td class="py-2.5 px-4 font-semibold text-slate-200">${k}</td>
+                    <td class="py-2.5 px-4 font-mono text-sky-400">${stageName}</td>
+                    <td class="py-2.5 px-4 ${isCounter ? 'text-teal-400' : 'text-purple-400'}">${isCounter ? 'Counter' : 'Gauge'}</td>
+                    <td class="py-2.5 px-4 text-right text-emerald-400 font-mono">${Number(v).toLocaleString()}</td>
+                </tr>`;
+            }
+            tbody.innerHTML = rows || `<tr><td colspan="4" class="py-3 px-4 text-slate-500">No active metrics registered for this namespace</td></tr>`;
+        }
+
+        renderThroughputBars();
+        setInterval(fetchMetrics, 1000);
+    </script>
+</body>
+</html>

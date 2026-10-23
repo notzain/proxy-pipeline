@@ -3,6 +3,7 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/telemetry/StatsDExporter.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
 #include <chrono>
 #include <cstddef>
@@ -216,6 +217,7 @@ private:
     mutable std::shared_mutex m_outputMutex;
     std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>, TransparentStringHash, std::equal_to<>> m_outputChannels;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
+    std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
 
     void registerSignalHandler();
     void unregisterSignalHandler();

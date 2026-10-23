@@ -34,6 +34,8 @@ MergeHandler::MergeHandler(std::string outputChannelName)
 
 bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_outputChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
     auto outputChannel = backend.createOutputChannel(m_outputChannelName, config);
     if (!outputChannel) {

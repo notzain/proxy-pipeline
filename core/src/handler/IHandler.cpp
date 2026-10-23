@@ -1,10 +1,13 @@
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageView.hpp"
+#include "core/telemetry/MetricsRegistry.hpp"
+#include "core/telemetry/StatsDExporter.hpp"
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "core/threading/SequentialStrategy.hpp"
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
 #include <array>
+#include <chrono>
 #include <csignal>
 #include <mutex>
 
@@ -42,8 +45,21 @@ IHandler::~IHandler()
     unregisterSignalHandler();
 }
 
-bool IHandler::configure(const Config::Configuration&, ::Backend::IBackend&)
+bool IHandler::configure(const Config::Configuration& config, ::Backend::IBackend&)
 {
+    // Auto-configure telemetry StatsD exporter if telemetry.statsd.host or telemetry.host is set
+    std::string statsdHost = config.getOr<std::string>("telemetry.statsd.host", config.getOr<std::string>("telemetry.host", ""));
+    if (!statsdHost.empty()) {
+        uint16_t statsdPort = static_cast<uint16_t>(config.getOr<int>("telemetry.statsd.port", config.getOr<int>("telemetry.port", 8125)));
+        std::string prefix = config.getOr<std::string>("telemetry.prefix", "proxy");
+        int intervalMs = config.getOr<int>("telemetry.interval_ms", 1000);
+
+        Proxy::Log::info("[IHandler] Initializing live Telemetry StatsD exporter to {}:{} (prefix: '{}', flush interval: {}ms)...",
+            statsdHost, statsdPort, prefix, intervalMs);
+
+        m_telemetryExporter = std::make_unique<Telemetry::StatsDExporter>(statsdHost, statsdPort, prefix);
+        m_telemetryExporter->start(std::chrono::milliseconds(intervalMs));
+    }
     return true;
 }
 
@@ -69,7 +85,18 @@ void IHandler::onMessageReceived(std::string_view, const Message::MessageView&)
 
 void IHandler::onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages)
 {
+    auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
+        "message_processing_duration_us", "Message transit and processing duration in microseconds");
+
+    uint64_t nowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+            .count());
+
     for (const auto& msg : messages) {
+        if (msg.timestampNs() > 0 && nowNs >= msg.timestampNs()) {
+            double durationUs = static_cast<double>(nowNs - msg.timestampNs()) / 1000.0;
+            latencyHist.observe(durationUs);
+        }
         onMessageReceived(channelName, msg);
     }
 }
@@ -144,6 +171,19 @@ void IHandler::startAsync()
 {
     ensureStrategy();
     registerSignalHandler();
+
+    // Auto-initialize telemetry StatsD exporter if telemetry.statsd.host or telemetry.host is set
+    // This ensures telemetry starts even if derived classes override configure() without calling IHandler::configure()
+    if (!m_telemetryExporter) {
+        // Check environment variables as well for seamless zero-config overrides
+        const char* envHost = std::getenv("PROXY_TELEMETRY_HOST");
+        if (envHost && *envHost) {
+            const char* envPort = std::getenv("PROXY_TELEMETRY_PORT");
+            uint16_t port = envPort ? static_cast<uint16_t>(std::atoi(envPort)) : 8125;
+            m_telemetryExporter = std::make_unique<Telemetry::StatsDExporter>(envHost, port, "proxy");
+            m_telemetryExporter->start(std::chrono::milliseconds(1000));
+        }
+    }
 
     Proxy::Log::info("[IHandler] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...", m_inputChannels.size());
     m_strategy->start(*this);

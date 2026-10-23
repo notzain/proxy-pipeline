@@ -21,6 +21,8 @@ XmlVerificationHandler::~XmlVerificationHandler() = default;
 
 bool XmlVerificationHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     std::string xsdPath = config.getOr<std::string>("xml.xsd_path", "");
     if (xsdPath.empty()) {
         Proxy::Log::error("[XmlVerificationHandler] Missing mandatory configuration: 'xml.xsd_path'");

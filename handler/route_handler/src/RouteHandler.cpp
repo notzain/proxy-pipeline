@@ -13,6 +13,8 @@ RouteHandler::~RouteHandler() = default;
 
 bool RouteHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_inputChannelName = config.getOr<std::string>("route.input_channel", config.getOr<std::string>("channel.input", "route_in"));
     m_defaultChannelName = config.getOr<std::string>("route.default_output", "");
 
@@ -73,7 +75,7 @@ bool RouteHandler::configure(const Core::Config::Configuration& config, ::Backen
             } else if (typeStr == "protocol") {
                 patternVariant = MatchCriteria::Protocol { static_cast<Core::Message::ProtocolId>(numVal) };
             } else if (typeStr == "default" || typeStr == "fallback") {
-                patternVariant = MatchCriteria::Fallback {};
+                patternVariant = MatchCriteria::Fallback { };
             } else {
                 patternVariant = MatchCriteria::PayloadContains { std::move(pattern) };
             }
@@ -178,4 +180,3 @@ void RouteHandler::onBatchReceived(std::string_view channelName, std::span<const
 }
 
 } // namespace Proxy::Handler
-

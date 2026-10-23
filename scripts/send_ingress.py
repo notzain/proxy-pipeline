@@ -56,6 +56,41 @@ def generate_sample(sample_type: str) -> str:
         return f"<order><customer>TestUser</customer><item>DefaultItem</item><quantity>1</quantity></order>"
 
 
+def parse_bandwidth(bandwidth_str: str) -> float:
+    """
+    Parses bandwidth string into bytes per second.
+    Supports units: B, KB, MB, GB, bps, Kbps, Mbps, Gbps (with or without /s).
+    """
+    s = bandwidth_str.strip().lower().rstrip("/s").rstrip("ps")
+    unit_multipliers = {
+        "k": 1024,
+        "kb": 1024,
+        "m": 1024 * 1024,
+        "mb": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+        "gb": 1024 * 1024 * 1024,
+        "b": 1,
+    }
+    # Check for bit rates (e.g. mbps)
+    is_bits = "b" in bandwidth_str.lower() and not "bytes" in bandwidth_str.lower() and "bps" in bandwidth_str.lower()
+    
+    num_part = ""
+    unit_part = ""
+    for ch in s:
+        if ch.isdigit() or ch == ".":
+            num_part += ch
+        else:
+            unit_part += ch
+
+    val = float(num_part)
+    unit_part = unit_part.strip()
+    multiplier = unit_multipliers.get(unit_part, 1024 * 1024 if not unit_part else 1)
+    bytes_per_sec = val * multiplier
+    if is_bits:
+        bytes_per_sec /= 8.0
+    return max(1.0, bytes_per_sec)
+
+
 def send_udp(host: str, port: int, data: bytes) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         return sock.sendto(data, (host, port))
@@ -132,6 +167,28 @@ def main() -> int:
         action="store_true",
         help="Read lines from standard input and send each line as a message",
     )
+    parser.add_argument(
+        "--bandwidth",
+        type=str,
+        help="Sustained bandwidth limit (e.g. '500KB', '5MB', '20MB/s', '100Mbps'). Enables continuous realistic stream pacing.",
+    )
+    parser.add_argument(
+        "--rate",
+        type=float,
+        help="Target messages per second rate (e.g. --rate 10000 for 10k msg/s)",
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0.0,
+        help="Maximum duration in seconds to run sustained load (0 for indefinite / count-limited)",
+    )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Number of concurrent sender worker threads (default: 1; use 2-4 to push > 25 MB/s with small packets)",
+    )
 
     args = parser.parse_args()
 
@@ -160,6 +217,164 @@ def main() -> int:
         raw_payload = args.message.encode("utf-8")
     else:
         raw_payload = None  # Will be dynamically generated if sample is random
+
+    # Check if sustained load mode is requested via --bandwidth or --rate
+    if args.bandwidth or args.rate:
+        target_bps = parse_bandwidth(args.bandwidth) if args.bandwidth else 0.0
+        target_mps = float(args.rate) if args.rate else 0.0
+        num_threads = max(1, args.threads)
+
+        print(f"\033[1;36m[*] Starting Sustained Realistic Load Generator ({num_threads} worker thread{'s' if num_threads > 1 else ''})\033[0m")
+        print(f"    Target: {args.host}:{args.port} ({args.proto.upper()})")
+        if target_bps > 0:
+            print(f"    Target Bandwidth: {target_bps / (1024*1024):.2f} MB/s ({target_bps * 8 / 1e6:.1f} Mbps)")
+        if target_mps > 0:
+            print(f"    Target Rate: {target_mps:,.0f} msg/s")
+        if args.duration > 0:
+            print(f"    Max Duration: {args.duration:.1f}s")
+        max_messages = args.count if (args.count != 1 or not (args.bandwidth or args.rate)) else 0
+        if max_messages > 0:
+            print(f"    Max Messages: {max_messages:,}")
+
+        # Pre-generate sample pool for ultra-low overhead generation
+        sample_pool = [
+            (raw_payload if raw_payload is not None else generate_sample(args.sample).encode("utf-8"))
+            for _ in range(256)
+        ]
+        sample_size = len(sample_pool[0])
+
+        import threading
+
+        start_time = time.time()
+        stop_event = threading.Event()
+        total_lock = threading.Lock()
+        global_total_msgs = 0
+        global_total_bytes = 0
+
+        # Thread pacing targets
+        per_thread_bps = target_bps / num_threads if target_bps > 0 else 0.0
+        per_thread_mps = target_mps / num_threads if target_mps > 0 else 0.0
+        batch_limit = max(16, min(256, int(per_thread_bps / (sample_size * 200)))) if per_thread_bps > 0 else 32
+
+        def worker_fn(worker_id: int):
+            nonlocal global_total_msgs, global_total_bytes
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if args.proto == "udp" else None
+            if sock:
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 * 1024 * 1024)
+                except OSError:
+                    pass
+
+            thread_msgs = 0
+            thread_bytes = 0
+            pool_idx = worker_id * 16
+
+            try:
+                while not stop_event.is_set():
+                    now = time.time()
+                    elapsed = now - start_time
+                    if args.duration > 0 and elapsed >= args.duration:
+                        stop_event.set()
+                        break
+
+                    # Rate limiting check per thread
+                    if per_thread_bps > 0 and elapsed > 0:
+                        cur_rate = thread_bytes / elapsed
+                        if cur_rate > per_thread_bps:
+                            ahead_bytes = thread_bytes - (per_thread_bps * elapsed)
+                            sleep_s = ahead_bytes / per_thread_bps
+                            if sleep_s > 0.0001:
+                                time.sleep(min(0.01, sleep_s))
+                                continue
+
+                    if per_thread_mps > 0 and elapsed > 0:
+                        cur_rate = thread_msgs / elapsed
+                        if cur_rate > per_thread_mps:
+                            ahead_msgs = thread_msgs - (per_thread_mps * elapsed)
+                            sleep_s = ahead_msgs / per_thread_mps
+                            if sleep_s > 0.0001:
+                                time.sleep(min(0.01, sleep_s))
+                                continue
+
+                    # Dispatch batch
+                    for _ in range(batch_limit):
+                        payload = sample_pool[pool_idx]
+                        pool_idx = (pool_idx + 1) & 255
+
+                        if args.proto == "udp":
+                            sock.sendto(payload, (args.host, args.port))
+                        else:
+                            send_tcp(args.host, args.port, payload)
+
+                        thread_msgs += 1
+                        thread_bytes += len(payload)
+
+                    # Update shared stats every 64 iterations for smooth live monitoring
+                    if (thread_msgs & 63) == 0:
+                        with total_lock:
+                            global_total_msgs += 64
+                            global_total_bytes += 64 * len(payload)
+
+                    if max_messages > 0:
+                        with total_lock:
+                            if global_total_msgs >= max_messages:
+                                stop_event.set()
+                                break
+            finally:
+                if sock:
+                    sock.close()
+                rem_msgs = thread_msgs % 64
+                if rem_msgs > 0:
+                    with total_lock:
+                        global_total_msgs += rem_msgs
+                        global_total_bytes += rem_msgs * sample_size
+
+        threads = [threading.Thread(target=worker_fn, args=(i,), daemon=True) for i in range(num_threads)]
+        for t in threads:
+            t.start()
+
+        # Monitoring / Progress loop
+        last_stat_time = start_time
+        prev_mon_msgs = 0
+        prev_mon_bytes = 0
+
+        try:
+            while not stop_event.is_set():
+                time.sleep(0.5)
+                now = time.time()
+                elapsed = now - start_time
+                if args.duration > 0 and elapsed >= args.duration:
+                    stop_event.set()
+                    break
+
+                if now - last_stat_time >= 1.0:
+                    with total_lock:
+                        cur_msgs = global_total_msgs
+                        cur_bytes = global_total_bytes
+                    dt = now - last_stat_time
+                    inst_rate = (cur_msgs - prev_mon_msgs) / dt
+                    inst_bw = (cur_bytes - prev_mon_bytes) / (1024 * 1024 * dt)
+                    print(
+                        f"[{time.strftime('%H:%M:%S')}] Pacing: "
+                        f"\033[1;32m{inst_rate:>8.0f} msg/s\033[0m | "
+                        f"\033[1;34m{inst_bw:>6.2f} MB/s\033[0m | "
+                        f"Total: {cur_msgs:>9,} msgs ({cur_bytes / (1024*1024):>6.1f} MB)"
+                    )
+                    prev_mon_msgs = cur_msgs
+                    prev_mon_bytes = cur_bytes
+                    last_stat_time = now
+
+        except KeyboardInterrupt:
+            print("\n[*] Sustained load stopped by user.")
+            stop_event.set()
+        finally:
+            stop_event.set()
+            for t in threads:
+                t.join(timeout=1.0)
+            total_elapsed = max(0.001, time.time() - start_time)
+            print(f"\n[+] Summary: Sent {global_total_msgs:,} messages ({global_total_bytes / (1024*1024):.2f} MB) in {total_elapsed:.2f}s ({global_total_msgs/total_elapsed:,.0f} msg/s avg, {global_total_bytes/(1024*1024*total_elapsed):.2f} MB/s)")
+
+        return 0
 
     target_sender = send_udp if args.proto == "udp" else send_tcp
 

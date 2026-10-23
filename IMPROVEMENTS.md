@@ -57,9 +57,8 @@ Tracking checklist for ongoing performance optimizations, transport backend enha
 
 ## 4. Observability & Developer Experience
 
-- [ ] **Lock-Free Latency & Telemetry Metrics**
-  - Lightweight atomic counters and nanosecond timestamp stamping at ingress and egress points.
-  - Prometheus `/metrics` exposition or statsd UDP datagram exporter.
+- [x] **Lock-Free Latency & Telemetry Metrics**
+  - Lightweight atomic counters (`Counter`, `Gauge`), lock-free cumulative latency histogram (`Histogram`), thread-safe `MetricsRegistry`, Prometheus `/metrics` exposition format, and `StatsDExporter` UDP datagram sender.
 - [ ] **Deterministic Simulation & Mock Channel Replay**
   - Replay pcap or record/replay log streams with cycle-accurate timing for regression testing.
 

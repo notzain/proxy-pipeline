@@ -29,6 +29,8 @@ namespace Proxy::Handler {
 
 bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
     auto inputChannel = backend.createInputChannel(m_inputChannelName, config);
     if (!inputChannel) {

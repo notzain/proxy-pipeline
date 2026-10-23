@@ -11,6 +11,8 @@ namespace Proxy::Handler {
 
 bool PrintHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_channelName = config.getOr<std::string>("print.channel", "default");
     auto inChannel = backend.createInputChannel(m_channelName, config);
     if (!inChannel) {
