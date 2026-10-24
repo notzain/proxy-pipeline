@@ -8,58 +8,58 @@ namespace Proxy::Handler {
 
 namespace {
 
-/**
- * @brief Matcher visitor providing pattern matching semantics analogous to Rust's `match`.
- */
-struct PatternMatcher {
-    const Core::Message::MessageView& message;
+    /**
+     * @brief Matcher visitor providing pattern matching semantics analogous to Rust's `match`.
+     */
+    struct PatternMatcher {
+        const Core::Message::MessageView& message;
 
-    bool operator()(const MatchCriteria::Protocol& c) const noexcept
-    {
-        return message.protocol() == c.expected;
-    }
+        bool operator()(const MatchCriteria::Protocol& c) const noexcept
+        {
+            return message.protocol() == c.expected;
+        }
 
-    bool operator()(const MatchCriteria::PayloadContains& c) const noexcept
-    {
-        if (c.pattern.empty()) {
+        bool operator()(const MatchCriteria::PayloadContains& c) const noexcept
+        {
+            if (c.pattern.empty()) {
+                return true;
+            }
+            auto payload = message.payload();
+            if (payload.size() < c.pattern.size()) {
+                return false;
+            }
+            std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
+            return payloadStr.find(c.pattern) != std::string_view::npos;
+        }
+
+        bool operator()(const MatchCriteria::PayloadPrefix& c) const noexcept
+        {
+            if (c.prefix.empty()) {
+                return true;
+            }
+            auto payload = message.payload();
+            if (payload.size() < c.prefix.size()) {
+                return false;
+            }
+            std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
+            return payloadStr.starts_with(c.prefix);
+        }
+
+        bool operator()(const MatchCriteria::ClientPort& c) const noexcept
+        {
+            const auto* udpMeta = message.getMetadata<Core::Message::UdpMetadata>();
+            if (!udpMeta) {
+                return false;
+            }
+            std::uint16_t clientPort = ntohs(udpMeta->srcPort);
+            return clientPort == c.port;
+        }
+
+        bool operator()(const MatchCriteria::Fallback&) const noexcept
+        {
             return true;
         }
-        auto payload = message.payload();
-        if (payload.size() < c.pattern.size()) {
-            return false;
-        }
-        std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
-        return payloadStr.find(c.pattern) != std::string_view::npos;
-    }
-
-    bool operator()(const MatchCriteria::PayloadPrefix& c) const noexcept
-    {
-        if (c.prefix.empty()) {
-            return true;
-        }
-        auto payload = message.payload();
-        if (payload.size() < c.prefix.size()) {
-            return false;
-        }
-        std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
-        return payloadStr.starts_with(c.prefix);
-    }
-
-    bool operator()(const MatchCriteria::ClientPort& c) const noexcept
-    {
-        const auto* udpMeta = message.getMetadata<Core::Message::UdpMetadata>();
-        if (!udpMeta) {
-            return false;
-        }
-        std::uint16_t clientPort = ntohs(udpMeta->srcPort);
-        return clientPort == c.port;
-    }
-
-    bool operator()(const MatchCriteria::Fallback&) const noexcept
-    {
-        return true;
-    }
-};
+    };
 
 } // namespace
 

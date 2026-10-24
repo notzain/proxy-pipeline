@@ -168,4 +168,3 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         CHECK(portPtr->sentPayloads[0] == payload);
     }
 }
-

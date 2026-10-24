@@ -44,6 +44,7 @@ add_subdirectory(handler/route_handler)
 enable_testing()
 add_subdirectory(test)
 add_subdirectory(benchmark)
+add_subdirectory(tools)
 
 # Export manifest of all generated handler targets for CI/Docker packaging
 proxy_export_targets_manifest("${CMAKE_BINARY_DIR}/manifest.json")

@@ -16,12 +16,14 @@ class ProxyConan(ConanFile):
         "backend_socket": [True, False],
         "backend_uds": [True, False],
         "backend_shm": [True, False],
+        "backend_sim": [True, False],
     }
     default_options = {
         "backend_file": True,
         "backend_socket": True,
         "backend_uds": True,
         "backend_shm": True,
+        "backend_sim": True,
         "xerces-c/*:network": False,
         "xerces-c/*:transcoder": "iconv",
     }
@@ -48,6 +50,8 @@ class ProxyConan(ConanFile):
             self.requires("backend-uds/0.1.0")
         if self.options.backend_shm:
             self.requires("backend-shm/0.1.0")
+        if self.options.backend_sim:
+            self.requires("backend-sim/0.1.0")
 
     def generate(self):
         deps = CMakeDeps(self)

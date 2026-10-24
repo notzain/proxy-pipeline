@@ -11,38 +11,38 @@ namespace Proxy::Handler {
 
 namespace MatchCriteria {
 
-/**
- * @brief Matches MessageView::protocol() against an expected ProtocolId.
- */
-struct Protocol {
-    Core::Message::ProtocolId expected;
-};
+    /**
+     * @brief Matches MessageView::protocol() against an expected ProtocolId.
+     */
+    struct Protocol {
+        Core::Message::ProtocolId expected;
+    };
 
-/**
- * @brief Matches substring inside MessageView::payload().
- */
-struct PayloadContains {
-    std::string pattern;
-};
+    /**
+     * @brief Matches substring inside MessageView::payload().
+     */
+    struct PayloadContains {
+        std::string pattern;
+    };
 
-/**
- * @brief Matches prefix of MessageView::payload().
- */
-struct PayloadPrefix {
-    std::string prefix;
-};
+    /**
+     * @brief Matches prefix of MessageView::payload().
+     */
+    struct PayloadPrefix {
+        std::string prefix;
+    };
 
-/**
- * @brief Matches originating client UDP port in UdpMetadata.
- */
-struct ClientPort {
-    std::uint16_t port;
-};
+    /**
+     * @brief Matches originating client UDP port in UdpMetadata.
+     */
+    struct ClientPort {
+        std::uint16_t port;
+    };
 
-/**
- * @brief Unconditional match (catch-all / default fallback route).
- */
-struct Fallback { };
+    /**
+     * @brief Unconditional match (catch-all / default fallback route).
+     */
+    struct Fallback { };
 
 } // namespace MatchCriteria
 

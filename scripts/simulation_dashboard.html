@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Proxy :: Interactive Step-by-Step Simulation Dashboard</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --panel-header: rgba(15, 23, 42, 0.7);
+      --border: rgba(255, 255, 255, 0.08);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      max-height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* Strict: Never scroll full page */
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(13, 17, 28, 0.95);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(12px);
+      flex-shrink: 0;
+      height: 54px;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge-pcap {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    button {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover {
+      background: #334155;
+      border-color: var(--accent);
+    }
+    button.primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+    }
+    button.primary:hover {
+      background: #0369a1;
+    }
+    .speed-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: #1e293b;
+      padding: 4px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+    }
+    .speed-ctrl input {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* 3-Column Layout: Left (PCAP) | Center (Canvas & Stats) | Right (Execution Trace) */
+    main {
+      flex: 1;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr) 390px;
+      gap: 14px;
+      height: calc(100vh - 54px);
+      max-height: calc(100vh - 54px);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 10px 14px;
+      background: var(--panel-header);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* Center Section (Canvas + Node Inspector + Stats) */
+    .center-viewport {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      height: 100%;
+      min-height: 0;
+      min-width: 0;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .stat-card .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+    .stat-card .val { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 2px; }
+
+    .canvas-container {
+      flex: 1;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+      min-width: 0;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Node Inspector at bottom of Center Viewport */
+    .node-inspector-pane {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      flex-shrink: 0;
+      max-height: 170px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .node-inspector-pane.active {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: rgba(18, 24, 38, 0.95);
+    }
+    .node-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .node-content-grid {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 12px;
+      min-height: 0;
+    }
+
+    /* Inspectors inside Side Panels */
+    .inspector-box {
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.45);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      max-height: 250px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .inspector-title {
+      font-size: 11px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 3px 10px;
+      font-size: 12px;
+    }
+    .meta-grid .k { color: var(--text-muted); font-size: 11px; }
+    .meta-grid .v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); word-break: break-all; font-size: 11px; }
+
+    .payload-box {
+      background: #0b0f19;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      max-height: 90px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Scrollable lists */
+    .list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      scrollbar-gutter: stable;
+    }
+    .list-item {
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .list-item:hover {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: rgba(56, 189, 248, 0.25);
+    }
+    .list-item.active {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.45);
+      border-left: 3px solid var(--accent);
+    }
+    .list-item.completed {
+      border-left: 3px solid var(--success);
+    }
+    .list-item.dropped {
+      border-left: 3px solid var(--danger);
+    }
+    .item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .log-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .tag-ingress { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+    .tag-hop { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .tag-egress { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+    .tag-drop { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+    .log-time { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+    .log-desc { font-size: 11px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span class="badge-pcap">STEP SIMULATOR</span>
+      <h2 style="font-size: 15px; font-weight: 600;">Interactive Proxy Chain Stepper</h2>
+      <span id="chain-badge" style="font-size: 11px; color: var(--text-muted); background: #1e293b; padding: 2px 8px; border-radius: 4px;">Connecting...</span>
+    </div>
+    <div class="controls">
+      <button id="btn-play" class="primary" onclick="togglePlay()">▶ Play</button>
+      <button id="btn-step-back" onclick="stepBack()">⏮ Back</button>
+      <button id="btn-step" onclick="stepForward()">⏭ Step</button>
+      <button id="btn-reset" onclick="resetSim()">↺ Reset</button>
+      <div class="speed-ctrl">
+        <span>Interval</span>
+        <input id="speed-slider" type="range" min="0.2" max="3.0" step="0.2" value="1.0" oninput="updateSpeed(this.value)">
+        <span id="speed-val">1.0s</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left: Preloaded PCAP Packets Panel + Dedicated PCAP Packet Inspector -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>PCAP Packets (<span id="pcap-count">0</span>)</span>
+        <span style="font-size: 11px; color: var(--text-muted);">Queue</span>
+      </div>
+
+      <!-- Dedicated Inspector: Selected PCAP Packet -->
+      <div class="inspector-box" id="pcap-inspector-box">
+        <div class="inspector-title">
+          <span>Packet Inspector</span>
+          <span id="pcap-insp-badge" style="color: var(--accent); font-family: monospace;">No Packet Selected</span>
+        </div>
+        <div class="meta-grid">
+          <span class="k">Packet ID:</span><span class="v" id="pcap-insp-id">-</span>
+          <span class="k">Timestamp:</span><span class="v" id="pcap-insp-time">-</span>
+          <span class="k">Source:</span><span class="v" id="pcap-insp-src">-</span>
+          <span class="k">Destination:</span><span class="v" id="pcap-insp-dst">-</span>
+          <span class="k">Size:</span><span class="v" id="pcap-insp-size">-</span>
+        </div>
+        <div class="inspector-title" style="margin-top: 4px;">Payload Content</div>
+        <div class="payload-box" id="pcap-insp-payload">// Select any packet from the list below</div>
+      </div>
+
+      <!-- Chronological PCAP List -->
+      <div class="list-container" id="pcap-list">
+        <!-- Rendered PCAP items -->
+      </div>
+    </div>
+
+    <!-- Center: Statistics, Visual Pipeline DAG, and Clickable Handler Node Inspector -->
+    <div class="center-viewport">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="label">Total Packets</div>
+          <div class="val" id="stat-total">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">In-Flight / Next</div>
+          <div class="val" id="stat-current" style="color: var(--accent);">Waiting</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Delivered Egress</div>
+          <div class="val" id="stat-delivered" style="color: var(--success);">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Dropped by Node</div>
+          <div class="val" id="stat-dropped" style="color: var(--danger);">0</div>
+        </div>
+      </div>
+
+      <div class="canvas-container" id="canvas-wrap">
+        <canvas id="sim-canvas"></canvas>
+      </div>
+
+      <!-- Clickable Handler Node Inspector -->
+      <div class="node-inspector-pane" id="node-inspector">
+        <div class="node-header">
+          <span id="node-insp-title">🔍 Handler Node Inspector (Click any node above)</span>
+          <span id="node-insp-type" style="font-family: monospace; color: var(--text-muted); font-size: 11px;">No Node Selected</span>
+        </div>
+        <div class="node-content-grid">
+          <div class="meta-grid">
+            <span class="k">Instance Name:</span><span class="v" id="node-insp-name">-</span>
+            <span class="k">Handler Type:</span><span class="v" id="node-insp-kind">-</span>
+            <span class="k">Input Channel:</span><span class="v" id="node-insp-in">-</span>
+            <span class="k">Output Channel:</span><span class="v" id="node-insp-out">-</span>
+          </div>
+          <div class="payload-box" id="node-insp-config" style="max-height: 100px;">// Click a handler node to inspect configuration and channel bindings</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Execution Trace Panel + Dedicated In-Flight Message Inspector -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Execution Trace (<span id="trace-count">0</span>)</span>
+        <span id="trace-status" style="font-size: 11px; color: var(--accent);">Live Steps</span>
+      </div>
+
+      <!-- Dedicated Inspector: Active In-Flight Message / Step Event -->
+      <div class="inspector-box" id="trace-inspector-box">
+        <div class="inspector-title">
+          <span>In-Flight Message Inspector</span>
+          <span id="trace-insp-badge" style="color: var(--accent); font-family: monospace;">Idle</span>
+        </div>
+        <div class="meta-grid">
+          <span class="k">Packet ID:</span><span class="v" id="trace-insp-pkt">-</span>
+          <span class="k">Step Event:</span><span class="v" id="trace-insp-event">-</span>
+          <span class="k">Current Node:</span><span class="v" id="trace-insp-node">-</span>
+          <span class="k">Held In Channel:</span><span class="v" id="trace-insp-channel">-</span>
+          <span class="k">Step Latency:</span><span class="v" id="trace-insp-latency">-</span>
+          <span class="k">Outcome Status:</span><span class="v" id="trace-insp-status">-</span>
+        </div>
+        <div class="inspector-title" style="margin-top: 4px;">In-Flight Wire Payload</div>
+        <div class="payload-box" id="trace-insp-payload">// Click Step to advance messages through the pipeline</div>
+      </div>
+
+      <!-- Live Execution Event Trace -->
+      <div class="list-container" id="trace-list">
+        <!-- Rendered Event items -->
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let simData = null;
+    let isPlaying = false;
+    let stepInterval = 1000;
+    let playTimer = null;
+    let activeParticles = [];
+    let handlersLayout = [];
+    let channelsLayout = [];
+    let lastEvent = null;
+    let selectedPacketId = null;
+    let selectedTraceEventId = null;
+    let selectedNodeName = null;
+
+    const canvas = document.getElementById("sim-canvas");
+    const ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      const wrap = document.getElementById("canvas-wrap");
+      const rect = wrap.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      
+      layoutPipeline(rect.width, rect.height);
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+    resizeObserver.observe(document.getElementById("canvas-wrap"));
+
+    async function fetchState() {
+      try {
+        const resp = await fetch("/api/simulation");
+        simData = await resp.json();
+        document.getElementById("chain-badge").textContent = `Chain: ${simData.chain.backend.toUpperCase()} | PCAP: ${simData.pcap}`;
+        document.getElementById("stat-total").textContent = simData.packetCount;
+        document.getElementById("pcap-count").textContent = simData.packetCount;
+        document.getElementById("trace-count").textContent = simData.events.length;
+        
+        updateStats();
+        resizeCanvas();
+        renderPcapList();
+        renderTraceList();
+
+        // Auto-inspect currently selected packet if none explicitly clicked
+        if (selectedPacketId === null && simData.packets && simData.packets.length > 0) {
+          const currentPkt = simData.packets[simData.currentPacketIdx] || simData.packets[0];
+          inspectPcapPacket(currentPkt);
+        }
+      } catch (e) {
+        console.error("Failed to fetch state:", e);
+      }
+    }
+
+    function layoutPipeline(viewW, viewH) {
+      if (!simData || !simData.chain || !simData.chain.handlers) return;
+      const handlers = simData.chain.handlers;
+      const w = viewW !== undefined ? viewW : (canvas.clientWidth || canvas.width);
+      const h = viewH !== undefined ? viewH : (canvas.clientHeight || canvas.height);
+
+      handlersLayout = [];
+      channelsLayout = [];
+
+      const inDegrees = new Map();
+      const outgoing = new Map();
+      handlers.forEach(h => {
+        inDegrees.set(h.name, 0);
+        outgoing.set(h.name, []);
+      });
+
+      handlers.forEach(h => {
+        const outCh = h.output_channel;
+        if (outCh) {
+          handlers.forEach(consumer => {
+            const inList = consumer.input_channels || (consumer.input_channel ? [consumer.input_channel] : []);
+            if (inList.includes(outCh)) {
+              outgoing.get(h.name).push(consumer.name);
+              inDegrees.set(consumer.name, (inDegrees.get(consumer.name) || 0) + 1);
+            }
+          });
+        }
+      });
+
+      const ranks = new Map();
+      const queue = [];
+      handlers.forEach(h => {
+        if ((inDegrees.get(h.name) || 0) === 0) {
+          ranks.set(h.name, 0);
+          queue.push(h.name);
+        }
+      });
+      if (queue.length === 0 && handlers.length > 0) {
+        ranks.set(handlers[0].name, 0);
+        queue.push(handlers[0].name);
+      }
+
+      while (queue.length > 0) {
+        const u = queue.shift();
+        const r = ranks.get(u) || 0;
+        for (const v of outgoing.get(u) || []) {
+          const nextR = Math.max(ranks.get(v) || 0, r + 1);
+          ranks.set(v, nextR);
+          queue.push(v);
+        }
+      }
+
+      const columns = new Map();
+      handlers.forEach(h => {
+        const r = ranks.get(h.name) || 0;
+        if (!columns.has(r)) columns.set(r, []);
+        columns.get(r).push(h);
+      });
+
+      const numCols = Math.max(...ranks.values(), 0) + 1;
+      const colSpacing = (w - 180) / Math.max(numCols - 1, 1);
+
+      columns.forEach((colHandlers, r) => {
+        const colX = numCols === 1 ? w / 2 : 90 + r * colSpacing;
+        const rowSpacing = (h - 90) / (colHandlers.length + 1);
+        colHandlers.forEach((handler, rowIdx) => {
+          const nodeY = 45 + (rowIdx + 1) * rowSpacing;
+          handlersLayout.push({
+            name: handler.name,
+            type: handler.type,
+            x: colX,
+            y: nodeY,
+            width: 140,
+            height: 52,
+            inCh: handler.input_channel,
+            outCh: handler.output_channel,
+            config: handler.config || {},
+          });
+        });
+      });
+
+      // Construct DAG Channels
+      handlers.forEach(h => {
+        const outCh = h.output_channel;
+        if (outCh) {
+          const fromNode = handlersLayout.find(item => item.name === h.name);
+          handlers.forEach(consumer => {
+            const inList = consumer.input_channels || (consumer.input_channel ? [consumer.input_channel] : []);
+            if (inList.includes(outCh)) {
+              const toNode = handlersLayout.find(item => item.name === consumer.name);
+              if (fromNode && toNode) {
+                channelsLayout.push({
+                  name: outCh,
+                  from: fromNode,
+                  to: toNode,
+                });
+              }
+            }
+          });
+        }
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Channel Connections
+      channelsLayout.forEach(ch => {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(ch.from.x + ch.from.width/2, ch.from.y);
+        ctx.lineTo(ch.to.x - ch.to.width/2, ch.to.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const midX = (ch.from.x + ch.from.width/2 + ch.to.x - ch.to.width/2) / 2;
+        const midY = ch.from.y - 12;
+        ctx.fillStyle = "rgba(148, 163, 184, 0.7)";
+        ctx.font = "11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`channel: ${ch.name}`, midX, midY);
+      });
+
+      // Draw Handler Nodes
+      handlersLayout.forEach(h => {
+        const x = h.x - h.width/2;
+        const y = h.y - h.height/2;
+        const isTarget = lastEvent && (lastEvent.target === h.name || lastEvent.source === h.name);
+        const isSelected = selectedNodeName === h.name;
+
+        if (isSelected) {
+          ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
+          ctx.shadowBlur = 26;
+        } else if (isTarget) {
+          ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : "rgba(56, 189, 248, 0.7)";
+          ctx.shadowBlur = 20;
+        } else {
+          ctx.shadowColor = "rgba(56, 189, 248, 0.15)";
+          ctx.shadowBlur = 8;
+        }
+
+        ctx.fillStyle = isSelected ? "#0c4a6e" : (isTarget ? "#1e3a5f" : "#1e293b");
+        ctx.beginPath();
+        ctx.roundRect(x, y, h.width, h.height, 10);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = isSelected ? "#38bdf8" : (isTarget ? (lastEvent.type === "drop" ? "#f87171" : "#38bdf8") : "rgba(56, 189, 248, 0.35)");
+        ctx.lineWidth = isSelected ? 3 : (isTarget ? 2.5 : 1.5);
+        ctx.stroke();
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(h.name, h.x, h.y - 5);
+
+        ctx.fillStyle = isSelected || isTarget ? "#7dd3fc" : "#94a3b8";
+        ctx.font = "10px monospace";
+        ctx.fillText(h.type.replace("_handler", ""), h.x, h.y + 12);
+      });
+
+      // Highlight Active Channel
+      if (lastEvent && lastEvent.channel) {
+        const activeCh = channelsLayout.find(c => c.name === lastEvent.channel);
+        if (activeCh) {
+          ctx.strokeStyle = "#38bdf8";
+          ctx.lineWidth = 4;
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.moveTo(activeCh.from.x + activeCh.from.width/2, activeCh.from.y);
+          ctx.lineTo(activeCh.to.x - activeCh.to.width/2, activeCh.to.y);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // Animate Active Particles with trailing pulse and resting state at target node
+      for (let i = activeParticles.length - 1; i >= 0; i--) {
+        const p = activeParticles[i];
+        if (p.progress < 1.0) {
+          p.progress += p.speed || 0.025;
+          if (p.progress > 1.0) p.progress = 1.0;
+        }
+
+        const curX = p.startX + (p.endX - p.startX) * p.progress;
+        const curY = p.startY + (p.endY - p.startY) * p.progress;
+
+        // Draw particle trail while in transit
+        if (p.progress < 1.0) {
+          ctx.save();
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 3;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          const trailStartX = p.startX + (p.endX - p.startX) * Math.max(0, p.progress - 0.2);
+          const trailStartY = p.startY + (p.endY - p.startY) * Math.max(0, p.progress - 0.2);
+          ctx.moveTo(trailStartX, trailStartY);
+          ctx.lineTo(curX, curY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Particle head with gentle pulse when held at node
+        ctx.save();
+        const pulse = p.progress >= 1.0 ? Math.sin(Date.now() / 200) * 1.5 : 0;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 18 + pulse * 2;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(curX, curY, 7 + pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(curX, curY, 4.5 + pulse * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Draw Persistent Envelope Badge
+      if (lastEvent) {
+        const targetNode = handlersLayout.find(h => h.name === lastEvent.target);
+        if (targetNode) {
+          const badgeX = targetNode.x;
+          const badgeY = targetNode.y - targetNode.height/2 - 16;
+
+          ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : "rgba(56, 189, 248, 0.6)";
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = lastEvent.type === "drop" ? "#991b1b" : "#0369a1";
+          ctx.beginPath();
+          ctx.roundRect(badgeX - 44, badgeY - 10, 88, 20, 6);
+          ctx.fill();
+
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#f8fafc";
+          ctx.font = "bold 10px monospace";
+          ctx.textAlign = "center";
+          const statusText = lastEvent.type === "drop" ? `P${lastEvent.msgId} DROPPED` : (lastEvent.type === "egress" ? `P${lastEvent.msgId} SENT` : `P${lastEvent.msgId} HELD`);
+          ctx.fillText(statusText, badgeX, badgeY + 3.5);
+        }
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function triggerTransitionAnimation(event) {
+      if (!event || !event.target) return;
+      const targetNode = handlersLayout.find(h => h.name === event.target);
+      if (!targetNode) return;
+
+      let startX = targetNode.x - targetNode.width / 2 - 80;
+      let startY = targetNode.y;
+
+      const srcNode = handlersLayout.find(h => h.name === event.source);
+      if (srcNode) {
+        // Transition directly from source node's right edge to target node's left edge
+        startX = srcNode.x + srcNode.width / 2;
+        startY = srcNode.y;
+      }
+
+      let endX = targetNode.x;
+      let endY = targetNode.y;
+      if (event.type === "egress") {
+        endX = targetNode.x + targetNode.width / 2 + 60;
+      }
+
+      activeParticles = [{
+        startX: startX,
+        startY: startY,
+        endX: endX,
+        endY: endY,
+        progress: 0.0,
+        speed: 0.022,
+        color: event.type === "drop" ? "#f87171" : "#38bdf8"
+      }];
+    }
+
+    async function stepForward() {
+      try {
+        const resp = await fetch("/api/simulation/step", { method: "POST" });
+        const res = await resp.json();
+        if (res.status === "finished") {
+          document.getElementById("stat-current").textContent = "Completed";
+          if (isPlaying) togglePlay();
+          return;
+        }
+
+        if (res.event) {
+          lastEvent = res.event;
+          selectedTraceEventId = res.event.eventId;
+        }
+
+        await fetchState();
+
+        if (res.event) {
+          inspectTraceEvent(res.event);
+          triggerTransitionAnimation(res.event);
+        }
+      } catch (e) {
+        console.error("Step failed:", e);
+      }
+    }
+
+    async function stepBack() {
+      try {
+        if (isPlaying) togglePlay();
+        const resp = await fetch("/api/simulation/step_back", { method: "POST" });
+        const res = await resp.json();
+        if (res.status === "error") {
+          return;
+        }
+
+        if (res.event) {
+          lastEvent = res.event;
+          selectedTraceEventId = res.event.eventId;
+        } else {
+          lastEvent = null;
+          selectedTraceEventId = null;
+          activeParticles = [];
+        }
+
+        await fetchState();
+
+        if (res.event) {
+          inspectTraceEvent(res.event);
+          triggerTransitionAnimation(res.event);
+        } else {
+          clearTraceInspector();
+        }
+      } catch (e) {
+        console.error("Step back failed:", e);
+      }
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      document.getElementById("btn-play").textContent = isPlaying ? "⏸ Pause" : "▶ Play";
+      if (isPlaying) {
+        playLoop();
+      } else if (playTimer) {
+        clearTimeout(playTimer);
+        playTimer = null;
+      }
+    }
+
+    function playLoop() {
+      if (!isPlaying) return;
+      stepForward();
+      playTimer = setTimeout(playLoop, stepInterval);
+    }
+
+    function updateSpeed(val) {
+      stepInterval = Math.round(parseFloat(val) * 1000);
+      document.getElementById("speed-val").textContent = `${parseFloat(val).toFixed(1)}s`;
+    }
+
+    async function resetSim() {
+      if (isPlaying) togglePlay();
+      await fetch("/api/simulation/reset", { method: "POST" });
+      lastEvent = null;
+      activeParticles = [];
+      selectedPacketId = null;
+      selectedTraceEventId = null;
+      selectedNodeName = null;
+      await fetchState();
+      clearTraceInspector();
+      clearNodeInspector();
+    }
+
+    function updateStats() {
+      if (!simData) return;
+      let delivered = 0;
+      let dropped = 0;
+
+      simData.events.forEach(ev => {
+        if (ev.type === "egress") delivered++;
+        if (ev.type === "drop") dropped++;
+      });
+
+      document.getElementById("stat-delivered").textContent = delivered;
+      document.getElementById("stat-dropped").textContent = dropped;
+      document.getElementById("stat-current").textContent = simData.inFlight ? "In-Flight" : `Pkt #${simData.currentPacketIdx + 1}`;
+    }
+
+    /* Render PCAP List (Left Panel) */
+    function renderPcapList() {
+      const container = document.getElementById("pcap-list");
+      container.innerHTML = "";
+      if (!simData || !simData.packets) return;
+
+      simData.packets.forEach((pkt, idx) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        if (pkt.id === selectedPacketId) {
+          item.classList.add("active");
+        }
+        if (idx < simData.currentPacketIdx) {
+          item.classList.add("completed");
+        } else if (idx === simData.currentPacketIdx && selectedPacketId === null) {
+          item.classList.add("active");
+        }
+
+        item.onclick = async () => {
+          selectedPacketId = pkt.id;
+          await selectPacket(pkt.id);
+          inspectPcapPacket(pkt);
+        };
+
+        item.innerHTML = `
+          <div class="item-top">
+            <span class="log-tag tag-ingress">PKT #${pkt.id}</span>
+            <span class="log-time">${pkt.size} bytes</span>
+          </div>
+          <div class="log-desc">${pkt.srcIp}:${pkt.srcPort} ➔ ${pkt.dstIp}:${pkt.dstPort}</div>
+          <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">${pkt.payloadSummary}</div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    /* Render Execution Trace List (Right Panel) */
+    function renderTraceList() {
+      const container = document.getElementById("trace-list");
+      container.innerHTML = "";
+      if (!simData || !simData.events) return;
+
+      simData.events.forEach((ev) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        if (ev.eventId === selectedTraceEventId) {
+          item.classList.add("active");
+        }
+
+        item.onclick = () => {
+          selectedTraceEventId = ev.eventId;
+          lastEvent = ev;
+          inspectTraceEvent(ev);
+          triggerTransitionAnimation(ev);
+        };
+
+        const tagClass = `tag-${ev.type}`;
+        item.innerHTML = `
+          <div class="item-top">
+            <span class="log-tag ${tagClass}">${ev.type}</span>
+            <span class="log-time">pkt #${ev.msgId} · ${ev.latencyUs}µs</span>
+          </div>
+          <div class="log-desc"><strong>${ev.channel}</strong> ➔ ${ev.target}</div>
+          <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">${ev.detail || ev.payloadSummary}</div>
+        `;
+        container.appendChild(item);
+      });
+
+      // Auto-scroll trace container to the bottom so the latest step event is always visible
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function selectPacket(pktId) {
+      try {
+        const resp = await fetch("/api/simulation/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: pktId }),
+        });
+        const res = await resp.json();
+        if (res.status === "ok") {
+          lastEvent = null;
+          activeParticles = [];
+          await fetchState();
+        }
+      } catch (e) {
+        console.error("Select packet error:", e);
+      }
+    }
+
+    /* Inspector 1: Preloaded PCAP Packet (Left Panel) */
+    function inspectPcapPacket(pkt) {
+      selectedPacketId = pkt.id;
+      document.getElementById("pcap-insp-badge").textContent = `Packet #${pkt.id}`;
+      document.getElementById("pcap-insp-id").textContent = `#${pkt.id}`;
+      document.getElementById("pcap-insp-time").textContent = `${pkt.timestampNs} ns`;
+      document.getElementById("pcap-insp-src").textContent = `${pkt.srcIp}:${pkt.srcPort}`;
+      document.getElementById("pcap-insp-dst").textContent = `${pkt.dstIp}:${pkt.dstPort}`;
+      document.getElementById("pcap-insp-size").textContent = `${pkt.size} bytes`;
+      document.getElementById("pcap-insp-payload").textContent = pkt.payloadFull || pkt.payloadSummary;
+      renderPcapList();
+    }
+
+    /* Inspector 2: In-Flight Message / Step Event (Right Panel) */
+    function inspectTraceEvent(ev) {
+      selectedTraceEventId = ev.eventId;
+      document.getElementById("trace-insp-badge").textContent = `Step Ev #${ev.eventId}`;
+      document.getElementById("trace-insp-pkt").textContent = `Packet #${ev.msgId}`;
+      document.getElementById("trace-insp-event").textContent = ev.type.toUpperCase();
+      document.getElementById("trace-insp-node").textContent = ev.target;
+      document.getElementById("trace-insp-channel").textContent = ev.channel;
+      document.getElementById("trace-insp-latency").textContent = `${ev.latencyUs} µs`;
+      
+      const statusElem = document.getElementById("trace-insp-status");
+      statusElem.textContent = ev.status.toUpperCase();
+      statusElem.style.color = ev.type === "drop" ? "var(--danger)" : "var(--success)";
+      
+      document.getElementById("trace-insp-payload").textContent = ev.payloadFull || ev.payloadSummary;
+
+      // Update active highlight in execution trace list
+      const items = document.querySelectorAll("#trace-list .list-item");
+      if (simData && simData.events) {
+        simData.events.forEach((itemEv, idx) => {
+          if (items[idx]) {
+            items[idx].classList.toggle("active", itemEv.eventId === ev.eventId);
+          }
+        });
+      }
+    }
+
+    function clearTraceInspector() {
+      document.getElementById("trace-insp-badge").textContent = "Idle";
+      document.getElementById("trace-insp-pkt").textContent = "-";
+      document.getElementById("trace-insp-event").textContent = "-";
+      document.getElementById("trace-insp-node").textContent = "-";
+      document.getElementById("trace-insp-channel").textContent = "-";
+      document.getElementById("trace-insp-latency").textContent = "-";
+      document.getElementById("trace-insp-status").textContent = "-";
+      document.getElementById("trace-insp-payload").textContent = "// Click Step to advance messages through the pipeline";
+    }
+
+    /* Inspector 3: Clickable Handler Node Inspector (Center Bottom) */
+    function inspectHandlerNode(h) {
+      selectedNodeName = h.name;
+      document.getElementById("node-inspector").classList.add("active");
+      document.getElementById("node-insp-title").textContent = `Node: ${h.name}`;
+      document.getElementById("node-insp-type").textContent = h.type;
+      document.getElementById("node-insp-name").textContent = h.name;
+      document.getElementById("node-insp-kind").textContent = h.type;
+      document.getElementById("node-insp-in").textContent = h.inCh || "(none)";
+      document.getElementById("node-insp-out").textContent = h.outCh || "(none)";
+      document.getElementById("node-insp-config").textContent = JSON.stringify(h.config, null, 2);
+    }
+
+    function clearNodeInspector() {
+      selectedNodeName = null;
+      document.getElementById("node-inspector").classList.remove("active");
+      document.getElementById("node-insp-title").textContent = "🔍 Handler Node Inspector (Click any node above)";
+      document.getElementById("node-insp-type").textContent = "No Node Selected";
+      document.getElementById("node-insp-name").textContent = "-";
+      document.getElementById("node-insp-kind").textContent = "-";
+      document.getElementById("node-insp-in").textContent = "-";
+      document.getElementById("node-insp-out").textContent = "-";
+      document.getElementById("node-insp-config").textContent = "// Click a handler node to inspect configuration and channel bindings";
+    }
+
+    /* Canvas Click Handler: Select Node */
+    canvas.addEventListener("click", (evt) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = evt.clientX - rect.left;
+      const clickY = evt.clientY - rect.top;
+
+      for (const h of handlersLayout) {
+        if (clickX >= h.x - h.width/2 && clickX <= h.x + h.width/2 &&
+            clickY >= h.y - h.height/2 && clickY <= h.y + h.height/2) {
+          inspectHandlerNode(h);
+          return;
+        }
+      }
+    });
+
+    // Initial fetch and draw loop
+    fetchState();
+    requestAnimationFrame(draw);
+  </script>
+</body>
+</html>

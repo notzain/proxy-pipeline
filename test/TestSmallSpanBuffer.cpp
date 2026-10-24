@@ -35,4 +35,3 @@ TEST_CASE("Core::Memory::SmallSpanBuffer heap spillover", "[memory][core]")
     CHECK(span[0] == 0);
     CHECK(span[6] == 30);
 }
-

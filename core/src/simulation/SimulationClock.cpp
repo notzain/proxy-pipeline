@@ -65,4 +65,3 @@ void SimulationClock::reset(std::uint64_t startTimestampNs) noexcept
 }
 
 } // namespace Core::Simulation
-
