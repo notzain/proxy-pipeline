@@ -315,6 +315,42 @@
     .tag-drop { background: rgba(248, 113, 113, 0.2); color: #f87171; }
     .log-time { font-size: 11px; color: var(--text-muted); font-family: monospace; }
     .log-desc { font-size: 11px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Batch Card Styling */
+    .batch-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .batch-card.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent);
+    }
+    .batch-badge {
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      color: #0b0f19;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .batch-sub-items {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding-left: 8px;
+      border-left: 1px dashed rgba(255, 255, 255, 0.15);
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -573,13 +609,15 @@
         const rowSpacing = (h - 90) / (colHandlers.length + 1);
         colHandlers.forEach((handler, rowIdx) => {
           const nodeY = 45 + (rowIdx + 1) * rowSpacing;
+          const isGenerator = !handler.input_channel && (!handler.input_channels || handler.input_channels.length === 0) && !!handler.output_channel;
           handlersLayout.push({
             name: handler.name,
             type: handler.type,
+            isGenerator: isGenerator,
             x: colX,
             y: nodeY,
             width: 140,
-            height: 52,
+            height: isGenerator ? 64 : 52,
             inCh: handler.input_channel,
             outCh: handler.output_channel,
             config: handler.config || {},
@@ -662,11 +700,33 @@
         ctx.fillStyle = "#f8fafc";
         ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(h.name, h.x, h.y - 5);
+        const titleY = h.isGenerator ? h.y - 12 : h.y - 5;
+        ctx.fillText(h.name, h.x, titleY);
 
         ctx.fillStyle = isSelected || isTarget ? "#7dd3fc" : "#94a3b8";
         ctx.font = "10px monospace";
-        ctx.fillText(h.type.replace("_handler", ""), h.x, h.y + 12);
+        ctx.fillText(h.isGenerator ? "generator" : h.type.replace("_handler", ""), h.x, titleY + 16);
+
+        // Draw Clickable "⚡ Trigger" Action Badge for Generator Nodes
+        if (h.isGenerator) {
+          const btnW = 96;
+          const btnH = 18;
+          const btnX = h.x - btnW / 2;
+          const btnY = h.y + 11;
+
+          ctx.fillStyle = "rgba(56, 189, 248, 0.22)";
+          ctx.beginPath();
+          ctx.roundRect(btnX, btnY, btnW, btnH, 4);
+          ctx.fill();
+
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = "#38bdf8";
+          ctx.font = "bold 9px sans-serif";
+          ctx.fillText("⚡ Trigger Emit", h.x, btnY + 12);
+        }
       });
 
       // Highlight Active Channel
@@ -898,9 +958,116 @@
     function renderPcapList() {
       const container = document.getElementById("pcap-list");
       container.innerHTML = "";
-      if (!simData || !simData.packets) return;
+      if (!simData || !simData.packets || simData.packets.length === 0) {
+        // Helpful empty state for generator-driven chains
+        const emptyNotice = document.createElement("div");
+        emptyNotice.style.padding = "20px 14px";
+        emptyNotice.style.fontSize = "12px";
+        emptyNotice.style.color = "var(--text-muted)";
+        emptyNotice.style.textAlign = "center";
+        emptyNotice.style.lineHeight = "1.5";
+        emptyNotice.innerHTML = `
+          <div style="font-size: 20px; margin-bottom: 8px;">⚡</div>
+          <strong style="color: var(--accent);">Generator Driven Chain</strong><br>
+          Click <strong>⚡ Trigger</strong> on any generator node in the canvas to emit a message into the chain.
+        `;
+        container.appendChild(emptyNotice);
+        return;
+      }
+
+      // Gather all batch groups (both permanent batch_groups and currently held in-flight batches)
+      const allBatchGroups = [];
+      if (simData.batchGroups && simData.batchGroups.length > 0) {
+        simData.batchGroups.forEach(grp => allBatchGroups.push([...grp]));
+      }
+      if (simData.inFlightSummary && simData.inFlightSummary.batchCount > 1) {
+        const inFlightIds = simData.inFlightSummary.batchIds;
+        const exists = allBatchGroups.some(grp => grp.length === inFlightIds.length && grp.every(id => inFlightIds.includes(id)));
+        if (!exists) {
+          allBatchGroups.push(inFlightIds);
+        }
+      }
+
+      const renderedGroupIndices = new Set();
 
       simData.packets.forEach((pkt, idx) => {
+        // Check if this packet belongs to any batch group
+        let foundGroup = null;
+        let foundGroupIdx = -1;
+        for (let g = 0; g < allBatchGroups.length; ++g) {
+          if (allBatchGroups[g].includes(pkt.id)) {
+            foundGroup = allBatchGroups[g];
+            foundGroupIdx = g;
+            break;
+          }
+        }
+
+        if (foundGroup && foundGroup.length > 1) {
+          if (!renderedGroupIndices.has(foundGroupIdx)) {
+            renderedGroupIndices.add(foundGroupIdx);
+            const batchPkts = simData.packets.filter(p => foundGroup.includes(p.id));
+            const totalBytes = batchPkts.reduce((sum, p) => sum + p.size, 0);
+
+            const isBatchActive = foundGroup.includes(selectedPacketId) || 
+              (simData.inFlightSummary && simData.inFlightSummary.batchIds && simData.inFlightSummary.batchIds.some(id => foundGroup.includes(id)));
+
+            const isCompleted = foundGroup.every(id => {
+              const pIdx = simData.packets.findIndex(p => p.id === id);
+              return pIdx < simData.currentPacketIdx;
+            });
+
+            const card = document.createElement("div");
+            card.className = "batch-card";
+            if (isBatchActive) card.classList.add("active");
+            if (isCompleted) card.classList.add("completed");
+
+            card.onclick = async () => {
+              const firstId = foundGroup[0];
+              selectedPacketId = firstId;
+              await selectPacket(firstId);
+              inspectPcapPacket({
+                id: firstId,
+                batchCount: batchPkts.length,
+                batchIds: batchPkts.map(p => p.id),
+                timestampNs: pkt.timestampNs,
+                srcIp: pkt.srcIp,
+                srcPort: pkt.srcPort,
+                dstIp: pkt.dstIp,
+                dstPort: pkt.dstPort,
+                size: totalBytes,
+                payloadSummary: `Batch of ${batchPkts.length} messages [Pkts ${foundGroup.join(", ")}]`,
+                payloadFull: batchPkts.map(p => `[Message #${p.id}]: ${p.payloadFull || p.payloadSummary}`).join("\n---\n"),
+              });
+            };
+
+            const heldLocText = simData.inFlightSummary && simData.inFlightSummary.batchIds && simData.inFlightSummary.batchIds.some(id => foundGroup.includes(id))
+              ? `<div class="log-desc" style="color: var(--accent);">Held at: <strong>${simData.inFlightSummary.node}</strong> (channel: ${simData.inFlightSummary.channel})</div>`
+              : `<div class="log-desc" style="color: var(--text-muted);">${isCompleted ? "Delivered at chain egress" : "Queue Batch"}</div>`;
+
+            card.innerHTML = `
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="batch-badge">📦 BATCH (${batchPkts.length})</span>
+                  <span style="font-size: 11px; font-weight: 600; color: var(--text);">Pkts [${foundGroup.join(", ")}]</span>
+                </div>
+                <span class="log-time">${totalBytes} bytes</span>
+              </div>
+              ${heldLocText}
+              <div class="batch-sub-items">
+                ${batchPkts.map(p => `
+                  <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted);">
+                    <span>#${p.id}: ${p.payloadSummary}</span>
+                    <span style="font-family: monospace;">${p.size}B</span>
+                  </div>
+                `).join("")}
+              </div>
+            `;
+            container.appendChild(card);
+          }
+          return;
+        }
+
+        // Regular individual packet item
         const item = document.createElement("div");
         item.className = "list-item";
         if (pkt.id === selectedPacketId) {
@@ -987,8 +1154,13 @@
     /* Inspector 1: Preloaded PCAP Packet (Left Panel) */
     function inspectPcapPacket(pkt) {
       selectedPacketId = pkt.id;
-      document.getElementById("pcap-insp-badge").textContent = `Packet #${pkt.id}`;
-      document.getElementById("pcap-insp-id").textContent = `#${pkt.id}`;
+      if (pkt.batchCount && pkt.batchCount > 1) {
+        document.getElementById("pcap-insp-badge").textContent = `Batch (${pkt.batchCount} Pkts)`;
+        document.getElementById("pcap-insp-id").textContent = `Batch [${pkt.batchIds.join(", ")}]`;
+      } else {
+        document.getElementById("pcap-insp-badge").textContent = `Packet #${pkt.id}`;
+        document.getElementById("pcap-insp-id").textContent = `#${pkt.id}`;
+      }
       document.getElementById("pcap-insp-time").textContent = `${pkt.timestampNs} ns`;
       document.getElementById("pcap-insp-src").textContent = `${pkt.srcIp}:${pkt.srcPort}`;
       document.getElementById("pcap-insp-dst").textContent = `${pkt.dstIp}:${pkt.dstPort}`;
@@ -1060,7 +1232,7 @@
       document.getElementById("node-insp-config").textContent = "// Click a handler node to inspect configuration and channel bindings";
     }
 
-    /* Canvas Click Handler: Select Node */
+    /* Canvas Click Handler: Select Node or Click Trigger Button */
     canvas.addEventListener("click", (evt) => {
       const rect = canvas.getBoundingClientRect();
       const clickX = evt.clientX - rect.left;
@@ -1069,11 +1241,58 @@
       for (const h of handlersLayout) {
         if (clickX >= h.x - h.width/2 && clickX <= h.x + h.width/2 &&
             clickY >= h.y - h.height/2 && clickY <= h.y + h.height/2) {
+          
+          // Check if clicked specifically on the "⚡ Trigger" badge
+          if (h.isGenerator) {
+            const btnW = 96;
+            const btnH = 18;
+            const btnX = h.x - btnW / 2;
+            const btnY = h.y + 11;
+            if (clickX >= btnX && clickX <= btnX + btnW && clickY >= btnY && clickY <= btnY + btnH) {
+              triggerGeneratorNode(h.name);
+              return;
+            }
+          }
+
           inspectHandlerNode(h);
           return;
         }
       }
     });
+
+    async function triggerGeneratorNode(nodeName) {
+      try {
+        const resp = await fetch("/api/simulation/trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ node: nodeName }),
+        });
+        const res = await resp.json();
+        if (res.status === "ok") {
+          lastEvent = res.event;
+          selectedTraceEventId = res.event.eventId;
+          if (res.packet) {
+            selectedPacketId = res.packet.id;
+          }
+
+          await fetchState();
+
+          if (res.batchPacket) {
+            inspectPcapPacket(res.batchPacket);
+          } else if (res.packet) {
+            inspectPcapPacket(res.packet);
+          }
+          if (res.event) {
+            inspectTraceEvent(res.event);
+            triggerTransitionAnimation(res.event);
+          }
+        } else {
+          alert(`Failed to trigger generator: ${res.message}`);
+        }
+      } catch (e) {
+        console.error("Trigger error:", e);
+      }
+    }
 
     // Initial fetch and draw loop
     fetchState();
