@@ -11,6 +11,13 @@ import threading
 import time
 from typing import Any, Optional
 
+from .handlers import (
+    HandlerDescriptor,
+    HandlerProtocol,
+    HandlerRole,
+    load_handler_descriptor,
+)
+from .injectors import get_injector_for_handler
 from .pcap import PcapPacket
 
 
@@ -273,8 +280,8 @@ class InteractiveSimulationCoordinator:
             if not first_handler:
                 return {"status": "error", "message": "No handlers defined in chain"}
 
-            is_generator = not first_handler.get("input_channel") and not first_handler.get("input_channels")
-            if is_generator and first_handler.get("type") != "udp_ingress_handler":
+            first_desc = load_handler_descriptor(first_handler.get("type", ""))
+            if first_desc.is_generator:
                 return {
                     "status": "error",
                     "message": f"Handler '{first_handler['name']}' is a generator with no input channel. Click '⚡ Trigger' on the node to emit messages.",
@@ -285,12 +292,12 @@ class InteractiveSimulationCoordinator:
                 chs = first_handler["input_channels"]
                 in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
 
-            udp_port = (
-                first_handler.get("config", {}).get("ingress.port")
-                if first_handler.get("type") == "udp_ingress_handler"
-                else None
+            is_ext_ingress = first_desc.is_external_ingress
+            ingress_channel_label = (
+                f"{first_desc.protocol.value}_network"
+                if is_ext_ingress
+                else (in_ch or "ingress")
             )
-            ingress_channel_label = "udp_network" if udp_port else (in_ch or "ingress")
 
             is_batch = len(current_batch_pkts) > 1
             seq_label = (
@@ -396,32 +403,19 @@ class InteractiveSimulationCoordinator:
             chs = first_handler["input_channels"]
             in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
 
-        first_in_sock = f"/tmp/proxy_sim_{in_ch}.sock" if in_ch else None
-        udp_port = (
-            first_handler.get("config", {}).get("ingress.port")
-            if first_handler.get("type") == "udp_ingress_handler"
-            else None
-        )
+        first_desc = load_handler_descriptor(first_handler.get("type", ""))
 
         # Drain any stale notifications before injecting
         self._drain_socket(self.events_sock)
         send_time_ns = time.time_ns()
 
-        # Inject packet(s) into first handler
-        if udp_port:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            for p in current_batch_pkts:
-                s.sendto(p.raw_payload, ("127.0.0.1", int(udp_port)))
-            s.close()
-        elif first_in_sock:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-            try:
-                for p in current_batch_pkts:
-                    env = p.pack_envelope()
-                    s.sendto(env, first_in_sock)
-            except Exception as ex:
-                print(f"[Coordinator] Error delivering to {first_in_sock}: {ex}")
-            s.close()
+        # Inject packet(s) using pluggable injector strategy
+        injector = get_injector_for_handler(
+            handler_spec=first_handler,
+            is_external_ingress=first_desc.is_external_ingress,
+            protocol=first_desc.protocol.value,
+        )
+        injector.inject(first_handler, current_batch_pkts)
 
         return self._process_handler_execution(
             handler_spec=first_handler,
@@ -772,6 +766,13 @@ class InteractiveSimulationCoordinator:
             gen_handler = next((h for h in self.handlers if h.get("name") == node_name), None)
             if not gen_handler:
                 return {"status": "error", "message": f"Handler node '{node_name}' not found."}
+
+            gen_desc = load_handler_descriptor(gen_handler.get("type", ""))
+            if not gen_desc.is_generator:
+                return {
+                    "status": "error",
+                    "message": f"Handler '{node_name}' is not an autonomous generator (role: {gen_desc.role.value}).",
+                }
 
             out_ch = gen_handler.get("output_channel")
             if not out_ch:

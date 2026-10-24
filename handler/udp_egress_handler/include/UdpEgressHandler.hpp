@@ -47,6 +47,9 @@ public:
      */
     bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
+    [[nodiscard]] Core::Handler::HandlerRole role() const noexcept override { return Core::Handler::HandlerRole::ExternalEgress; }
+    [[nodiscard]] Core::Handler::HandlerProtocol protocol() const noexcept override { return Core::Handler::HandlerProtocol::Udp; }
+
     /**
      * @brief Ingress callback for enveloped messages received from the internal pipeline.
      * Restores client destination from UdpMetadata and transmits message.payload() via UDP.

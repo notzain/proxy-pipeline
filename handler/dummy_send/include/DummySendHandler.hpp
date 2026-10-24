@@ -24,6 +24,8 @@ public:
      */
     bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
+    [[nodiscard]] Core::Handler::HandlerRole role() const noexcept override { return Core::Handler::HandlerRole::Generator; }
+
     /**
      * @brief Periodic step callback executed by IHandler's event loop.
      * Checks if the delay duration has elapsed, and if so, sends the message blob to the output channel.

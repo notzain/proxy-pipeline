@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 
 from .coordinator import InteractiveSimulationCoordinator
+from .handlers import load_handler_descriptor
 from .trace import TraceManager
 
 
@@ -78,9 +79,22 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                     "batchIds": [p.seq_id for p in batch_pkts],
                 }
 
+            # Enrich handlers with role & protocol metadata
+            handlers_meta = []
+            for h in self.coordinator.handlers:
+                h_type = h.get("type", "")
+                desc = load_handler_descriptor(h_type)
+                h_copy = dict(h)
+                h_copy["role"] = desc.role.value
+                h_copy["protocol"] = desc.protocol.value
+                handlers_meta.append(h_copy)
+
+            chain_meta = dict(self.coordinator.chain_config)
+            chain_meta["handlers"] = handlers_meta
+
             self._send_json(200, {
                 "mode": "realtime",
-                "chain": self.coordinator.chain_config,
+                "chain": chain_meta,
                 "pcap": self.pcap_path,
                 "packetCount": len(self.coordinator.pcap_packets),
                 "packets": packets_meta,

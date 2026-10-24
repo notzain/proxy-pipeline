@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/handler/HandlerTraits.hpp"
 #include "core/message/MessageResult.hpp"
 
 namespace Backend {
@@ -149,6 +150,22 @@ public:
      * @return ::Backend::IOutputChannel* Non-owning pointer to the registered channel.
      */
     ::Backend::IOutputChannel* registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
+
+    // --- Operational Metadata & Classification ---
+
+    /**
+     * @brief Declares the high-level role of this handler in pipeline topology.
+     *
+     * @return HandlerRole (Processor by default; Generator, ExternalIngress, or ExternalEgress).
+     */
+    [[nodiscard]] virtual HandlerRole role() const noexcept { return HandlerRole::Processor; }
+
+    /**
+     * @brief Declares the external network or application protocol utilized by this handler.
+     *
+     * @return HandlerProtocol (None by default; Udp, Http, etc.).
+     */
+    [[nodiscard]] virtual HandlerProtocol protocol() const noexcept { return HandlerProtocol::None; }
 
     // --- Periodic Processing Hook ---
 

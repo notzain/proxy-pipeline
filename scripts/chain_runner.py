@@ -22,6 +22,7 @@ from typing import Any, Optional
 
 from proxy_runner import (
     InteractiveSimulationCoordinator,
+    load_handler_descriptor,
     PcapPacket,
     PcapReader,
     TraceDiffError,
@@ -72,7 +73,8 @@ def run_chain(
     # Detect if this chain has any external ingress input channels.
     has_ingress_channel = False
     for h in handlers:
-        if h.get("type") == "udp_ingress_handler":
+        desc = load_handler_descriptor(h.get("type", ""), [bin_dir] if bin_dir else None)
+        if desc.is_external_ingress:
             has_ingress_channel = True
             break
         in_chs = h.get("input_channels") or ([h.get("input_channel")] if h.get("input_channel") else [])

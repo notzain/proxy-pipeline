@@ -112,11 +112,22 @@ export class CanvasRenderer {
       const rowSpacing = (h - 90) / (colHandlers.length + 1);
       colHandlers.forEach((handler, rowIdx) => {
         const nodeY = 45 + (rowIdx + 1) * rowSpacing;
-        const isGenerator = !handler.input_channel && (!handler.input_channels || handler.input_channels.length === 0) && !!handler.output_channel;
+        const role = handler.role || (
+          (!handler.input_channel && (!handler.input_channels || handler.input_channels.length === 0) && !!handler.output_channel)
+            ? (handler.type === "udp_ingress_handler" ? "external_ingress" : "generator")
+            : "processor"
+        );
+        const isGenerator = role === "generator";
+        const isIngress = role === "external_ingress";
+        const protocol = handler.protocol || (handler.type === "udp_ingress_handler" ? "udp" : "none");
+
         this.handlersLayout.push({
           name: handler.name,
           type: handler.type,
+          role: role,
+          protocol: protocol,
           isGenerator: isGenerator,
+          isIngress: isIngress,
           x: colX,
           y: nodeY,
           width: 140,
@@ -303,7 +314,7 @@ export class CanvasRenderer {
       const isTarget = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name;
       const isSelected = selectedNodeName === h.name;
 
-      const isIngressNode = h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
+      const isIngressNode = h.isIngress || h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
       if (isIngressNode) {
         const cloudW = 54;
         const cloudH = h.height - 6;
@@ -396,7 +407,13 @@ export class CanvasRenderer {
         ? "#7dd3fc"
         : (isTarget ? (dropReachedNode ? "#fca5a5" : (isConsumedTarget ? "#6ee7b7" : (isForwardedTarget ? "#e9d5ff" : "#7dd3fc"))) : "#94a3b8");
       ctx.font = "10px monospace";
-      ctx.fillText(h.isGenerator ? "generator" : h.type.replace("_handler", ""), h.x, titleY + 16);
+      let subtitle = h.type.replace("_handler", "");
+      if (h.isGenerator) {
+        subtitle = "⚡ generator";
+      } else if (h.isIngress) {
+        subtitle = `🌐 ingress [${h.protocol.toUpperCase()}]`;
+      }
+      ctx.fillText(subtitle, h.x, titleY + 16);
 
       if (h.isGenerator) {
         const btnW = 96;
