@@ -70,6 +70,7 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                 info = self.coordinator.active_in_flight
                 in_flight_stage = info.get("stage", "held")
                 batch_pkts = info.get("batch") or ([info["packet"]] if info.get("packet") else [])
+                pending_count = len(info.get("pending_branches") or [])
                 in_flight_summary = {
                     "stage": in_flight_stage,
                     "node": info.get("curr_node_name"),
@@ -77,6 +78,7 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                     "channel": info.get("output_channel"),
                     "batchCount": len(batch_pkts),
                     "batchIds": [p.seq_id for p in batch_pkts],
+                    "pendingBranchesCount": pending_count,
                 }
 
             # Enrich handlers with role & protocol metadata

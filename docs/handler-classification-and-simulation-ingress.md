@@ -76,6 +76,7 @@ This feature establishes an explicit, strongly typed classification system for h
   - [x] `UdpPacketInjector` for UDP ingress.
   - [x] `UnixSocketPacketInjector` for internal channels.
 - [x] Remove hardcoded `is_generator` hacks based solely on input channel absence in `coordinator.py`.
+- [x] Fix concurrent generator trigger queueing in `coordinator.py` to preserve multiple in-flight branches across different generators without overwriting active messages.
 
 ### Phase 4: Dashboard Web Visualizer
 - [x] Pass handler role and protocol metadata in topology endpoint to `scripts/dashboard/js/canvas.js`.

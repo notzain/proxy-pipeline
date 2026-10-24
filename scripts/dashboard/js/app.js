@@ -165,12 +165,41 @@ export function createSimulationApp() {
     },
 
     inspectPacket(pkt) {
-      this.state.selectedPacket = pkt;
+      if (!pkt) {
+        this.state.selectedPacket = null;
+        return;
+      }
+      // Check if this packet is part of a batch group
+      const allGroups = (this.state.batchGroups || []);
+      const foundGroup = allGroups.find(grp => grp.includes(pkt.id));
+      if (foundGroup && foundGroup.length > 1) {
+        const batchPkts = this.state.packets.filter(p => foundGroup.includes(p.id));
+        const totalSize = batchPkts.reduce((sum, p) => sum + (p.size || 0), 0);
+        const fullPayload = batchPkts.map(p => `[Message #${p.id} (${p.size}B)]:\n${p.payloadFull || p.payloadSummary}`).join("\n\n---\n\n");
+        this.state.selectedPacket = {
+          ...pkt,
+          batchCount: foundGroup.length,
+          batchIds: foundGroup,
+          size: totalSize,
+          payloadFull: fullPayload,
+        };
+      } else {
+        this.state.selectedPacket = pkt;
+      }
     },
 
     getEventHandler(ev) {
       if (!ev) return "";
       return ev.handler || ev.target || "";
+    },
+
+    getPacketBatchTag(pktId) {
+      const allGroups = (this.state.batchGroups || []);
+      const found = allGroups.find(grp => grp.includes(pktId));
+      if (found && found.length > 1) {
+        return `📦 BATCH [${found.join(', ')}]`;
+      }
+      return null;
     },
 
     getEventHandlerType(ev) {

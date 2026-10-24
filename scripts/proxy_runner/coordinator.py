@@ -778,9 +778,14 @@ class InteractiveSimulationCoordinator:
             if not out_ch:
                 return {"status": "error", "message": f"Handler '{node_name}' has no output_channel."}
 
-            if out_ch in self.hold_sockets and not (
-                self.active_in_flight and self.active_in_flight.get("curr_node_name") == gen_handler["name"]
-            ):
+            # Only drain the hold socket if this channel is not currently holding any queued messages
+            is_channel_in_flight = (
+                self.active_in_flight and (
+                    self.active_in_flight.get("output_channel") == out_ch
+                    or any(b.get("output_channel") == out_ch for b in self.active_in_flight.get("pending_branches", []))
+                )
+            )
+            if out_ch in self.hold_sockets and not is_channel_in_flight:
                 self._drain_socket(self.hold_sockets[out_ch])
 
             h_config = gen_handler.get("config", {})
@@ -851,6 +856,40 @@ class InteractiveSimulationCoordinator:
                     "status": "forwarded",
                     "latencyUs": 5.0,
                     "detail": f"Generator '{gen_handler['name']}' accumulated message #{synthetic_pkt.seq_id} -> held batch of {batch_len} at '{out_ch}'",
+                }
+            elif self.active_in_flight is not None:
+                # Another message is already in-flight or held elsewhere; queue this generated message as a pending branch
+                new_branch = {
+                    "stage": "held",
+                    "packet": synthetic_pkt,
+                    "batch": [synthetic_pkt],
+                    "curr_node_name": gen_handler["name"],
+                    "curr_node_type": gen_handler.get("type"),
+                    "input_channel": None,
+                    "output_channel": out_ch,
+                    "held_data": [raw_envelope],
+                    "pending_branches": [],
+                }
+                if "pending_branches" not in self.active_in_flight:
+                    self.active_in_flight["pending_branches"] = []
+                self.active_in_flight["pending_branches"].append(new_branch)
+
+                ev_gen = {
+                    "eventId": self.event_counter,
+                    "msgId": synthetic_pkt.seq_id,
+                    "batchIds": [synthetic_pkt.seq_id],
+                    "batchCount": 1,
+                    "timestampNs": time.time_ns(),
+                    "type": "hop",
+                    "result": "Forwarded",
+                    "handler": gen_handler["name"],
+                    "handlerType": gen_handler.get("type"),
+                    "outputChannel": out_ch,
+                    "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
+                    "payloadFull": msg_text,
+                    "status": "forwarded",
+                    "latencyUs": 5.0,
+                    "detail": f"Generator '{gen_handler['name']}' triggered -> queued at output channel '{out_ch}'",
                 }
             else:
                 self.active_in_flight = {
