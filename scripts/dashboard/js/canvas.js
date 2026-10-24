@@ -150,46 +150,70 @@ export class CanvasRenderer {
     });
   }
 
+  findIncomingChannelEdge(event) {
+    if (!event || event.type === "ingress") return null;
+    const handlerName = event.handler || event.target;
+    const inCh = event.inputChannel || event.channel;
+    if (!handlerName) return null;
+
+    if (inCh) {
+      const exact = this.channelsLayout.find(c => c.to.name === handlerName && c.name === inCh);
+      if (exact) return exact;
+    }
+    if (event.source && event.source !== "ingress") {
+      const bySource = this.channelsLayout.find(c => c.from.name === event.source && c.to.name === handlerName);
+      if (bySource) return bySource;
+    }
+    return this.channelsLayout.find(c => c.to.name === handlerName) || null;
+  }
+
   triggerTransitionAnimation(event) {
-    if (!event || !event.target) return;
-    const targetNode = this.handlersLayout.find(h => h.name === event.target);
+    if (!event) return;
+    const handlerName = event.handler || event.target;
+    if (!handlerName) return;
+    const targetNode = this.handlersLayout.find(h => h.name === handlerName);
     if (!targetNode) return;
 
-    const isIngress = event.type === "ingress" || event.channel === "udp_network" || (event.source && event.source.includes(":"));
-    const isHopAtIngress = event.type === "hop" && (event.source === "ingress" || !this.handlersLayout.some(h => h.name === event.source));
+    const isIngress = event.type === "ingress";
+    const inEdge = this.findIncomingChannelEdge(event);
 
     const cloudW = 54;
     const cloudCenter = targetNode.x - targetNode.width / 2 - 14 - cloudW / 2;
 
-    let startX = targetNode.x - targetNode.width / 2 - 80;
+    let startX = targetNode.x;
     let startY = targetNode.y;
     let endX = targetNode.x;
     let endY = targetNode.y;
 
-    const srcNode = this.handlersLayout.find(h => h.name === event.source);
-    if (srcNode) {
-      startX = srcNode.x + srcNode.width / 2;
-      startY = srcNode.y;
-      endX = targetNode.x;
-    } else if (isIngress) {
-      // Step 1: External packet materializes inside the ingress queue
-      startX = cloudCenter - 18;
+    if (isIngress) {
+      // Step 1: External packet enters and stages inside the UDP IN ingress queue
+      startX = cloudCenter - 22;
       startY = targetNode.y;
       endX = cloudCenter;
-    } else if (isHopAtIngress) {
-      // Step 2: Ingress packet enters the handler node core
+    } else if (inEdge) {
+      // Downstream handler step: Packet moves from upstream handler across the connecting channel into targetNode
+      startX = inEdge.from.x + inEdge.from.width / 2;
+      startY = inEdge.from.y;
+      endX = targetNode.x;
+      endY = targetNode.y;
+    } else if (!targetNode.isGenerator) {
+      // First handler step: Staged packet moves from UDP IN queue into the first handler node
       startX = cloudCenter;
       startY = targetNode.y;
       endX = targetNode.x;
     }
 
-    if (event.type === "egress") {
-      endX = targetNode.x + targetNode.width / 2 + 60;
-    }
-
-    const particleColor = event.type === "drop" 
-      ? "#f87171" 
-      : (isIngress ? "#34d399" : (event.type === "egress" ? "#a78bfa" : "#38bdf8"));
+    // Consistent color mapping matching .tag-ingress, .tag-hop, .tag-egress, .tag-drop in dashboard.css:
+    //   Loaded (ingress)    -> Blue   (#38bdf8)
+    //   Forwarded (hop)     -> Purple (#c084fc)
+    //   Consumed (egress)   -> Green  (#34d399)
+    //   Dropped (drop)      -> Purple (#c084fc) in transit, turning Red (#f87171) once it reaches the node
+    const transitColor = (isIngress || !inEdge)
+      ? "#38bdf8"
+      : "#c084fc";
+    const arrivalColor = isIngress
+      ? "#38bdf8"
+      : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
 
     this.activeParticles = [{
       startX,
@@ -197,8 +221,10 @@ export class CanvasRenderer {
       endX,
       endY,
       progress: 0.0,
-      speed: isIngress ? 0.045 : 0.024,
-      color: particleColor,
+      speed: isIngress ? 0.045 : 0.026,
+      color: transitColor,
+      arrivalColor: arrivalColor,
+      dropColor: "#f87171",
       isIngress: isIngress,
       isDrop: event.type === "drop"
     }];
@@ -267,14 +293,14 @@ export class CanvasRenderer {
     });
 
     // Draw Handler Nodes & Queues
+    const lastEventHandler = lastEvent ? (lastEvent.handler || lastEvent.target) : null;
+    const activeIncomingEdge = this.findIncomingChannelEdge(lastEvent);
+
     this.handlersLayout.forEach((h) => {
       const x = h.x - h.width/2;
       const y = h.y - h.height/2;
-      const isTarget = lastEvent && (
-        lastEvent.type === "drop"
-          ? lastEvent.target === h.name
-          : (lastEvent.target === h.name || lastEvent.source === h.name)
-      );
+      // Only highlight the handler node when the packet is currently AT this handler (not when staged in UDP IN queue)
+      const isTarget = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name;
       const isSelected = selectedNodeName === h.name;
 
       const isIngressNode = h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
@@ -285,32 +311,40 @@ export class CanvasRenderer {
         const cloudY = y + 3;
 
         ctx.save();
-        const isIngressActive = lastEvent && (lastEvent.type === "ingress" || (lastEvent.type === "hop" && lastEvent.source === "ingress"));
-        ctx.shadowColor = isIngressActive ? "rgba(52, 211, 153, 0.65)" : "rgba(56, 189, 248, 0.2)";
-        ctx.shadowBlur = isIngressActive ? 16 : 6;
+        const isIngressStaged = lastEvent && lastEvent.type === "ingress" && lastEventHandler === h.name;
+        const isIngressEnteringNode = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name && !activeIncomingEdge;
+        ctx.shadowColor = isIngressStaged ? "rgba(56, 189, 248, 0.8)" : (isIngressEnteringNode ? "rgba(192, 132, 252, 0.6)" : "rgba(56, 189, 248, 0.2)");
+        ctx.shadowBlur = isIngressStaged ? 18 : (isIngressEnteringNode ? 12 : 6);
 
-        ctx.fillStyle = isIngressActive ? "rgba(6, 78, 59, 0.45)" : "rgba(15, 23, 42, 0.75)";
+        ctx.fillStyle = isIngressStaged ? "rgba(12, 74, 110, 0.65)" : "rgba(15, 23, 42, 0.75)";
         ctx.beginPath();
         ctx.roundRect(cloudX, cloudY, cloudW, cloudH, [10, 4, 4, 10]);
         ctx.fill();
 
-        ctx.strokeStyle = isIngressActive ? "#34d399" : "rgba(148, 163, 184, 0.45)";
-        ctx.lineWidth = isIngressActive ? 2 : 1.5;
+        ctx.strokeStyle = isIngressStaged ? "#38bdf8" : (isIngressEnteringNode ? "#c084fc" : "rgba(148, 163, 184, 0.45)");
+        ctx.lineWidth = isIngressStaged ? 2.5 : 1.5;
         ctx.setLineDash([4, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
 
         ctx.shadowBlur = 0;
-        ctx.fillStyle = isIngressActive ? "#6ee7b7" : "rgba(148, 163, 184, 0.85)";
+        ctx.fillStyle = isIngressStaged ? "#7dd3fc" : "rgba(148, 163, 184, 0.85)";
         ctx.font = "bold 9px monospace";
         ctx.textAlign = "center";
         ctx.fillText("UDP IN", cloudX + cloudW/2, cloudY + 16);
         ctx.font = "8px sans-serif";
         ctx.fillText("queue", cloudX + cloudW/2, cloudY + 28);
 
-        ctx.strokeStyle = isIngressActive ? "#34d399" : "rgba(148, 163, 184, 0.35)";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([2, 3]);
+        // Highlight the connector between UDP IN queue and handler when stepping into first handler
+        ctx.strokeStyle = isIngressEnteringNode ? "#c084fc" : (isIngressStaged ? "#38bdf8" : "rgba(148, 163, 184, 0.35)");
+        ctx.lineWidth = isIngressEnteringNode ? 3.5 : 1.5;
+        if (isIngressEnteringNode) {
+          ctx.shadowColor = "#c084fc";
+          ctx.shadowBlur = 12;
+          ctx.setLineDash([]);
+        } else {
+          ctx.setLineDash([2, 3]);
+        }
         ctx.beginPath();
         ctx.moveTo(cloudX + cloudW, h.y);
         ctx.lineTo(x, h.y);
@@ -319,24 +353,36 @@ export class CanvasRenderer {
         ctx.restore();
       }
 
+      const activeParticle = this.activeParticles[0];
+      const reachedNode = !activeParticle || activeParticle.progress >= 0.85;
+      const dropReachedNode = lastEvent && lastEvent.type === "drop" && reachedNode;
+      const isForwardedTarget = isTarget && lastEvent.type === "hop";
+      const isConsumedTarget = isTarget && lastEvent.type === "egress";
+
       if (isSelected) {
         ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
         ctx.shadowBlur = 26;
       } else if (isTarget) {
-        ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : "rgba(56, 189, 248, 0.7)";
+        ctx.shadowColor = dropReachedNode
+          ? "rgba(248, 113, 113, 0.8)"
+          : (isConsumedTarget ? "rgba(52, 211, 153, 0.8)" : (isForwardedTarget ? "rgba(192, 132, 252, 0.8)" : "rgba(56, 189, 248, 0.75)"));
         ctx.shadowBlur = 20;
       } else {
         ctx.shadowColor = "rgba(56, 189, 248, 0.15)";
         ctx.shadowBlur = 8;
       }
 
-      ctx.fillStyle = isSelected ? "#0c4a6e" : (isTarget ? "#1e3a5f" : "#1e293b");
+      ctx.fillStyle = isSelected
+        ? "#0c4a6e"
+        : (isTarget ? (dropReachedNode ? "#3b1824" : (isConsumedTarget ? "#064e3b" : (isForwardedTarget ? "#3b1d5e" : "#1e3a5f"))) : "#1e293b");
       ctx.beginPath();
       ctx.roundRect(x, y, h.width, h.height, 10);
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = isSelected ? "#38bdf8" : (isTarget ? (lastEvent.type === "drop" ? "#f87171" : "#38bdf8") : "rgba(56, 189, 248, 0.35)");
+      ctx.strokeStyle = isSelected
+        ? "#38bdf8"
+        : (isTarget ? (dropReachedNode ? "#f87171" : (isConsumedTarget ? "#34d399" : (isForwardedTarget ? "#c084fc" : "#38bdf8"))) : "rgba(56, 189, 248, 0.35)");
       ctx.lineWidth = isSelected ? 3 : (isTarget ? 2.5 : 1.5);
       ctx.stroke();
 
@@ -346,7 +392,9 @@ export class CanvasRenderer {
       const titleY = h.isGenerator ? h.y - 12 : h.y - 5;
       ctx.fillText(h.name, h.x, titleY);
 
-      ctx.fillStyle = isSelected || isTarget ? "#7dd3fc" : "#94a3b8";
+      ctx.fillStyle = isSelected
+        ? "#7dd3fc"
+        : (isTarget ? (dropReachedNode ? "#fca5a5" : (isConsumedTarget ? "#6ee7b7" : (isForwardedTarget ? "#e9d5ff" : "#7dd3fc"))) : "#94a3b8");
       ctx.font = "10px monospace";
       ctx.fillText(h.isGenerator ? "generator" : h.type.replace("_handler", ""), h.x, titleY + 16);
 
@@ -371,20 +419,17 @@ export class CanvasRenderer {
       }
     });
 
-    // Highlight Active Channel
-    if (lastEvent && lastEvent.channel) {
-      const activeCh = this.channelsLayout.find(c => c.name === lastEvent.channel);
-      if (activeCh) {
-        ctx.strokeStyle = "#38bdf8";
-        ctx.lineWidth = 4;
-        ctx.shadowColor = ctx.strokeStyle;
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.moveTo(activeCh.from.x + activeCh.from.width/2, activeCh.from.y);
-        ctx.lineTo(activeCh.to.x - activeCh.to.width/2, activeCh.to.y);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
+    // Highlight ONLY the channel being traversed in the current step (always purple for Forwarded transport, never red on drop)
+    if (activeIncomingEdge) {
+      ctx.strokeStyle = "#c084fc";
+      ctx.lineWidth = 4;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(activeIncomingEdge.from.x + activeIncomingEdge.from.width/2, activeIncomingEdge.from.y);
+      ctx.lineTo(activeIncomingEdge.to.x - activeIncomingEdge.to.width/2, activeIncomingEdge.to.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     }
 
     // Animate Particles
@@ -397,12 +442,15 @@ export class CanvasRenderer {
 
       const curX = p.startX + (p.endX - p.startX) * p.progress;
       const curY = p.startY + (p.endY - p.startY) * p.progress;
+      const reachedNode = p.progress >= 0.85;
+      const reachedDropNode = p.isDrop && reachedNode;
+      const activeColor = reachedNode ? (p.arrivalColor || p.color) : p.color;
 
       if (p.progress < 1.0) {
         ctx.save();
-        ctx.strokeStyle = p.color;
+        ctx.strokeStyle = activeColor;
         ctx.lineWidth = 3;
-        ctx.shadowColor = p.color;
+        ctx.shadowColor = activeColor;
         ctx.shadowBlur = 12;
         ctx.beginPath();
         const trailStartX = p.startX + (p.endX - p.startX) * Math.max(0, p.progress - 0.2);
@@ -415,63 +463,82 @@ export class CanvasRenderer {
 
       const headRadius = p.isIngress ? 8.5 : 7;
 
-      // On drop, animate dissolution/disintegration into the dropping node
-      if (p.isDrop && p.progress >= 0.75) {
-        ctx.save();
-        const fade = Math.max(0, 1.0 - (p.progress - 0.75) / 0.25);
-        ctx.globalAlpha = fade;
-        ctx.strokeStyle = p.color;
-        ctx.lineWidth = 2;
-        const disperseRadius = (headRadius + 2) + ((1.0 - fade) * 14);
-        ctx.beginPath();
-        ctx.arc(curX, curY, disperseRadius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Small cross mark inside dropping node
-        const crossSize = 5;
-        ctx.beginPath();
-        ctx.moveTo(curX - crossSize, curY - crossSize);
-        ctx.lineTo(curX + crossSize, curY + crossSize);
-        ctx.moveTo(curX + crossSize, curY - crossSize);
-        ctx.lineTo(curX - crossSize, curY + crossSize);
-        ctx.stroke();
-        ctx.restore();
-      }
-
       ctx.save();
       const pulse = p.progress >= 1.0 ? Math.sin(Date.now() / 200) * 1.5 : 0;
-      ctx.shadowColor = p.color;
+      ctx.shadowColor = activeColor;
       ctx.shadowBlur = p.isIngress ? 24 : 18 + pulse * 2;
-      ctx.fillStyle = p.isDrop ? "rgba(248, 113, 113, 0.9)" : "#ffffff";
+      ctx.fillStyle = reachedDropNode ? "rgba(248, 113, 113, 0.95)" : "#ffffff";
       ctx.beginPath();
       ctx.arc(curX, curY, headRadius + pulse, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = p.color;
+      ctx.fillStyle = activeColor;
       ctx.beginPath();
       ctx.arc(curX, curY, (headRadius * 0.65) + pulse * 0.5, 0, Math.PI * 2);
       ctx.fill();
 
       if (p.isIngress && p.progress < 1.0) {
-        ctx.strokeStyle = p.color;
+        ctx.strokeStyle = activeColor;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
+
+      // Once the particle reaches the node on a drop event, turn red and draw a clear cross-out (X) over it
+      if (reachedDropNode) {
+        ctx.save();
+        if (p.progress < 1.0) {
+          const ringProgress = (p.progress - 0.85) / 0.15;
+          ctx.globalAlpha = Math.max(0, 1.0 - ringProgress);
+          ctx.strokeStyle = "#f87171";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(curX, curY, (headRadius + 2) + ringProgress * 12, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        const crossSize = 5.5;
+        ctx.beginPath();
+        ctx.moveTo(curX - crossSize, curY - crossSize);
+        ctx.lineTo(curX + crossSize, curY + crossSize);
+        ctx.moveTo(curX + crossSize, curY - crossSize);
+        ctx.lineTo(curX - crossSize, curY + crossSize);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+        const outerRingRadius = headRadius + 3.5;
+        ctx.beginPath();
+        ctx.arc(curX, curY, outerRingRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
-    // Persistent Envelope Badge on target
+    // Persistent Envelope Badge on the current packet location (UDP IN queue on Step 1, or target handler node on Steps 2+)
     if (lastEvent) {
-      const targetNode = this.handlersLayout.find(h => h.name === lastEvent.target);
-      if (targetNode) {
-        const badgeX = targetNode.x;
+      const targetNode = this.handlersLayout.find(h => h.name === lastEventHandler);
+      const activeParticle = this.activeParticles[0];
+      const showDropState = lastEvent.type === "drop" && (!activeParticle || activeParticle.progress >= 0.85);
+      if (targetNode && (lastEvent.type !== "drop" || showDropState)) {
+        const cloudW = 54;
+        const cloudCenter = targetNode.x - targetNode.width / 2 - 14 - cloudW / 2;
+        const badgeX = lastEvent.type === "ingress" ? cloudCenter : targetNode.x;
         const badgeY = targetNode.y - targetNode.height/2 - 16;
 
-        ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : (lastEvent.type === "egress" ? "rgba(52, 211, 153, 0.7)" : "rgba(56, 189, 248, 0.6)");
+        ctx.shadowColor = showDropState
+          ? "rgba(248, 113, 113, 0.75)"
+          : (lastEvent.type === "egress" ? "rgba(52, 211, 153, 0.75)" : (lastEvent.type === "hop" ? "rgba(192, 132, 252, 0.75)" : "rgba(56, 189, 248, 0.7)"));
         ctx.shadowBlur = 12;
-        ctx.fillStyle = lastEvent.type === "drop" ? "#991b1b" : (lastEvent.type === "egress" ? "#065f46" : "#0369a1");
+        ctx.fillStyle = showDropState
+          ? "#991b1b"
+          : (lastEvent.type === "egress" ? "#065f46" : (lastEvent.type === "hop" ? "#6b21a8" : "#0369a1"));
         ctx.beginPath();
         ctx.roundRect(badgeX - 54, badgeY - 10, 108, 20, 6);
         ctx.fill();

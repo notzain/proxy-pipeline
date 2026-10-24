@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Proxy :: Interactive Simulation &amp; Trace Dashboard</title>
-  <link rel="stylesheet" href="css/dashboard.css?v=2">
-  <script src="vendor/petite-vue.iife.js?v=2"></script>
+  <link rel="stylesheet" href="css/dashboard.css?v=3">
+  <script src="vendor/petite-vue.iife.js?v=3"></script>
 </head>
 <body v-scope @vue:mounted="init()">
 
@@ -260,12 +260,15 @@
         </div>
         <div class="meta-grid" v-if="state.lastEvent">
           <span class="k">Packet ID:</span><span class="v">Packet #{{ state.lastEvent.msgId }}</span>
-          <span class="k">Handler Node:</span><span class="v">{{ state.lastEvent.target }} ({{ state.lastEvent.targetType || 'handler' }})</span>
-          <span class="k">Channel:</span><span class="v">{{ state.lastEvent.channel }}</span>
+          <span class="k">Handler / Location:</span><span class="v" style="color: var(--accent); font-weight: 600;">{{ formatCurrentLocation(state.lastEvent) }}</span>
+          <span class="k">Input Channel:</span><span class="v">{{ getEventIncomingChannel(state.lastEvent) || "(none)" }}</span>
           <span class="k">MessageResult:</span>
           <span class="v">
             <span class="log-tag" :class="'tag-' + state.lastEvent.type">
               {{ state.lastEvent.result || (state.lastEvent.status ? state.lastEvent.status.toUpperCase() : state.lastEvent.type.toUpperCase()) }}
+            </span>
+            <span v-if="getEventOutgoingChannel(state.lastEvent)" style="font-size: 10px; color: var(--text-muted); margin-left: 4px;">
+              ➔ {{ getEventOutgoingChannel(state.lastEvent) }}
             </span>
           </span>
           <div v-if="state.lastEvent.reason" style="display: contents;">
@@ -310,13 +313,20 @@
           </div>
           <div class="log-desc">
             <span v-if="ev.type === 'ingress'">
-              <strong>{{ ev.source }}</strong> ➔ {{ ev.target }} ({{ ev.channel }})
+              <strong>UDP IN ({{ getEventIncomingChannel(ev) }})</strong>
+              <span style="color: var(--text-muted);">← {{ ev.source }}</span>
             </span>
-            <span v-else-if="ev.type === 'hop'">
-              <strong>{{ ev.target }}</strong> ➔ channel <strong>{{ ev.channel }}</strong>
+            <span v-else-if="ev.type === 'drop' || ev.result === 'Dropped'">
+              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--danger); font-weight: 600;">Dropped</span>
+              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
+            </span>
+            <span v-else-if="ev.type === 'egress' || ev.result === 'Consumed'">
+              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--success); font-weight: 600;">Consumed</span>
+              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
             </span>
             <span v-else>
-              <strong>{{ ev.channel }}</strong> ➔ {{ ev.target }}
+              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: #c084fc; font-weight: 600;">Forwarded</span> ➔ <strong>{{ getEventOutgoingChannel(ev) }}</strong>
+              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
             </span>
           </div>
           <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
@@ -329,7 +339,7 @@
 
   <!-- ES6 App Module Bootstrapper -->
   <script type="module">
-    import { createSimulationApp } from "./js/app.js?v=2";
+    import { createSimulationApp } from "./js/app.js?v=6";
 
     window.app = createSimulationApp();
     PetiteVue.createApp(window.app).mount("body");

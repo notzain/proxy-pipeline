@@ -4,7 +4,7 @@
  *   1. "realtime": Live SimBackend execution where packets are loaded from PCAP and stepped forward into handlers.
  *   2. "trace": Standalone execution trace replay (export.trace.json) supporting forward and backward stepping without a running backend.
  */
-import { CanvasRenderer } from "./canvas.js?v=2";
+import { CanvasRenderer } from "./canvas.js?v=6";
 
 export function createSimulationApp() {
   return {
@@ -170,6 +170,71 @@ export function createSimulationApp() {
 
     inspectPacket(pkt) {
       this.state.selectedPacket = pkt;
+    },
+
+    getEventHandler(ev) {
+      if (!ev) return "";
+      return ev.handler || ev.target || "";
+    },
+
+    getEventHandlerType(ev) {
+      if (!ev) return "handler";
+      return ev.handlerType || ev.targetType || "handler";
+    },
+
+    getEventIncomingChannel(ev) {
+      if (!ev) return "";
+      if (ev.inputChannel) return ev.inputChannel;
+      if (ev.type === "ingress") {
+        return ev.channel || "udp_network";
+      }
+      const handlerName = this.getEventHandler(ev);
+      if (ev.source === "ingress") {
+        if (ev.outputChannel) return ev.channel || "udp_network";
+        const handlers = (this.state.chain && this.state.chain.handlers) || [];
+        const targetH = handlers.find(h => h.name === handlerName);
+        if (targetH && targetH.input_channel) return targetH.input_channel;
+        return "udp_network";
+      }
+      if (ev.outputChannel || ev.type !== "hop") {
+        return ev.channel || "";
+      }
+      const handlers = (this.state.chain && this.state.chain.handlers) || [];
+      const dstH = handlers.find(h => h.name === handlerName);
+      if (dstH && dstH.input_channel) return dstH.input_channel;
+      return ev.channel || "";
+    },
+
+    getEventOutgoingChannel(ev) {
+      if (!ev) return "";
+      if (ev.outputChannel) return ev.outputChannel;
+      if (ev.type === "hop") return ev.channel || "";
+      return "";
+    },
+
+    formatCurrentLocation(ev) {
+      if (!ev) return "Idle";
+      if (ev.type === "ingress") {
+        return `UDP IN (${this.getEventIncomingChannel(ev)})`;
+      }
+      return this.getEventHandler(ev) || "Unknown";
+    },
+
+    formatStepSummary(ev) {
+      if (!ev) return "";
+      const handler = this.getEventHandler(ev);
+      const inCh = this.getEventIncomingChannel(ev);
+      const outCh = this.getEventOutgoingChannel(ev);
+      if (ev.type === "ingress") {
+        return `UDP IN (${inCh}) — Staged from ${ev.source || "PCAP"}`;
+      }
+      if (ev.type === "drop" || ev.result === "Dropped") {
+        return `${handler} — Dropped${inCh ? " (in: " + inCh + ")" : ""}`;
+      }
+      if (ev.type === "egress" || ev.result === "Consumed") {
+        return `${handler} — Consumed${inCh ? " (in: " + inCh + ")" : ""}`;
+      }
+      return `${handler} ➔ ${outCh || "next"}${inCh ? " (in: " + inCh + ")" : ""}`;
     },
 
     syncSelectedPacketForEvent(ev) {
@@ -507,20 +572,24 @@ export function createSimulationApp() {
       } else {
         const nodeMap = new Map();
         events.forEach(ev => {
-          if (ev.target && !nodeMap.has(ev.target)) {
-            nodeMap.set(ev.target, {
-              name: ev.target,
-              type: ev.targetType || "handler",
-              input_channel: ev.type === "ingress" ? ev.channel : null,
-              output_channel: ev.type === "hop" ? ev.channel : null
+          const hName = ev.handler || ev.target;
+          const hType = ev.handlerType || ev.targetType || "handler";
+          const inCh = ev.inputChannel || (ev.type !== "hop" ? ev.channel : null);
+          const outCh = ev.outputChannel || (ev.type === "hop" ? ev.channel : null);
+          if (hName && !nodeMap.has(hName)) {
+            nodeMap.set(hName, {
+              name: hName,
+              type: hType,
+              input_channel: inCh || null,
+              output_channel: outCh || null
             });
-          } else if (ev.target && nodeMap.has(ev.target)) {
-            const existing = nodeMap.get(ev.target);
-            if (ev.type === "hop" && ev.channel && !existing.output_channel) {
-              existing.output_channel = ev.channel;
+          } else if (hName && nodeMap.has(hName)) {
+            const existing = nodeMap.get(hName);
+            if (outCh && !existing.output_channel) {
+              existing.output_channel = outCh;
             }
-            if (ev.type !== "hop" && ev.channel && !existing.input_channel) {
-              existing.input_channel = ev.channel;
+            if (inCh && !existing.input_channel) {
+              existing.input_channel = inCh;
             }
           }
         });

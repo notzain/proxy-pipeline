@@ -5,16 +5,16 @@
       "batchIds": [
         1
       ],
-      "channel": "udp_network",
-      "detail": "Packet #1 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #1 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 1,
       "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -22,16 +22,16 @@
       "batchIds": [
         1
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #1 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #1 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 1,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -39,16 +39,16 @@
       "batchIds": [
         1
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #1 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #1 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 1,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -56,16 +56,15 @@
       "batchIds": [
         1
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #1 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #1",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 1,
       "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -73,16 +72,16 @@
       "batchIds": [
         2
       ],
-      "channel": "udp_network",
-      "detail": "Packet #2 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #2 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 2,
       "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -90,16 +89,16 @@
       "batchIds": [
         2
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #2 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #2 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 2,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -107,16 +106,16 @@
       "batchIds": [
         2
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #2 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #2 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 2,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -124,16 +123,15 @@
       "batchIds": [
         2
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #2 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #2",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 2,
       "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -141,16 +139,16 @@
       "batchIds": [
         3
       ],
-      "channel": "udp_network",
-      "detail": "Packet #3 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #3 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 3,
       "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -158,16 +156,16 @@
       "batchIds": [
         3
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #3 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #3 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 3,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -175,16 +173,16 @@
       "batchIds": [
         3
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #3 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #3 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 3,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -192,16 +190,15 @@
       "batchIds": [
         3
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #3 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #3",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 3,
       "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -209,16 +206,16 @@
       "batchIds": [
         4
       ],
-      "channel": "udp_network",
-      "detail": "Packet #4 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #4 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 4,
       "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -226,16 +223,16 @@
       "batchIds": [
         4
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #4 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #4 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 4,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -243,16 +240,16 @@
       "batchIds": [
         4
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #4 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #4 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 4,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -260,16 +257,15 @@
       "batchIds": [
         4
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #4 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #4",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 4,
       "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -277,16 +273,16 @@
       "batchIds": [
         5
       ],
-      "channel": "udp_network",
-      "detail": "Packet #5 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #5 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 5,
       "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -294,16 +290,16 @@
       "batchIds": [
         5
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #5 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #5 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 5,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -311,18 +307,17 @@
       "batchIds": [
         5
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #5 dropped by 'xml_validator' [MessageResult: Dropped - Rejected: XSD schema validation failure (code 400)]",
+      "detail": "'xml_validator' dropped Packet #5: Rejected: XSD schema validation failure (code 400)",
       "errorCode": 400,
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 5,
       "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
       "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
-      "source": "network_ingress",
       "status": "dropped",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "drop"
     },
     {
@@ -330,16 +325,16 @@
       "batchIds": [
         6
       ],
-      "channel": "udp_network",
-      "detail": "Packet #6 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #6 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 6,
       "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -347,16 +342,16 @@
       "batchIds": [
         6
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #6 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #6 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 6,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -364,16 +359,16 @@
       "batchIds": [
         6
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #6 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #6 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 6,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -381,16 +376,15 @@
       "batchIds": [
         6
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #6 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #6",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 6,
       "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -398,16 +392,16 @@
       "batchIds": [
         7
       ],
-      "channel": "udp_network",
-      "detail": "Packet #7 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #7 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 7,
       "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -415,16 +409,16 @@
       "batchIds": [
         7
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #7 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #7 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 7,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -432,16 +426,16 @@
       "batchIds": [
         7
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #7 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #7 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 7,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -449,16 +443,15 @@
       "batchIds": [
         7
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #7 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #7",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 7,
       "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -466,16 +459,16 @@
       "batchIds": [
         8
       ],
-      "channel": "udp_network",
-      "detail": "Packet #8 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #8 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 8,
       "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -483,16 +476,16 @@
       "batchIds": [
         8
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #8 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #8 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 8,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -500,16 +493,16 @@
       "batchIds": [
         8
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #8 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #8 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 8,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -517,16 +510,15 @@
       "batchIds": [
         8
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #8 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #8",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 8,
       "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -534,16 +526,16 @@
       "batchIds": [
         9
       ],
-      "channel": "udp_network",
-      "detail": "Packet #9 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #9 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 9,
       "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -551,16 +543,16 @@
       "batchIds": [
         9
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #9 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #9 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 9,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -568,16 +560,16 @@
       "batchIds": [
         9
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #9 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #9 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 9,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -585,16 +577,15 @@
       "batchIds": [
         9
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #9 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #9",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 9,
       "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -602,16 +593,16 @@
       "batchIds": [
         10
       ],
-      "channel": "udp_network",
-      "detail": "Packet #10 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #10 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 10,
       "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -619,16 +610,16 @@
       "batchIds": [
         10
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #10 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #10 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 10,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -636,18 +627,17 @@
       "batchIds": [
         10
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #10 dropped by 'xml_validator' [MessageResult: Dropped - Rejected: XSD schema validation failure (code 400)]",
+      "detail": "'xml_validator' dropped Packet #10: Rejected: XSD schema validation failure (code 400)",
       "errorCode": 400,
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 10,
       "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
       "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
-      "source": "network_ingress",
       "status": "dropped",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "drop"
     },
     {
@@ -655,16 +645,16 @@
       "batchIds": [
         11
       ],
-      "channel": "udp_network",
-      "detail": "Packet #11 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #11 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 11,
       "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -672,16 +662,16 @@
       "batchIds": [
         11
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #11 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #11 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 11,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -689,16 +679,16 @@
       "batchIds": [
         11
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #11 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #11 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 11,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -706,16 +696,15 @@
       "batchIds": [
         11
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #11 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #11",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 11,
       "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -723,16 +712,16 @@
       "batchIds": [
         12
       ],
-      "channel": "udp_network",
-      "detail": "Packet #12 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #12 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 12,
       "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -740,16 +729,16 @@
       "batchIds": [
         12
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #12 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #12 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 12,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -757,16 +746,16 @@
       "batchIds": [
         12
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #12 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #12 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 12,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -774,16 +763,15 @@
       "batchIds": [
         12
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #12 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #12",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 12,
       "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -791,16 +779,16 @@
       "batchIds": [
         13
       ],
-      "channel": "udp_network",
-      "detail": "Packet #13 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #13 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 13,
       "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -808,16 +796,16 @@
       "batchIds": [
         13
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #13 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #13 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 13,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -825,16 +813,16 @@
       "batchIds": [
         13
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #13 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #13 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 13,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -842,16 +830,15 @@
       "batchIds": [
         13
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #13 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #13",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 13,
       "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -859,16 +846,16 @@
       "batchIds": [
         14
       ],
-      "channel": "udp_network",
-      "detail": "Packet #14 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #14 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 14,
       "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -876,16 +863,16 @@
       "batchIds": [
         14
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #14 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #14 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 14,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -893,16 +880,16 @@
       "batchIds": [
         14
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #14 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #14 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 14,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -910,16 +897,15 @@
       "batchIds": [
         14
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #14 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #14",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 14,
       "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -927,16 +913,16 @@
       "batchIds": [
         15
       ],
-      "channel": "udp_network",
-      "detail": "Packet #15 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #15 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 15,
       "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -944,16 +930,16 @@
       "batchIds": [
         15
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #15 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #15 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 15,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -961,18 +947,17 @@
       "batchIds": [
         15
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #15 dropped by 'xml_validator' [MessageResult: Dropped - Rejected: XSD schema validation failure (code 400)]",
+      "detail": "'xml_validator' dropped Packet #15: Rejected: XSD schema validation failure (code 400)",
       "errorCode": 400,
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 15,
       "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
       "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
-      "source": "network_ingress",
       "status": "dropped",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "drop"
     },
     {
@@ -980,16 +965,16 @@
       "batchIds": [
         16
       ],
-      "channel": "udp_network",
-      "detail": "Packet #16 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #16 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 16,
       "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -997,16 +982,16 @@
       "batchIds": [
         16
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #16 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #16 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 16,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -1014,16 +999,16 @@
       "batchIds": [
         16
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #16 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #16 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 16,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -1031,16 +1016,15 @@
       "batchIds": [
         16
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #16 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #16",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 16,
       "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -1048,16 +1032,16 @@
       "batchIds": [
         17
       ],
-      "channel": "udp_network",
-      "detail": "Packet #17 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #17 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 17,
       "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -1065,16 +1049,16 @@
       "batchIds": [
         17
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #17 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #17 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 17,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -1082,16 +1066,16 @@
       "batchIds": [
         17
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #17 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #17 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 17,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -1099,16 +1083,15 @@
       "batchIds": [
         17
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #17 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #17",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 17,
       "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -1116,16 +1099,16 @@
       "batchIds": [
         18
       ],
-      "channel": "udp_network",
-      "detail": "Packet #18 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #18 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 18,
       "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -1133,16 +1116,16 @@
       "batchIds": [
         18
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #18 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #18 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 18,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -1150,16 +1133,16 @@
       "batchIds": [
         18
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #18 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #18 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 18,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -1167,16 +1150,15 @@
       "batchIds": [
         18
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #18 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #18",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 18,
       "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -1184,16 +1166,16 @@
       "batchIds": [
         19
       ],
-      "channel": "udp_network",
-      "detail": "Packet #19 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #19 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 19,
       "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -1201,16 +1183,16 @@
       "batchIds": [
         19
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #19 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #19 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 19,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -1218,16 +1200,16 @@
       "batchIds": [
         19
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #19 processed by 'xml_validator' [MessageResult: Forwarded -> 'orders_verified']",
+      "detail": "'xml_validator' forwarded Packet #19 to 'orders_verified'",
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 19,
+      "outputChannel": "orders_verified",
       "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Forwarded",
-      "source": "network_ingress",
       "status": "forwarded",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "hop"
     },
     {
@@ -1235,16 +1217,15 @@
       "batchIds": [
         19
       ],
-      "channel": "orders_verified",
-      "detail": "Packet #19 consumed by sink/egress handler 'network_egress' [MessageResult: Consumed]",
+      "detail": "'network_egress' consumed Packet #19",
+      "handler": "network_egress",
+      "handlerType": "udp_egress_handler",
+      "inputChannel": "orders_verified",
       "msgId": 19,
       "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Consumed",
-      "source": "xml_validator",
       "status": "consumed",
-      "target": "network_egress",
-      "targetType": "udp_egress_handler",
       "type": "egress"
     },
     {
@@ -1252,16 +1233,16 @@
       "batchIds": [
         20
       ],
-      "channel": "udp_network",
-      "detail": "Packet #20 loaded at ingress for 'network_ingress'",
+      "detail": "Packet #20 staged at ingress queue 'udp_network'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 20,
       "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item...",
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "ingress"
     },
     {
@@ -1269,16 +1250,16 @@
       "batchIds": [
         20
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #20 processed by 'network_ingress' [MessageResult: Forwarded -> 'orders_raw']",
+      "detail": "'network_ingress' forwarded Packet #20 to 'orders_raw'",
+      "handler": "network_ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "udp_network",
       "msgId": 20,
+      "outputChannel": "orders_raw",
       "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
       "result": "Forwarded",
-      "source": "ingress",
       "status": "forwarded",
-      "target": "network_ingress",
-      "targetType": "udp_ingress_handler",
       "type": "hop"
     },
     {
@@ -1286,18 +1267,17 @@
       "batchIds": [
         20
       ],
-      "channel": "orders_raw",
-      "detail": "Packet #20 dropped by 'xml_validator' [MessageResult: Dropped - Rejected: XSD schema validation failure (code 400)]",
+      "detail": "'xml_validator' dropped Packet #20: Rejected: XSD schema validation failure (code 400)",
       "errorCode": 400,
+      "handler": "xml_validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
       "msgId": 20,
       "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
       "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
-      "source": "network_ingress",
       "status": "dropped",
-      "target": "xml_validator",
-      "targetType": "xml_verification_handler",
       "type": "drop"
     }
   ],

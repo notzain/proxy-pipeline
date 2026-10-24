@@ -320,9 +320,9 @@ class InteractiveSimulationCoordinator:
                 "type": "ingress",
                 "result": "Loaded",
                 "source": f"{pkt.src_ip}:{pkt.src_port}",
-                "target": first_handler["name"],
-                "targetType": first_handler.get("type", "unknown"),
-                "channel": ingress_channel_label,
+                "handler": first_handler["name"],
+                "handlerType": first_handler.get("type", "unknown"),
+                "inputChannel": ingress_channel_label,
                 "payloadSummary": (
                     f"Batch of {len(current_batch_pkts)} packets"
                     if is_batch
@@ -335,7 +335,7 @@ class InteractiveSimulationCoordinator:
                 ),
                 "status": "loaded",
                 "latencyUs": 0.0,
-                "detail": f"Packet {seq_label} loaded at ingress for '{first_handler['name']}'",
+                "detail": f"Packet {seq_label} staged at ingress queue '{ingress_channel_label}'",
             }
             self.event_counter += 1
             self.events.append(ev_ingress)
@@ -456,10 +456,10 @@ class InteractiveSimulationCoordinator:
                 "timestampNs": time.time_ns(),
                 "type": "egress",
                 "result": "Forwarded",
-                "source": info["curr_node_name"],
-                "target": info["curr_node_name"],
-                "targetType": info["curr_node_type"],
-                "channel": ch,
+                "handler": info["curr_node_name"],
+                "handlerType": info["curr_node_type"],
+                "inputChannel": info.get("input_channel"),
+                "outputChannel": ch,
                 "payloadSummary": pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text,
                 "payloadFull": pkt.payload_text,
                 "status": "transmitted",
@@ -591,10 +591,10 @@ class InteractiveSimulationCoordinator:
                     "timestampNs": primary_res.get("timestampNs", time.time_ns()),
                     "type": "hop",
                     "result": "Forwarded",
-                    "source": source_name,
-                    "target": handler_name,
-                    "targetType": handler_type,
-                    "channel": out_ch,
+                    "handler": handler_name,
+                    "handlerType": handler_type,
+                    "inputChannel": input_channel,
+                    "outputChannel": out_ch,
                     "payloadSummary": (
                         f"Batch of {out_batch_count} messages"
                         if out_batch_count > 1
@@ -607,7 +607,7 @@ class InteractiveSimulationCoordinator:
                     ),
                     "status": "forwarded",
                     "latencyUs": elapsed_us,
-                    "detail": f"Packet {seq_label} processed by '{handler_name}' [MessageResult: Forwarded -> '{all_out_str}']{batch_note}",
+                    "detail": f"'{handler_name}' forwarded Packet {seq_label} to '{all_out_str}'{batch_note}",
                 }
                 self.event_counter += 1
                 self.events.append(ev_hop)
@@ -623,10 +623,9 @@ class InteractiveSimulationCoordinator:
                 "timestampNs": primary_res.get("timestampNs", time.time_ns()),
                 "type": "egress",
                 "result": "Consumed",
-                "source": source_name,
-                "target": handler_name,
-                "targetType": handler_type,
-                "channel": input_channel,
+                "handler": handler_name,
+                "handlerType": handler_type,
+                "inputChannel": input_channel,
                 "payloadSummary": (
                     f"Batch of {len(batch_pkts)} messages"
                     if is_batch
@@ -639,7 +638,7 @@ class InteractiveSimulationCoordinator:
                 ),
                 "status": "consumed",
                 "latencyUs": elapsed_us,
-                "detail": f"Packet {seq_label} consumed by sink/egress handler '{handler_name}' [MessageResult: Consumed]",
+                "detail": f"'{handler_name}' consumed Packet {seq_label}",
             }
             self.event_counter += 1
             self.events.append(ev_consumed)
@@ -662,10 +661,9 @@ class InteractiveSimulationCoordinator:
             "result": "Dropped",
             "reason": reason,
             "errorCode": error_code,
-            "source": source_name,
-            "target": handler_name,
-            "targetType": handler_type,
-            "channel": input_channel,
+            "handler": handler_name,
+            "handlerType": handler_type,
+            "inputChannel": input_channel,
             "payloadSummary": (
                 f"Batch of {len(batch_pkts)} messages"
                 if is_batch
@@ -678,7 +676,7 @@ class InteractiveSimulationCoordinator:
             ),
             "status": "dropped",
             "latencyUs": elapsed_us,
-            "detail": f"Packet {seq_label} dropped by '{handler_name}' [MessageResult: Dropped - {reason}{code_suffix}]",
+            "detail": f"'{handler_name}' dropped Packet {seq_label}: {reason}{code_suffix}",
         }
         self.event_counter += 1
         self.events.append(ev_drop)
@@ -844,10 +842,9 @@ class InteractiveSimulationCoordinator:
                     "timestampNs": time.time_ns(),
                     "type": "hop",
                     "result": "Forwarded",
-                    "source": gen_handler["name"],
-                    "target": gen_handler["name"],
-                    "targetType": gen_handler.get("type"),
-                    "channel": out_ch,
+                    "handler": gen_handler["name"],
+                    "handlerType": gen_handler.get("type"),
+                    "outputChannel": out_ch,
                     "payloadSummary": f"Batch of {batch_len} messages [Pkts {batch_ids_str}]",
                     "payloadFull": "\n---\n".join(p.payload_text for p in all_batch_pkts),
                     "status": "forwarded",
@@ -875,10 +872,9 @@ class InteractiveSimulationCoordinator:
                     "timestampNs": time.time_ns(),
                     "type": "hop",
                     "result": "Forwarded",
-                    "source": gen_handler["name"],
-                    "target": gen_handler["name"],
-                    "targetType": gen_handler.get("type"),
-                    "channel": out_ch,
+                    "handler": gen_handler["name"],
+                    "handlerType": gen_handler.get("type"),
+                    "outputChannel": out_ch,
                     "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
                     "payloadFull": msg_text,
                     "status": "forwarded",

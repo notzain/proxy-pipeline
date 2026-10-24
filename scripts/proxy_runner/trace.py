@@ -94,9 +94,13 @@ class TraceManager:
         "type",
         "result",
         "source",
+        "handler",
+        "handlerType",
         "target",
         "targetType",
+        "inputChannel",
         "channel",
+        "outputChannel",
         "status",
         "reason",
         "errorCode",
@@ -350,8 +354,8 @@ class TraceManager:
             ref_ev = exp or act
             pkt_id = ref_ev.get("msgId", "?")
             ev_type = ref_ev.get("type", "unknown")
-            target = ref_ev.get("target", "unknown")
-            status = ref_ev.get("status", "unknown")
+            target = ref_ev.get("handler") or ref_ev.get("target", "unknown")
+            status = ref_ev.get("result") or ref_ev.get("status", "unknown")
 
             line, col = locator.get_event_location(idx) if idx < len(expected_events) else (0, 0)
             loc_str = f"{c_gry}(line {line}:{col}){c_rst}" if line > 0 else f"{c_gry}(extra event){c_rst}"
@@ -359,12 +363,12 @@ class TraceManager:
             if is_diverge:
                 exp_type = exp.get("type") if exp else "NONE"
                 act_type = act.get("type") if act else "NONE"
-                exp_target = exp.get("target") if exp else "NONE"
-                act_target = act.get("target") if act else "NONE"
+                exp_target = (exp.get("handler") or exp.get("target")) if exp else "NONE"
+                act_target = (act.get("handler") or act.get("target")) if act else "NONE"
                 note = f"Expected: {exp_target} ({exp_type}) vs Actual: {act_target} ({act_type})"
                 lines.append(f"{prefix} Packet #{pkt_id:<2} {loc_str:<20} | {note}")
             else:
-                lines.append(f"{prefix} Packet #{pkt_id:<2} {loc_str:<20} | type: {ev_type:<8} | target: {target:<20} | status: {status}")
+                lines.append(f"{prefix} Packet #{pkt_id:<2} {loc_str:<20} | type: {ev_type:<8} | handler: {target:<20} | result: {status}")
 
         lines.extend([
             "",
@@ -429,26 +433,28 @@ class TraceManager:
 
     @classmethod
     def _derive_insight(cls, exp: dict[str, Any] | None, act: dict[str, Any] | None) -> str | None:
+        exp_h = (exp.get("handler") or exp.get("target")) if exp else None
+        act_h = (act.get("handler") or act.get("target")) if act else None
         if not exp and act:
-            return f"Run produced an unexpected extra event at handler '{act.get('target')}': {act.get('detail')}"
+            return f"Run produced an unexpected extra event at handler '{act_h}': {act.get('detail')}"
         if exp and not act:
-            return f"Run prematurely stopped or dropped packet before handler '{exp.get('target')}' could process it."
+            return f"Run prematurely stopped or dropped packet before handler '{exp_h}' could process it."
 
         if exp and act:
             exp_type = exp.get("type")
             act_type = act.get("type")
             if exp_type != act_type:
                 if act_type == "drop":
-                    return f"Handler '{act.get('target')}' unexpectedly DROPPED message #{act.get('msgId')}. Detail: {act.get('detail')}"
+                    return f"Handler '{act_h}' unexpectedly DROPPED message #{act.get('msgId')}. Detail: {act.get('detail')}"
                 elif exp_type == "drop":
-                    return f"Handler '{act.get('target')}' unexpectedly ACCEPTED message #{act.get('msgId')} instead of discarding it."
+                    return f"Handler '{exp_h}' unexpectedly ACCEPTED message #{act.get('msgId')} instead of discarding it."
                 else:
-                    return f"Message transitioned to '{act_type}' instead of expected '{exp_type}' at handler '{act.get('target')}'."
+                    return f"Message transitioned to '{act_type}' instead of expected '{exp_type}' at handler '{act_h}'."
 
             if exp.get("status") != act.get("status"):
-                return f"Status discrepancy at '{act.get('target')}': expected '{exp.get('status')}' but got '{act.get('status')}'."
+                return f"Status discrepancy at '{act_h}': expected '{exp.get('status')}' but got '{act.get('status')}'."
 
-            if exp.get("target") != act.get("target"):
-                return f"Routing desync: Message routed to '{act.get('target')}' instead of expected '{exp.get('target')}'."
+            if exp_h != act_h:
+                return f"Routing desync: Message routed to '{act_h}' instead of expected '{exp_h}'."
 
         return None
