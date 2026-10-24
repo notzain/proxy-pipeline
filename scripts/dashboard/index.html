@@ -2,37 +2,102 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Proxy :: Interactive Step-by-Step Simulation Dashboard</title>
-  <link rel="stylesheet" href="css/dashboard.css">
-  <script src="vendor/petite-vue.iife.js"></script>
+  <title>Proxy :: Interactive Simulation &amp; Trace Dashboard</title>
+  <link rel="stylesheet" href="css/dashboard.css?v=2">
+  <script src="vendor/petite-vue.iife.js?v=2"></script>
 </head>
 <body v-scope @vue:mounted="init()">
 
-  <!-- Top Header Navigation & Controls -->
+  <!-- Top Header Navigation & Mode-Specific Controls -->
   <header>
     <div class="brand">
-      <span class="badge-pcap">STEP SIMULATOR</span>
-      <h2 style="font-size: 15px; font-weight: 600;">Interactive Proxy Chain Stepper</h2>
+      <span class="badge-mode" :class="mode === 'trace' ? 'mode-trace' : 'mode-realtime'">
+        {{ mode === 'trace' ? '🟣 TRACE SIMULATION' : '🟢 REAL-TIME SIMULATION' }}
+      </span>
+      <h2 style="font-size: 15px; font-weight: 600;">
+        {{ mode === 'trace' ? 'Execution Trace Stepper' : 'Live SimBackend Runner' }}
+      </h2>
       <span id="chain-badge" style="font-size: 11px; color: var(--text-muted); background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
-        <template v-if="offlineMode">Standalone Trace: {{ state.pcap }}</template>
-        <template v-else>Chain: {{ (state.chain.backend || "SIM").toUpperCase() }} | PCAP: {{ state.pcap }}</template>
+        <span v-if="mode === 'trace'">
+          Artifact: {{ state.pcap }} ({{ traceAllEvents.length }} events · Step {{ traceStepIdx }}/{{ traceAllEvents.length }})
+        </span>
+        <span v-else>
+          Backend: {{ (state.chain.backend || "SIM").toUpperCase() }} | PCAP: {{ state.pcap }}
+        </span>
       </span>
     </div>
+
     <div class="controls">
-      <button class="primary" @click="togglePlay()">
-        {{ isPlaying ? "⏸ Pause" : "▶ Play" }}
-      </button>
-      <button @click="stepBack()">⏮ Back</button>
-      <button @click="stepForward()">⏭ Step</button>
-      <button @click="resetSim()">↺ Reset</button>
-      
+      <!-- REAL-TIME SIMULATION CONTROLS -->
+      <div v-if="mode === 'realtime'" style="display: contents;">
+        <button class="btn-load"
+                @click="loadNextPacket()"
+                :disabled="state.inFlight || state.currentPacketIdx >= state.packetCount"
+                title="Instruct SimBackend to load the next PCAP packet into chain ingress">
+          📥 Load Next Packet
+        </button>
+        <button class="primary"
+                @click="stepForward()"
+                :disabled="!state.inFlight"
+                title="Step the in-flight packet forward into the next handler">
+          ⏭ Step Forward
+        </button>
+        <button @click="togglePlay()" title="Automatically load and step packets through the chain">
+          {{ isPlaying ? "⏸ Pause" : "▶ Auto-Play" }}
+        </button>
+        <button @click="resetSim()" title="Reset simulation state and return to Packet #1">
+          ↺ Reset
+        </button>
+        <button @click="exportTrace()"
+                :disabled="state.events.length === 0"
+                style="border-color: #34d399; color: #34d399;"
+                title="Download deterministic export.trace.json">
+          💾 Export Trace
+        </button>
+        <button @click="switchToTraceModeFromLive()"
+                :disabled="state.events.length === 0"
+                style="border-color: #c084fc; color: #c084fc;"
+                title="Inspect current execution trace in Trace Simulation Mode (step forwards & backwards)">
+          🔍 Trace Mode
+        </button>
+      </div>
+
+      <!-- TRACE SIMULATION CONTROLS -->
+      <div v-else style="display: contents;">
+        <button @click="stepBack()"
+                :disabled="traceStepIdx <= 0"
+                title="Step backward one event in the execution trace (Left Arrow)">
+          ⏮ Step Back
+        </button>
+        <button class="primary"
+                @click="stepForward()"
+                :disabled="traceStepIdx >= traceAllEvents.length"
+                title="Step forward one event in the execution trace (Right Arrow)">
+          ⏭ Step Forward
+        </button>
+        <button @click="togglePlay()" title="Replay trace events automatically (Space)">
+          {{ isPlaying ? "⏸ Pause" : "▶ Play Trace" }}
+        </button>
+        <button @click="resetSim()" title="Rewind to the start of the trace (R)">
+          ↺ Rewind
+        </button>
+        <button v-if="realtimeAvailable"
+                @click="returnToRealtimeMode()"
+                style="border-color: #34d399; color: #34d399;"
+                title="Return to live Real-Time Simulation">
+          🟢 Live Sim Mode
+        </button>
+      </div>
+
       <input type="file" id="trace-file-input" accept=".json" style="display: none;" @change="handleTraceFile($event)">
-      <button onclick="document.getElementById('trace-file-input').click()" style="border-color: #38bdf8; color: #38bdf8;">
+      <button onclick="document.getElementById('trace-file-input').click()"
+              style="border-color: #38bdf8; color: #38bdf8;"
+              title="Load an export.trace.json file into Trace Simulation Mode">
         📂 Load Trace
       </button>
 
       <div class="speed-ctrl">
-        <span>Interval</span>
+        <span>Speed</span>
         <input type="range" min="0.2" max="3.0" step="0.2" :value="(stepInterval / 1000).toFixed(1)" @input="updateSpeed($event.target.value)">
         <span>{{ (stepInterval / 1000).toFixed(1) }}s</span>
       </div>
@@ -41,17 +106,17 @@
 
   <!-- 3-Column Main Stage -->
   <main>
-    <!-- Left Column: PCAP Packets Queue OR Standalone Trace Info -->
+    <!-- Left Column: PCAP Packets Queue -->
     <div class="panel">
       <div class="panel-header">
-        <template v-if="offlineMode">
-          <span>Trace Replay ({{ offlineAllEvents.length }} events)</span>
-          <span style="font-size: 11px; color: var(--text-muted);">Standalone Mode</span>
-        </template>
-        <template v-else>
-          <span>PCAP Packets ({{ state.packetCount }})</span>
-          <span style="font-size: 11px; color: var(--text-muted);">Queue</span>
-        </template>
+        <div v-if="mode === 'trace'" style="display: contents;">
+          <span>Trace Packets ({{ state.packets.length }})</span>
+          <span style="font-size: 11px; color: #c084fc;">Trace Mode</span>
+        </div>
+        <div v-else style="display: contents;">
+          <span>PCAP Queue ({{ state.packetCount }})</span>
+          <span style="font-size: 11px; color: #34d399;">Next: #{{ state.currentPacketIdx + 1 }}</span>
+        </div>
       </div>
 
       <!-- Packet Inspector -->
@@ -72,41 +137,55 @@
         <div class="meta-grid" v-else>
           <span class="k">Status:</span><span class="v" style="color: var(--text-muted);">Select any packet to inspect</span>
         </div>
-        <div class="inspector-title" style="margin-top: 4px;">Payload Content</div>
+        <div class="inspector-title" style="margin-top: 4px;">
+          <span>Payload Content</span>
+          <button v-if="mode === 'realtime' && state.selectedPacket && !state.inFlight"
+                  @click="loadSpecificPacket(state.selectedPacket.id)"
+                  style="padding: 2px 8px; font-size: 10px; border-color: var(--accent); color: var(--accent);">
+            📥 Load #{{ state.selectedPacket.id }}
+          </button>
+        </div>
         <div class="payload-box">{{ state.selectedPacket ? (state.selectedPacket.payloadFull || state.selectedPacket.payloadSummary) : '// Select a packet from list below' }}</div>
       </div>
 
       <!-- Left List Container -->
       <div class="list-container">
-        <!-- Standalone Trace Notice -->
-        <div v-if="offlineMode" style="padding: 20px 14px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;">
-          <div style="font-size: 20px; margin-bottom: 8px;">📜</div>
-          <strong style="color: var(--accent);">Standalone Trace Loaded</strong><br>
-          <span style="font-size: 11px;">Independent execution trace with {{ offlineAllEvents.length }} recorded events.</span><br><br>
-          Click any event in the <strong>Execution Trace</strong> on the right to jump directly to that point, then use <strong>⏮ Back</strong> and <strong>⏭ Step</strong> to navigate.
-        </div>
-
-        <!-- Generator Chain Empty Notice -->
-        <div v-else-if="!state.packets || state.packets.length === 0" style="padding: 20px 14px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;">
-          <div style="font-size: 20px; margin-bottom: 8px;">⚡</div>
-          <strong style="color: var(--accent);">Generator Driven Chain</strong><br>
-          Click <strong>⚡ Trigger</strong> on any generator node in the canvas to emit a message into the chain.
+        <!-- Generator Chain / Empty Packets Notice -->
+        <div v-if="!state.packets || state.packets.length === 0" style="padding: 20px 14px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;">
+          <div v-if="mode === 'trace'">
+            <div style="font-size: 20px; margin-bottom: 8px;">📜</div>
+            <strong style="color: #c084fc;">Trace Simulation Active</strong><br>
+            <span style="font-size: 11px;">Loaded {{ traceAllEvents.length }} events from {{ state.pcap }}.</span><br><br>
+            Use <strong>⏮ Step Back</strong> and <strong>⏭ Step Forward</strong> or click any event on the right to step through the trace.
+          </div>
+          <div v-else>
+            <div style="font-size: 20px; margin-bottom: 8px;">⚡</div>
+            <strong style="color: var(--accent);">Generator Driven Chain</strong><br>
+            Click <strong>⚡ Trigger Emit</strong> on any generator node in the canvas to emit a message into the chain.
+          </div>
         </div>
 
         <!-- Rendered PCAP Queue Items -->
-        <template v-else>
-          <div v-for="pkt in state.packets" :key="pkt.id"
+        <div v-else style="display: contents;">
+          <div v-for="(pkt, pIdx) in state.packets" :key="pkt.id"
                class="list-item"
-               :class="{ active: state.selectedPacket && state.selectedPacket.id === pkt.id }"
+               :class="{
+                 active: state.selectedPacket && state.selectedPacket.id === pkt.id,
+                 completed: mode === 'realtime' && pIdx < state.currentPacketIdx && (!state.lastEvent || state.lastEvent.msgId !== pkt.id)
+               }"
                @click="inspectPacket(pkt)">
             <div class="item-top">
               <span class="log-tag tag-ingress">PKT #{{ pkt.id }}</span>
-              <span class="log-time">{{ pkt.size }} bytes</span>
+              <span class="log-time">
+                <strong v-if="mode === 'realtime' && state.inFlight && state.lastEvent && state.lastEvent.msgId === pkt.id" style="color: var(--accent);">● IN-FLIGHT</strong>
+                <strong v-else-if="mode === 'realtime' && pIdx === state.currentPacketIdx && !state.inFlight" style="color: #34d399;">NEXT</strong>
+                <span v-else>{{ pkt.size }} bytes</span>
+              </span>
             </div>
             <div class="log-desc">{{ pkt.srcIp }}:{{ pkt.srcPort }} ➔ {{ pkt.dstIp }}:{{ pkt.dstPort }}</div>
             <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ pkt.payloadSummary }}</div>
           </div>
-        </template>
+        </div>
       </div>
     </div>
 
@@ -115,19 +194,21 @@
       <!-- 4 Stats Cards -->
       <div class="stats-row">
         <div class="stat-card">
-          <div class="label">Total Packets</div>
-          <div class="val">{{ offlineMode ? offlineAllEvents.length : state.packetCount }}</div>
+          <div class="label">{{ mode === 'trace' ? 'Trace Progress' : 'PCAP Packets' }}</div>
+          <div class="val">
+            {{ mode === 'trace' ? (traceStepIdx + ' / ' + traceAllEvents.length) : (state.currentPacketIdx + ' / ' + state.packetCount) }}
+          </div>
         </div>
         <div class="stat-card">
-          <div class="label">In-Flight / Next</div>
+          <div class="label">{{ mode === 'trace' ? 'Current Step' : 'Pipeline State' }}</div>
           <div class="val" style="color: var(--accent);">{{ state.stats.currentStatus }}</div>
         </div>
         <div class="stat-card">
-          <div class="label">Delivered Egress</div>
+          <div class="label">Consumed / Egress</div>
           <div class="val" style="color: var(--success);">{{ state.stats.delivered }}</div>
         </div>
         <div class="stat-card">
-          <div class="label">Dropped by Node</div>
+          <div class="label">Dropped by Handler</div>
           <div class="val" style="color: var(--danger);">{{ state.stats.dropped }}</div>
         </div>
       </div>
@@ -155,56 +236,89 @@
           <div class="payload-box" style="max-height: 100px;">{{ JSON.stringify(state.selectedNode.config, null, 2) }}</div>
         </div>
         <div v-else style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">
-          Click any handler node or generator trigger in the canvas above to inspect bindings and runtime configs.
+          Click any handler node in the topology canvas above to inspect its channel bindings and configuration.
         </div>
       </div>
     </div>
 
-    <!-- Right Column: Execution Trace Panel & Dedicated Step Inspector -->
+    <!-- Right Column: Execution Trace Panel & Step Outcome Inspector -->
     <div class="panel">
       <div class="panel-header">
-        <span>Execution Trace ({{ state.events.length }})</span>
-        <span style="font-size: 11px; color: var(--accent);">{{ offlineMode ? 'Trace Stepper' : 'Live Steps' }}</span>
+        <span>Execution Trace ({{ mode === 'trace' ? traceAllEvents.length : state.events.length }})</span>
+        <span style="font-size: 11px;" :style="{ color: mode === 'trace' ? '#c084fc' : 'var(--accent)' }">
+          {{ mode === 'trace' ? 'Step ' + traceStepIdx + ' of ' + traceAllEvents.length : 'Live Trace' }}
+        </span>
       </div>
 
-      <!-- In-Flight Message Inspector -->
+      <!-- Step / MessageResult Inspector -->
       <div class="inspector-box">
         <div class="inspector-title">
-          <span>In-Flight Message Inspector</span>
+          <span>Step &amp; MessageResult Inspector</span>
           <span style="color: var(--accent); font-family: monospace;">
-            {{ state.lastEvent ? 'Step Ev #' + state.lastEvent.eventId : 'Idle' }}
+            {{ state.lastEvent ? 'Event #' + state.lastEvent.eventId : 'Idle' }}
           </span>
         </div>
         <div class="meta-grid" v-if="state.lastEvent">
           <span class="k">Packet ID:</span><span class="v">Packet #{{ state.lastEvent.msgId }}</span>
-          <span class="k">Step Event:</span><span class="v">{{ state.lastEvent.type.toUpperCase() }}</span>
-          <span class="k">Current Node:</span><span class="v">{{ state.lastEvent.target }}</span>
-          <span class="k">Held In Channel:</span><span class="v">{{ state.lastEvent.channel }}</span>
-          <span class="k">Step Latency:</span><span class="v">{{ state.lastEvent.latencyUs }} µs</span>
-          <span class="k">Outcome Status:</span>
-          <span class="v" :style="{ color: state.lastEvent.type === 'drop' ? 'var(--danger)' : 'var(--success)' }">
-            {{ state.lastEvent.status.toUpperCase() }}
+          <span class="k">Handler Node:</span><span class="v">{{ state.lastEvent.target }} ({{ state.lastEvent.targetType || 'handler' }})</span>
+          <span class="k">Channel:</span><span class="v">{{ state.lastEvent.channel }}</span>
+          <span class="k">MessageResult:</span>
+          <span class="v">
+            <span class="log-tag" :class="'tag-' + state.lastEvent.type">
+              {{ state.lastEvent.result || (state.lastEvent.status ? state.lastEvent.status.toUpperCase() : state.lastEvent.type.toUpperCase()) }}
+            </span>
           </span>
+          <div v-if="state.lastEvent.reason" style="display: contents;">
+            <span class="k">Drop Reason:</span>
+            <span class="v" style="color: var(--danger); font-weight: 600;">
+              {{ state.lastEvent.reason }} {{ state.lastEvent.errorCode ? '(code ' + state.lastEvent.errorCode + ')' : '' }}
+            </span>
+          </div>
+          <div v-if="state.lastEvent.latencyUs !== undefined" style="display: contents;">
+            <span class="k">Step Latency:</span>
+            <span class="v">{{ state.lastEvent.latencyUs }} µs</span>
+          </div>
         </div>
         <div class="meta-grid" v-else>
-          <span class="k">Status:</span><span class="v" style="color: var(--text-muted);">Click Step to advance messages through the pipeline</span>
+          <span class="k">Status:</span>
+          <span class="v" style="color: var(--text-muted);">
+            {{ mode === 'trace' ? 'Click Step Forward to step through the trace' : 'Click Load Next Packet then Step Forward' }}
+          </span>
         </div>
-        <div class="inspector-title" style="margin-top: 4px;">In-Flight Wire Payload</div>
+        <div class="inspector-title" style="margin-top: 4px;">Message Payload</div>
         <div class="payload-box">{{ state.lastEvent ? (state.lastEvent.payloadFull || state.lastEvent.payloadSummary) : '// Idle' }}</div>
       </div>
 
       <!-- Execution Trace Items List -->
       <div class="list-container" id="trace-list">
-        <div v-for="(ev, idx) in (offlineMode ? offlineAllEvents : state.events)" :key="ev.eventId"
+        <div v-for="(ev, idx) in (mode === 'trace' ? traceAllEvents : state.events)" :key="ev.eventId || idx"
              class="list-item"
-             :class="{ active: state.selectedTraceEventId === ev.eventId }"
-             :style="{ opacity: offlineMode && idx >= offlineStepIdx ? '0.4' : '1.0' }"
+             :class="{
+               active: state.selectedTraceEventId === ev.eventId,
+               dropped: ev.type === 'drop',
+               completed: ev.type === 'egress'
+             }"
+             :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }"
              @click="selectTraceItem(ev, idx)">
           <div class="item-top">
-            <span class="log-tag" :class="'tag-' + ev.type">{{ ev.type }}</span>
-            <span class="log-time">pkt #{{ ev.msgId }} · {{ ev.latencyUs }}µs</span>
+            <span class="log-tag" :class="'tag-' + ev.type">
+              {{ ev.result || ev.type }}
+            </span>
+            <span class="log-time">
+              Step #{{ idx + 1 }} · Pkt #{{ ev.msgId }}<span v-if="ev.latencyUs !== undefined"> · {{ ev.latencyUs }}µs</span>
+            </span>
           </div>
-          <div class="log-desc"><strong>{{ ev.channel }}</strong> ➔ {{ ev.target }}</div>
+          <div class="log-desc">
+            <span v-if="ev.type === 'ingress'">
+              <strong>{{ ev.source }}</strong> ➔ {{ ev.target }} ({{ ev.channel }})
+            </span>
+            <span v-else-if="ev.type === 'hop'">
+              <strong>{{ ev.target }}</strong> ➔ channel <strong>{{ ev.channel }}</strong>
+            </span>
+            <span v-else>
+              <strong>{{ ev.channel }}</strong> ➔ {{ ev.target }}
+            </span>
+          </div>
           <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
             {{ ev.detail || ev.payloadSummary }}
           </div>
@@ -215,11 +329,10 @@
 
   <!-- ES6 App Module Bootstrapper -->
   <script type="module">
-    import { createSimulationApp } from "./js/app.js";
+    import { createSimulationApp } from "./js/app.js?v=2";
 
     window.app = createSimulationApp();
     PetiteVue.createApp(window.app).mount("body");
   </script>
 </body>
 </html>
-

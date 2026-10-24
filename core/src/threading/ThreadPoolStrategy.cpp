@@ -102,7 +102,7 @@ namespace {
 
                 s_msgCounter.increment(validViews);
                 s_bytesCounter.increment(batchBytes);
-                handler.onBatchReceived(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
             }
             batchStart = batchEnd;
         }

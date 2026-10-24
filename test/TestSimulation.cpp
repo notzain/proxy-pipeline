@@ -165,10 +165,8 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
         {
             if (out) {
                 out->send(msg.payload());
-                return Core::Message::Forwarded { };
-                return Core::Message::Forwarded { };
+                return Core::Message::Forwarded { .channel = "egress" };
             }
-            return Core::Message::Consumed { };
             return Core::Message::Consumed { };
         }
     };
@@ -199,4 +197,12 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
     REQUIRE(outCh->containsPayload("Deterministic Sim Payload"));
     auto records = outCh->getRecordedMessages();
     REQUIRE(records[0].recordedTimeNs == 100'000ULL);
+
+    // Verify MessageResult was reported to SimulationBackend
+    auto results = simBackend.getRecordedResults();
+    REQUIRE(results.size() == 1);
+    REQUIRE(results[0].inputChannel == "ingress");
+    REQUIRE(results[0].resultType == "Forwarded");
+    REQUIRE(results[0].outputChannel == "egress");
+    REQUIRE(results[0].recordedTimeNs == 100'000ULL);
 }

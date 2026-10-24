@@ -49,7 +49,7 @@ header {
   gap: 12px;
 }
 
-.badge-pcap {
+.badge-pcap, .badge-mode {
   background: linear-gradient(135deg, #0284c7, #2563eb);
   color: white;
   font-size: 11px;
@@ -57,6 +57,14 @@ header {
   padding: 3px 8px;
   border-radius: 6px;
   letter-spacing: 0.5px;
+}
+
+.badge-mode.mode-realtime {
+  background: linear-gradient(135deg, #059669, #0284c7);
+}
+
+.badge-mode.mode-trace {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
 }
 
 .controls {
@@ -92,6 +100,20 @@ button.primary {
 
 button.primary:hover {
   background: #0369a1;
+}
+
+button.btn-load {
+  background: #065f46;
+  border-color: #34d399;
+}
+
+button.btn-load:hover:not(:disabled) {
+  background: #047857;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .speed-ctrl {

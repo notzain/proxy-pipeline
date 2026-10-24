@@ -43,6 +43,7 @@ public:
 
 private:
     std::string m_inputChannelName;
+    std::string m_outputChannelsStr;
     ::Backend::IInputChannel* m_inputChannel { nullptr };
     std::vector<::Backend::IOutputChannel*> m_outputChannelsList;
 };

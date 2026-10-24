@@ -127,6 +127,18 @@ public:
      */
     virtual void onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages);
 
+    /**
+     * @brief Dispatches a received batch of messages to the handler.
+     *
+     * When the bound backend tracks per-message outcomes (e.g. SimBackend), this method
+     * executes onMessageReceived() per message and reports each MessageResult to the backend.
+     * Otherwise, it invokes the virtual onBatchReceived() for vectorized fast-path processing.
+     *
+     * @param channelName Name of the channel that received the messages.
+     * @param messages Non-owning views of the received messages.
+     */
+    void processBatch(std::string_view channelName, std::span<const Message::MessageView> messages);
+
     // --- Output Channel Management (Egress) ---
 
     /**
@@ -221,6 +233,7 @@ private:
     std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>, TransparentStringHash, std::equal_to<>> m_outputChannels;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
     std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
+    ::Backend::IBackend* m_backend { nullptr };
 
     void registerSignalHandler();
     void unregisterSignalHandler();

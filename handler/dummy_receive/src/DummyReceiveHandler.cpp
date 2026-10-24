@@ -10,6 +10,8 @@ namespace Proxy::Handler {
 
 bool DummyReceiveHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     auto inChannel = backend.createInputChannel(m_channelName, config);
     if (!inChannel) {

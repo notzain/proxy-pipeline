@@ -17,6 +17,8 @@ DummySendHandler::DummySendHandler(std::string channelName, std::string messageT
 
 bool DummySendHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    IHandler::configure(config, backend);
+
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     m_messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");
     int delayMs = config.getOr<int>("dummy.delay_ms", 1000);

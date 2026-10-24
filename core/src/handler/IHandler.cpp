@@ -1,4 +1,5 @@
 #include "core/handler/IHandler.hpp"
+#include "backend/IBackend.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "core/telemetry/StatsDExporter.hpp"
@@ -45,8 +46,10 @@ IHandler::~IHandler()
     unregisterSignalHandler();
 }
 
-bool IHandler::configure(const Config::Configuration& config, ::Backend::IBackend&)
+bool IHandler::configure(const Config::Configuration& config, ::Backend::IBackend& backend)
 {
+    m_backend = &backend;
+
     // Auto-configure telemetry StatsD exporter if telemetry.statsd.host or telemetry.host is set
     std::string statsdHost = config.getOr<std::string>("telemetry.statsd.host", config.getOr<std::string>("telemetry.host", ""));
     if (!statsdHost.empty()) {
@@ -98,8 +101,20 @@ void IHandler::onBatchReceived(std::string_view channelName, std::span<const Mes
             double durationUs = static_cast<double>(nowNs - msg.timestampNs()) / 1000.0;
             latencyHist.observe(durationUs);
         }
-        (void)onMessageReceived(channelName, msg);
+        auto result = onMessageReceived(channelName, msg);
+        if (m_backend) {
+            m_backend->onMessageResult(channelName, msg.rawBuffer(), result);
+        }
     }
+}
+
+void IHandler::processBatch(std::string_view channelName, std::span<const Message::MessageView> messages)
+{
+    if (m_backend && m_backend->tracksMessageResults()) {
+        IHandler::onBatchReceived(channelName, messages);
+        return;
+    }
+    onBatchReceived(channelName, messages);
 }
 
 ::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
@@ -188,6 +203,9 @@ void IHandler::startAsync()
 
     Proxy::Log::info("[IHandler] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...", m_inputChannels.size());
     m_strategy->start(*this);
+    if (m_backend) {
+        m_backend->onHandlerStarted();
+    }
 }
 
 void IHandler::wait()

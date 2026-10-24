@@ -92,11 +92,14 @@ class TraceManager:
     COMPARED_FIELDS = (
         "msgId",
         "type",
+        "result",
         "source",
         "target",
         "targetType",
         "channel",
         "status",
+        "reason",
+        "errorCode",
         "payloadSummary",
         "payloadFull",
         "batchCount",
@@ -117,7 +120,11 @@ class TraceManager:
         """Filters an event dict down to semantic fields only."""
         normalized = {}
         for field in cls.COMPARED_FIELDS:
-            if field in ev:
+            if field in ev and ev[field] is not None:
+                if field == "reason" and ev[field] == "":
+                    continue
+                if field == "errorCode" and ev[field] == 0:
+                    continue
                 normalized[field] = ev[field]
         if "batchIds" in ev and ev["batchIds"]:
             normalized["batchIds"] = sorted(list(ev["batchIds"]))
@@ -171,6 +178,7 @@ class TraceManager:
         events: list[dict[str, Any]],
         out_path: str | Path,
         chain_config: Optional[dict[str, Any]] = None,
+        packets: Optional[list[dict[str, Any]]] = None,
     ) -> None:
         """
         Saves a deterministic trace artifact.
@@ -180,17 +188,30 @@ class TraceManager:
         p.parent.mkdir(parents=True, exist_ok=True)
         norm_events = cls.normalize_trace(events)
 
+        doc: dict[str, Any] = {}
         if chain_config:
-            doc = {
-                "topology": cls.normalize_topology(chain_config),
-                "events": norm_events,
-            }
-        else:
-            doc = {
-                "events": norm_events,
-            }
+            doc["topology"] = cls.normalize_topology(chain_config)
+        if packets is not None:
+            doc["packets"] = packets
+        doc["events"] = norm_events
 
         p.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+
+    @classmethod
+    def build_trace_document(
+        cls,
+        events: list[dict[str, Any]],
+        chain_config: Optional[dict[str, Any]] = None,
+        packets: Optional[list[dict[str, Any]]] = None,
+    ) -> dict[str, Any]:
+        """Builds an in-memory normalized trace document ready for JSON export."""
+        doc: dict[str, Any] = {}
+        if chain_config:
+            doc["topology"] = cls.normalize_topology(chain_config)
+        if packets is not None:
+            doc["packets"] = packets
+        doc["events"] = cls.normalize_trace(events)
+        return doc
 
     @classmethod
     def load_trace(cls, in_path: str | Path) -> list[dict[str, Any]]:
@@ -209,22 +230,30 @@ class TraceManager:
 
     @classmethod
     def load_trace_document(cls, in_path: str | Path) -> dict[str, Any]:
-        """Loads the complete trace document (topology + events)."""
+        """Loads the complete trace document (topology + packets + events)."""
         p = Path(in_path)
         if not p.is_file():
             raise FileNotFoundError(f"Trace file not found: {in_path}")
         raw = json.loads(p.read_text(encoding="utf-8"))
         if isinstance(raw, dict):
+            norm_events = cls.normalize_trace(raw.get("events", []))
+            for idx, ev in enumerate(norm_events):
+                ev["eventId"] = idx + 1
             return {
                 "topology": raw.get("topology", {}),
-                "events": cls.normalize_trace(raw.get("events", [])),
+                "packets": raw.get("packets", []),
+                "events": norm_events,
             }
         elif isinstance(raw, list):
+            norm_events = cls.normalize_trace(raw)
+            for idx, ev in enumerate(norm_events):
+                ev["eventId"] = idx + 1
             return {
                 "topology": {},
-                "events": cls.normalize_trace(raw),
+                "packets": [],
+                "events": norm_events,
             }
-        return {"topology": {}, "events": []}
+        return {"topology": {}, "packets": [], "events": []}
 
     @classmethod
     def assert_trace_match(

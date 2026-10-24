@@ -59,16 +59,16 @@ export class CanvasRenderer {
     });
 
     handlers.forEach(h => {
-      const outCh = h.output_channel;
-      if (outCh) {
+      const outList = h.output_channels || (h.output_channel ? String(h.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      outList.forEach(outCh => {
         handlers.forEach(consumer => {
-          const inList = consumer.input_channels || (consumer.input_channel ? [consumer.input_channel] : []);
+          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
           if (inList.includes(outCh)) {
             outgoing.get(h.name).push(consumer.name);
             inDegrees.set(consumer.name, (inDegrees.get(consumer.name) || 0) + 1);
           }
         });
-      }
+      });
     });
 
     const ranks = new Map();
@@ -130,11 +130,11 @@ export class CanvasRenderer {
 
     // Construct DAG channels
     handlers.forEach(h => {
-      const outCh = h.output_channel;
-      if (outCh) {
-        const fromNode = this.handlersLayout.find(item => item.name === h.name);
+      const outList = h.output_channels || (h.output_channel ? String(h.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      const fromNode = this.handlersLayout.find(item => item.name === h.name);
+      outList.forEach(outCh => {
         handlers.forEach(consumer => {
-          const inList = consumer.input_channels || (consumer.input_channel ? [consumer.input_channel] : []);
+          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
           if (inList.includes(outCh)) {
             const toNode = this.handlersLayout.find(item => item.name === consumer.name);
             if (fromNode && toNode) {
@@ -146,7 +146,7 @@ export class CanvasRenderer {
             }
           }
         });
-      }
+      });
     });
   }
 
@@ -469,18 +469,21 @@ export class CanvasRenderer {
         const badgeX = targetNode.x;
         const badgeY = targetNode.y - targetNode.height/2 - 16;
 
-        ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : "rgba(56, 189, 248, 0.6)";
+        ctx.shadowColor = lastEvent.type === "drop" ? "rgba(248, 113, 113, 0.7)" : (lastEvent.type === "egress" ? "rgba(52, 211, 153, 0.7)" : "rgba(56, 189, 248, 0.6)");
         ctx.shadowBlur = 12;
-        ctx.fillStyle = lastEvent.type === "drop" ? "#991b1b" : "#0369a1";
+        ctx.fillStyle = lastEvent.type === "drop" ? "#991b1b" : (lastEvent.type === "egress" ? "#065f46" : "#0369a1");
         ctx.beginPath();
-        ctx.roundRect(badgeX - 44, badgeY - 10, 88, 20, 6);
+        ctx.roundRect(badgeX - 54, badgeY - 10, 108, 20, 6);
         ctx.fill();
 
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#f8fafc";
         ctx.font = "bold 10px monospace";
         ctx.textAlign = "center";
-        const statusText = lastEvent.type === "drop" ? `P${lastEvent.msgId} DROPPED` : (lastEvent.type === "egress" ? `P${lastEvent.msgId} SENT` : `P${lastEvent.msgId} HELD`);
+        const actionLabel = lastEvent.result
+          ? lastEvent.result.toUpperCase()
+          : (lastEvent.type === "drop" ? "DROPPED" : (lastEvent.type === "egress" ? "CONSUMED" : (lastEvent.type === "ingress" ? "LOADED" : "HELD")));
+        const statusText = `P${lastEvent.msgId} ${actionLabel}`;
         ctx.fillText(statusText, badgeX, badgeY + 3.5);
       }
     }

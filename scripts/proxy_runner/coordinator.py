@@ -1,10 +1,10 @@
 """
-Simulation coordinator managing step-by-step pipeline execution, socket interception,
-and drop detection across real C++ handlers.
+Simulation coordinator managing real-time packet loading, step-by-step pipeline execution,
+socket interception, and deterministic MessageResult tracking across real C++ handlers.
 """
 
+import json
 import os
-from pathlib import Path
 import socket
 import struct
 import threading
@@ -16,12 +16,15 @@ from .pcap import PcapPacket
 
 class InteractiveSimulationCoordinator:
     """
-    Coordinates step-by-step execution across real C++ handler binaries:
-      1. Holds preloaded PCAP packets.
-      2. Intercepts held messages in /tmp/proxy_sim_hold_<channel>.sock.
-      3. Forwards held messages into the downstream /tmp/proxy_sim_<channel>.sock on step.
-      4. Tracks drops if a handler completes without producing an envelope.
+    Coordinates Real-Time step-by-step execution across real C++ handler binaries:
+      1. Holds preloaded PCAP packets and loads them into ingress on command.
+      2. Listens on /tmp/proxy_sim_events.sock for exact MessageResult outcomes
+         (Forwarded, Consumed, Dropped with reason & errorCode) emitted by SimBackend.
+      3. Intercepts held messages in /tmp/proxy_sim_hold_<channel>.sock.
+      4. Steps held messages into the downstream /tmp/proxy_sim_<channel>.sock on command.
     """
+
+    EVENT_SOCK_PATH = "/tmp/proxy_sim_events.sock"
 
     def __init__(self, chain_config: dict[str, Any], pcap_packets: list[PcapPacket]):
         self.chain_config = chain_config
@@ -29,47 +32,173 @@ class InteractiveSimulationCoordinator:
         self.pcap_packets = pcap_packets
         self.current_packet_idx = 0
         self.events: list[dict[str, Any]] = []
-        self.step_history: list[dict[str, Any]] = []
         self.event_counter = 1
         self.lock = threading.Lock()
 
-        # In-flight active message state
-        # None if waiting for next packet to start, or { "packet": PcapPacket, "curr_node_idx": int, "channel": str, "held_data": bytes/list[bytes] }
+        # In-flight active message state:
+        # None when idle between packets, or dict with:
+        #   stage: "loaded" (staged at ingress) | "held" (held at output channel after Forwarded)
+        #   packet: PcapPacket
+        #   batch: list[PcapPacket]
+        #   curr_node_name: str
+        #   curr_node_type: str
+        #   input_channel: Optional[str]
+        #   output_channel: Optional[str]
+        #   held_data: Optional[list[bytes]]
+        #   pending_branches: list[dict[str, Any]] (for fan-out / SplitHandler)
         self.active_in_flight: Optional[dict[str, Any]] = None
 
-        # Custom batch groupings: list of lists of packet IDs (e.g. [[1, 2], [3], [4, 5, 6]])
+        # Custom batch groupings: list of lists of packet IDs
         self.batch_groups: list[list[int]] = []
 
         # Build topology mapping: channel -> [consumer_handlers]
         self.channel_to_consumers: dict[str, list[dict[str, Any]]] = {}
         for h in self.handlers:
             in_chs = h.get("input_channels") or ([h.get("input_channel")] if h.get("input_channel") else [])
+            if isinstance(in_chs, str):
+                in_chs = [c.strip() for c in in_chs.split(",") if c.strip()]
             for ch in in_chs:
                 if ch:
                     self.channel_to_consumers.setdefault(ch, []).append(h)
+
+        # Create receiving socket for MessageResult events (/tmp/proxy_sim_events.sock)
+        self.events_sock: Optional[socket.socket] = None
+        self._init_events_socket()
 
         # Create receiving sockets for held intermediate channels (/tmp/proxy_sim_hold_<ch>.sock)
         self.hold_sockets: dict[str, socket.socket] = {}
         self._init_hold_sockets()
 
-    def _init_hold_sockets(self):
+    def _init_events_socket(self):
+        try:
+            if os.path.exists(self.EVENT_SOCK_PATH):
+                os.unlink(self.EVENT_SOCK_PATH)
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            s.bind(self.EVENT_SOCK_PATH)
+            s.setblocking(False)
+            self.events_sock = s
+        except Exception as ex:
+            print(f"[Coordinator] Warning creating events socket {self.EVENT_SOCK_PATH}: {ex}")
+
+    def _discover_all_channels(self) -> set[str]:
+        channels: set[str] = set()
         for h in self.handlers:
-            out_chs = h.get("output_channels") or ([h.get("output_channel")] if h.get("output_channel") else [])
-            for ch in out_chs:
-                if not ch or ch in self.hold_sockets:
-                    continue
-                hold_path = f"/tmp/proxy_sim_hold_{ch}.sock"
-                try:
-                    if os.path.exists(hold_path):
-                        os.unlink(hold_path)
-                    s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-                    s.bind(hold_path)
-                    s.setblocking(False)
-                    self.hold_sockets[ch] = s
-                except Exception as ex:
-                    print(f"[Coordinator] Warning creating hold socket {hold_path}: {ex}")
+            for key in ("output_channel", "input_channel"):
+                val = h.get(key)
+                if isinstance(val, str) and val.strip():
+                    for part in val.split(","):
+                        if part.strip():
+                            channels.add(part.strip())
+            for key in ("output_channels", "input_channels"):
+                vals = h.get(key)
+                if isinstance(vals, list):
+                    for v in vals:
+                        if str(v).strip():
+                            channels.add(str(v).strip())
+                elif isinstance(vals, str):
+                    for part in vals.split(","):
+                        if part.strip():
+                            channels.add(part.strip())
+            h_cfg = h.get("config", {})
+            if isinstance(h_cfg, dict):
+                def_out = h_cfg.get("route.default_output")
+                if isinstance(def_out, str) and def_out.strip():
+                    channels.add(def_out.strip())
+                for k, v in h_cfg.items():
+                    if k.startswith("route.rule.") and k.endswith(".target") and isinstance(v, str) and v.strip():
+                        channels.add(v.strip())
+        return channels
+
+    def _init_hold_sockets(self):
+        for ch in self._discover_all_channels():
+            if not ch or ch in self.hold_sockets:
+                continue
+            hold_path = f"/tmp/proxy_sim_hold_{ch}.sock"
+            try:
+                if os.path.exists(hold_path):
+                    os.unlink(hold_path)
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+                s.bind(hold_path)
+                s.setblocking(False)
+                self.hold_sockets[ch] = s
+            except Exception as ex:
+                print(f"[Coordinator] Warning creating hold socket {hold_path}: {ex}")
+
+    def _ensure_hold_socket(self, ch: str) -> Optional[socket.socket]:
+        if not ch:
+            return None
+        if ch in self.hold_sockets:
+            return self.hold_sockets[ch]
+        hold_path = f"/tmp/proxy_sim_hold_{ch}.sock"
+        try:
+            if os.path.exists(hold_path):
+                os.unlink(hold_path)
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            s.bind(hold_path)
+            s.setblocking(False)
+            self.hold_sockets[ch] = s
+            return s
+        except Exception:
+            return None
+
+    def _drain_socket(self, sock: Optional[socket.socket]):
+        if not sock:
+            return
+        while True:
+            try:
+                sock.recvfrom(65535)
+            except Exception:
+                break
+
+    def _drain_all_sockets(self):
+        self._drain_socket(self.events_sock)
+        for sock in self.hold_sockets.values():
+            self._drain_socket(sock)
+
+    def wait_for_handlers_ready(self, timeout_sec: float = 5.0) -> bool:
+        """
+        Blocks until all configured handlers have emitted their 'handler_ready'
+        startup signal to /tmp/proxy_sim_events.sock, ensuring all channel sockets
+        and worker threads are bound and listening before any packet is injected.
+        """
+        if not self.events_sock or not self.handlers:
+            return True
+
+        expected = {
+            h.get("name", f"{h.get('type', 'handler')}_{idx + 1}")
+            for idx, h in enumerate(self.handlers)
+        }
+        ready: set[str] = set()
+        deadline = time.time() + timeout_sec
+
+        while time.time() < deadline and ready != expected:
+            try:
+                raw, _ = self.events_sock.recvfrom(65535)
+                if raw:
+                    ev = json.loads(raw.decode("utf-8", errors="replace"))
+                    if ev.get("type") == "handler_ready" and ev.get("handler"):
+                        ready.add(str(ev["handler"]))
+                        continue
+            except (BlockingIOError, socket.timeout):
+                pass
+            except Exception:
+                pass
+            time.sleep(0.005)
+
+        # Allow a brief settle window for worker threads to enter recvBatch
+        time.sleep(0.03)
+        return ready == expected
 
     def close(self):
+        if self.events_sock:
+            try:
+                self.events_sock.close()
+                if os.path.exists(self.EVENT_SOCK_PATH):
+                    os.unlink(self.EVENT_SOCK_PATH)
+            except Exception:
+                pass
+            self.events_sock = None
+
         for ch, s in self.hold_sockets.items():
             try:
                 s.close()
@@ -81,7 +210,7 @@ class InteractiveSimulationCoordinator:
         self.hold_sockets.clear()
 
     def select_packet(self, packet_id: int) -> dict[str, Any]:
-        """Sets the active/next packet to process to the packet with the given ID."""
+        """Selects a specific packet ID from the PCAP queue to be loaded next."""
         with self.lock:
             found_idx = -1
             for idx, p in enumerate(self.pcap_packets):
@@ -92,143 +221,199 @@ class InteractiveSimulationCoordinator:
             if found_idx == -1:
                 return {"status": "error", "message": f"Packet #{packet_id} not found"}
 
-            # If there was an in-flight message from another packet, clear it so we start fresh with selected packet
             self.active_in_flight = None
-            # Drain hold sockets to clear old buffered messages
-            for sock in self.hold_sockets.values():
-                while True:
-                    try:
-                        sock.recvfrom(65535)
-                    except Exception:
-                        break
-
+            self._drain_all_sockets()
             self.current_packet_idx = found_idx
             selected_pkt = self.pcap_packets[found_idx]
-            return {"status": "ok", "currentPacketIdx": self.current_packet_idx, "packet": selected_pkt.to_dict()}
-
-    def _snapshot_state(self) -> dict[str, Any]:
-        """Snapshots the coordinator's current state so it can be restored on step back."""
-        in_flight_copy = None
-        if self.active_in_flight:
-            raw_held = self.active_in_flight["held_data"]
-            if isinstance(raw_held, list):
-                held_copy = [bytes(b) for b in raw_held]
-            elif isinstance(raw_held, (bytes, bytearray)):
-                held_copy = bytes(raw_held)
-            else:
-                held_copy = raw_held
-
-            batch_copy = None
-            if self.active_in_flight.get("batch"):
-                batch_copy = list(self.active_in_flight["batch"])
-
-            in_flight_copy = {
-                "packet": self.active_in_flight["packet"],
-                "batch": batch_copy,
-                "curr_node_name": self.active_in_flight["curr_node_name"],
-                "curr_node_type": self.active_in_flight["curr_node_type"],
-                "output_channel": self.active_in_flight["output_channel"],
-                "held_data": held_copy,
+            return {
+                "status": "ok",
+                "currentPacketIdx": self.current_packet_idx,
+                "packet": selected_pkt.to_dict(),
+                "inFlight": False,
             }
-        return {
-            "current_packet_idx": self.current_packet_idx,
-            "active_in_flight": in_flight_copy,
-            "batch_groups": [list(g) for g in self.batch_groups],
-            "events_len": len(self.events),
-            "event_counter": self.event_counter,
-        }
 
-    def step_forward(self) -> dict[str, Any]:
+    def load_next_packet(self, packet_id: Optional[int] = None) -> dict[str, Any]:
         """
-        Executes one step in the pipeline:
-          Case A: No in-flight message -> load next packet into first handler's input channel.
-          Case B: In-flight message held at an intermediate output channel -> release to next input channel.
+        Loads the next PCAP packet (or specified packet_id) and stages it at chain ingress.
+        Does not execute the first handler yet until step_forward() is called.
         """
         with self.lock:
-            # Save pre-step snapshot for step_back
-            snapshot = self._snapshot_state()
+            if packet_id is not None:
+                found_idx = next((i for i, p in enumerate(self.pcap_packets) if p.seq_id == packet_id), -1)
+                if found_idx == -1:
+                    return {"status": "error", "message": f"Packet #{packet_id} not found"}
+                self.current_packet_idx = found_idx
+                self.active_in_flight = None
+                self._drain_all_sockets()
 
-            # Check if there is an in-flight message held at an output channel
             if self.active_in_flight is not None:
-                res = self._advance_in_flight()
-                if res.get("status") in ("ok", "dropped"):
-                    self.step_history.append(snapshot)
-                return res
+                return {
+                    "status": "busy",
+                    "message": "A packet is already in-flight. Step it forward through the chain before loading the next packet.",
+                }
 
-            # Case A: Start next packet
             if self.current_packet_idx >= len(self.pcap_packets):
-                return {"status": "finished", "message": "All PCAP packets have completed the chain."}
+                return {"status": "finished", "message": "All PCAP packets have been loaded."}
 
-            res = self._start_next_packet()
-            if res.get("status") in ("ok", "dropped"):
-                self.step_history.append(snapshot)
-            return res
+            pkt = self.pcap_packets[self.current_packet_idx]
 
-    def _start_next_packet(self) -> dict[str, Any]:
-        pkt = self.pcap_packets[self.current_packet_idx]
-        
-        # Check if the current packet is part of a user-defined batch group
-        current_batch_pkts: list[PcapPacket] = [pkt]
-        for group in self.batch_groups:
-            if pkt.seq_id in group:
-                id_to_pkt = {p.seq_id: p for p in self.pcap_packets}
-                matched = [id_to_pkt[pid] for pid in group if pid in id_to_pkt]
-                if matched:
-                    current_batch_pkts = matched
-                break
+            # Check if the current packet is part of a batch group
+            current_batch_pkts: list[PcapPacket] = [pkt]
+            for group in self.batch_groups:
+                if pkt.seq_id in group:
+                    id_to_pkt = {p.seq_id: p for p in self.pcap_packets}
+                    matched = [id_to_pkt[pid] for pid in group if pid in id_to_pkt]
+                    if matched:
+                        current_batch_pkts = matched
+                    break
 
-        # Advance current_packet_idx past the batch
-        self.current_packet_idx += len(current_batch_pkts)
+            self.current_packet_idx += len(current_batch_pkts)
 
+            first_handler = self.handlers[0] if self.handlers else None
+            if not first_handler:
+                return {"status": "error", "message": "No handlers defined in chain"}
+
+            is_generator = not first_handler.get("input_channel") and not first_handler.get("input_channels")
+            if is_generator and first_handler.get("type") != "udp_ingress_handler":
+                return {
+                    "status": "error",
+                    "message": f"Handler '{first_handler['name']}' is a generator with no input channel. Click '⚡ Trigger' on the node to emit messages.",
+                }
+
+            in_ch = first_handler.get("input_channel")
+            if not in_ch and first_handler.get("input_channels"):
+                chs = first_handler["input_channels"]
+                in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
+
+            udp_port = (
+                first_handler.get("config", {}).get("ingress.port")
+                if first_handler.get("type") == "udp_ingress_handler"
+                else None
+            )
+            ingress_channel_label = "udp_network" if udp_port else (in_ch or "ingress")
+
+            is_batch = len(current_batch_pkts) > 1
+            seq_label = (
+                f"Batch [{', '.join(str(p.seq_id) for p in current_batch_pkts)}]"
+                if is_batch
+                else f"#{pkt.seq_id}"
+            )
+
+            self.active_in_flight = {
+                "stage": "loaded",
+                "packet": pkt,
+                "batch": current_batch_pkts,
+                "curr_node_name": first_handler["name"],
+                "curr_node_type": first_handler.get("type", "unknown"),
+                "input_channel": ingress_channel_label,
+                "output_channel": None,
+                "held_data": None,
+                "pending_branches": [],
+            }
+
+            ev_ingress = {
+                "eventId": self.event_counter,
+                "msgId": pkt.seq_id,
+                "batchIds": [p.seq_id for p in current_batch_pkts],
+                "batchCount": len(current_batch_pkts),
+                "timestampNs": pkt.timestamp_ns,
+                "type": "ingress",
+                "result": "Loaded",
+                "source": f"{pkt.src_ip}:{pkt.src_port}",
+                "target": first_handler["name"],
+                "targetType": first_handler.get("type", "unknown"),
+                "channel": ingress_channel_label,
+                "payloadSummary": (
+                    f"Batch of {len(current_batch_pkts)} packets"
+                    if is_batch
+                    else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text)
+                ),
+                "payloadFull": (
+                    "\n---\n".join(p.payload_text for p in current_batch_pkts)
+                    if is_batch
+                    else pkt.payload_text
+                ),
+                "status": "loaded",
+                "latencyUs": 0.0,
+                "detail": f"Packet {seq_label} loaded at ingress for '{first_handler['name']}'",
+            }
+            self.event_counter += 1
+            self.events.append(ev_ingress)
+
+            return {
+                "status": "ok",
+                "event": ev_ingress,
+                "packet": pkt.to_dict(),
+                "currentPacketIdx": self.current_packet_idx,
+                "inFlight": True,
+            }
+
+    def step_forward(self, auto_load: bool = False) -> dict[str, Any]:
+        """
+        Steps the active in-flight packet forward into the next handler in the chain.
+        If no packet is currently loaded and auto_load is True, loads the next packet.
+        """
+        with self.lock:
+            if self.active_in_flight is None:
+                if auto_load:
+                    load_res = self._load_next_packet_unlocked()
+                    return load_res
+                return {
+                    "status": "no_packet_loaded",
+                    "message": "No packet is currently in-flight. Click 'Load Next Packet' first.",
+                }
+
+            stage = self.active_in_flight.get("stage")
+            if stage == "loaded":
+                return self._step_loaded_into_first_handler()
+            else:
+                return self._advance_in_flight()
+
+    def _load_next_packet_unlocked(self) -> dict[str, Any]:
+        """Internal helper to call load_next_packet when self.lock is already held."""
+        # Release and re-acquire via a clean internal method
+        if self.current_packet_idx >= len(self.pcap_packets):
+            return {"status": "finished", "message": "All PCAP packets have completed the chain."}
+        self.lock.release()
+        try:
+            return self.load_next_packet()
+        finally:
+            self.lock.acquire()
+
+    def _step_loaded_into_first_handler(self) -> dict[str, Any]:
+        info = self.active_in_flight
+        if not info:
+            return {"status": "idle"}
+
+        pkt: PcapPacket = info["packet"]
+        current_batch_pkts: list[PcapPacket] = info.get("batch") or [pkt]
         first_handler = self.handlers[0] if self.handlers else None
         if not first_handler:
             return {"status": "error", "message": "No handlers defined"}
 
-        # If the first handler is a generator (has no input channel), don't attempt to inject PCAP packets into it
-        is_generator = not first_handler.get("input_channel") and not first_handler.get("input_channels")
-        if is_generator and first_handler.get("type") != "udp_ingress_handler":
-            return {
-                "status": "error",
-                "message": f"Handler '{first_handler['name']}' is a generator with no input channel. Click '⚡ Trigger' on the node to emit messages.",
-            }
-
         in_ch = first_handler.get("input_channel")
+        if not in_ch and first_handler.get("input_channels"):
+            chs = first_handler["input_channels"]
+            in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
+
         first_in_sock = f"/tmp/proxy_sim_{in_ch}.sock" if in_ch else None
+        udp_port = (
+            first_handler.get("config", {}).get("ingress.port")
+            if first_handler.get("type") == "udp_ingress_handler"
+            else None
+        )
 
-        # Check if first handler is udp_ingress_handler with an external UDP port
-        udp_port = first_handler.get("config", {}).get("ingress.port") if first_handler.get("type") == "udp_ingress_handler" else None
+        # Drain any stale notifications before injecting
+        self._drain_socket(self.events_sock)
+        send_time_ns = time.time_ns()
 
-        is_batch = len(current_batch_pkts) > 1
-        seq_label = f"Batch [{', '.join(str(p.seq_id) for p in current_batch_pkts)}]" if is_batch else f"#{pkt.seq_id}"
-
-        # 1. Emit Ingress event
-        ev_ingress = {
-            "eventId": self.event_counter,
-            "msgId": pkt.seq_id,
-            "batchIds": [p.seq_id for p in current_batch_pkts],
-            "batchCount": len(current_batch_pkts),
-            "timestampNs": pkt.timestamp_ns,
-            "type": "ingress",
-            "source": f"{pkt.src_ip}:{pkt.src_port}",
-            "target": first_handler["name"],
-            "targetType": first_handler.get("type", "unknown"),
-            "channel": "udp_network" if udp_port else in_ch,
-            "payloadSummary": f"Batch of {len(current_batch_pkts)} packets" if is_batch else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text),
-            "payloadFull": "\n---\n".join(p.payload_text for p in current_batch_pkts) if is_batch else pkt.payload_text,
-            "status": "received",
-            "latencyUs": 0.0,
-            "detail": f"Packet {seq_label} injected into {first_handler['name']}",
-        }
-        self.event_counter += 1
-        self.events.append(ev_ingress)
-
-        # 2. Inject packet(s) into first handler
+        # Inject packet(s) into first handler
         if udp_port:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             for p in current_batch_pkts:
                 s.sendto(p.raw_payload, ("127.0.0.1", int(udp_port)))
             s.close()
-        else:
+        elif first_in_sock:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             try:
                 for p in current_batch_pkts:
@@ -238,85 +423,39 @@ class InteractiveSimulationCoordinator:
                 print(f"[Coordinator] Error delivering to {first_in_sock}: {ex}")
             s.close()
 
-        # 3. Wait up to 350ms for handler to process and produce output in its hold socket
-        out_ch = first_handler.get("output_channel")
-        held_data = self._poll_held_output(out_ch, timeout_sec=0.35)
-
-        if held_data:
-            # Message(s) reached the output channel and are held!
-            self.active_in_flight = {
-                "packet": pkt,
-                "batch": current_batch_pkts,
-                "curr_node_name": first_handler["name"],
-                "curr_node_type": first_handler.get("type"),
-                "output_channel": out_ch,
-                "held_data": held_data,
-            }
-            batch_count = len(held_data) if isinstance(held_data, list) else 1
-            batch_note = f" (Batch of {batch_count} messages)" if batch_count > 1 else ""
-            ev_hop = {
-                "eventId": self.event_counter,
-                "msgId": pkt.seq_id,
-                "batchIds": [p.seq_id for p in current_batch_pkts],
-                "batchCount": len(current_batch_pkts),
-                "timestampNs": time.time_ns(),
-                "type": "hop",
-                "source": "ingress",
-                "target": first_handler["name"],
-                "targetType": first_handler.get("type"),
-                "channel": in_ch if in_ch else (f"udp:{udp_port}" if udp_port else out_ch),
-                "payloadSummary": f"Batch of {batch_count} messages" if is_batch else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text),
-                "payloadFull": "\n---\n".join(p.payload_text for p in current_batch_pkts) if is_batch else pkt.payload_text,
-                "status": "at_node",
-                "latencyUs": 10.0,
-                "detail": f"Injected into '{first_handler['name']}' -> held at output channel '{out_ch}'{batch_note}",
-            }
-            self.event_counter += 1
-            self.events.append(ev_hop)
-            return {"status": "ok", "event": ev_hop, "heldChannel": out_ch}
-        else:
-            # 0 bytes output: message was dropped by this handler!
-            self.active_in_flight = None
-            ev_drop = {
-                "eventId": self.event_counter,
-                "msgId": pkt.seq_id,
-                "batchIds": [p.seq_id for p in current_batch_pkts],
-                "batchCount": len(current_batch_pkts),
-                "timestampNs": time.time_ns(),
-                "type": "drop",
-                "source": "ingress",
-                "target": first_handler["name"],
-                "targetType": first_handler.get("type"),
-                "channel": in_ch if in_ch else "ingress",
-                "payloadSummary": pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text,
-                "payloadFull": pkt.payload_text,
-                "status": "dropped",
-                "latencyUs": 15.0,
-                "detail": f"Packet {seq_label} rejected and discarded at node '{first_handler['name']}'",
-            }
-            self.event_counter += 1
-            self.events.append(ev_drop)
-            return {"status": "dropped", "event": ev_drop}
+        return self._process_handler_execution(
+            handler_spec=first_handler,
+            source_name="ingress",
+            input_channel=info.get("input_channel") or in_ch or "ingress",
+            pkt=pkt,
+            batch_pkts=current_batch_pkts,
+            send_time_ns=send_time_ns,
+            pending_branches=info.get("pending_branches", []),
+        )
 
     def _advance_in_flight(self) -> dict[str, Any]:
-        """Releases the held message from the output channel into the next handler."""
+        """Releases the held message from the output channel into the next downstream handler."""
         info = self.active_in_flight
         if not info:
             return {"status": "idle"}
 
-        pkt = info["packet"]
-        ch = info["output_channel"]
+        pkt: PcapPacket = info["packet"]
+        batch_pkts: list[PcapPacket] = info.get("batch") or [pkt]
+        ch: str = info["output_channel"]
         held_data = info["held_data"]
+        pending_branches: list[dict[str, Any]] = list(info.get("pending_branches") or [])
 
         consumers = self.channel_to_consumers.get(ch, [])
         if not consumers:
-            # End of chain or sink handler reached!
-            self.active_in_flight = None
+            # Output channel is an external chain egress (no downstream handler consumes it)
             ev_egress = {
                 "eventId": self.event_counter,
                 "msgId": pkt.seq_id,
+                "batchIds": [p.seq_id for p in batch_pkts],
+                "batchCount": len(batch_pkts),
                 "timestampNs": time.time_ns(),
                 "type": "egress",
+                "result": "Forwarded",
                 "source": info["curr_node_name"],
                 "target": info["curr_node_name"],
                 "targetType": info["curr_node_type"],
@@ -324,128 +463,281 @@ class InteractiveSimulationCoordinator:
                 "payloadSummary": pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text,
                 "payloadFull": pkt.payload_text,
                 "status": "transmitted",
-                "latencyUs": 25.0,
-                "detail": f"Packet #{pkt.seq_id} successfully delivered at chain egress ({ch})",
+                "latencyUs": 10.0,
+                "detail": f"Packet #{pkt.seq_id} transmitted out of chain egress channel '{ch}'",
             }
             self.event_counter += 1
             self.events.append(ev_egress)
+            self._advance_or_clear_branches(pending_branches)
             return {"status": "ok", "event": ev_egress, "finishedPacket": pkt.seq_id}
 
         next_handler = consumers[0]
         next_in_sock = f"/tmp/proxy_sim_{ch}.sock"
 
-        # Deliver all held envelope(s) in the batch into the next handler's input channel socket
+        self._drain_socket(self.events_sock)
+        send_time_ns = time.time_ns()
+
+        # Deliver held envelope(s) into the next handler's input channel socket
         s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         try:
             if isinstance(held_data, list):
                 for envelope in held_data:
                     s.sendto(envelope, next_in_sock)
-            else:
+            elif held_data:
                 s.sendto(held_data, next_in_sock)
         except Exception as ex:
             print(f"[Coordinator] Error delivering held envelope to {next_in_sock}: {ex}")
         s.close()
 
-        # Wait up to 250ms for next handler to process
-        next_out_ch = next_handler.get("output_channel")
-        is_sink = not next_out_ch or "egress" in next_handler.get("type", "") or "print" in next_handler.get("type", "")
+        return self._process_handler_execution(
+            handler_spec=next_handler,
+            source_name=info["curr_node_name"],
+            input_channel=ch,
+            pkt=pkt,
+            batch_pkts=batch_pkts,
+            send_time_ns=send_time_ns,
+            pending_branches=pending_branches,
+        )
 
-        batch_pkts = info.get("batch") or [pkt]
-        batch_ids_str = f"Batch [{', '.join(str(p.seq_id) for p in batch_pkts)}]" if len(batch_pkts) > 1 else f"#{pkt.seq_id}"
+    def _process_handler_execution(
+        self,
+        handler_spec: dict[str, Any],
+        source_name: str,
+        input_channel: str,
+        pkt: PcapPacket,
+        batch_pkts: list[PcapPacket],
+        send_time_ns: int,
+        pending_branches: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        handler_name = handler_spec["name"]
+        handler_type = handler_spec.get("type", "unknown")
+        is_batch = len(batch_pkts) > 1
+        seq_label = (
+            f"Batch [{', '.join(str(p.seq_id) for p in batch_pkts)}]"
+            if is_batch
+            else f"#{pkt.seq_id}"
+        )
 
-        if is_sink:
-            time.sleep(0.08)  # Let sink print or egress
-            self.active_in_flight = None
-            ev_sink = {
+        # Wait for SimBackend::onMessageResult event(s) from this handler
+        results = self._wait_for_message_results(
+            expected_handler=handler_name,
+            expected_count=len(batch_pkts),
+            timeout_sec=0.5,
+        )
+        elapsed_us = round(max(1.0, (time.time_ns() - send_time_ns) / 1000.0), 2)
+
+        # Determine primary outcome from MessageResult
+        forwarded_results = [r for r in results if r.get("result") == "Forwarded"]
+        consumed_results = [r for r in results if r.get("result") == "Consumed"]
+        dropped_results = [r for r in results if r.get("result") == "Dropped"]
+
+        if forwarded_results:
+            primary_res = forwarded_results[0]
+            raw_out_ch = primary_res.get("outputChannel") or handler_spec.get("output_channel") or ""
+            out_channels = [c.strip() for c in raw_out_ch.split(",") if c.strip()]
+            if not out_channels and handler_spec.get("output_channels"):
+                ocs = handler_spec["output_channels"]
+                out_channels = list(ocs) if isinstance(ocs, list) else [c.strip() for c in str(ocs).split(",") if c.strip()]
+
+            collected_branches: list[dict[str, Any]] = []
+            for oc in out_channels:
+                self._ensure_hold_socket(oc)
+                held = self._poll_held_output(oc, timeout_sec=0.15)
+                if held:
+                    collected_branches.append({
+                        "stage": "held",
+                        "packet": pkt,
+                        "batch": batch_pkts,
+                        "curr_node_name": handler_name,
+                        "curr_node_type": handler_type,
+                        "input_channel": input_channel,
+                        "output_channel": oc,
+                        "held_data": held,
+                    })
+
+            # Fallback if hold socket had data on default output channel
+            if not collected_branches and out_channels:
+                oc = out_channels[0]
+                held = self._poll_held_output(oc, timeout_sec=0.15)
+                if held:
+                    collected_branches.append({
+                        "stage": "held",
+                        "packet": pkt,
+                        "batch": batch_pkts,
+                        "curr_node_name": handler_name,
+                        "curr_node_type": handler_type,
+                        "input_channel": input_channel,
+                        "output_channel": oc,
+                        "held_data": held,
+                    })
+
+            if collected_branches:
+                first_branch = collected_branches[0]
+                extra_branches = collected_branches[1:] + pending_branches
+                first_branch["pending_branches"] = extra_branches
+                self.active_in_flight = first_branch
+
+                out_ch = first_branch["output_channel"]
+                held_data = first_branch["held_data"]
+                out_batch_count = len(held_data) if isinstance(held_data, list) else 1
+                all_out_str = ", ".join(b["output_channel"] for b in collected_branches)
+                batch_note = f" (Batch of {out_batch_count} messages)" if out_batch_count > 1 else ""
+
+                ev_hop = {
+                    "eventId": self.event_counter,
+                    "msgId": pkt.seq_id,
+                    "batchIds": [p.seq_id for p in batch_pkts],
+                    "batchCount": out_batch_count,
+                    "timestampNs": primary_res.get("timestampNs", time.time_ns()),
+                    "type": "hop",
+                    "result": "Forwarded",
+                    "source": source_name,
+                    "target": handler_name,
+                    "targetType": handler_type,
+                    "channel": out_ch,
+                    "payloadSummary": (
+                        f"Batch of {out_batch_count} messages"
+                        if out_batch_count > 1
+                        else (primary_res.get("summary") or pkt.payload_text[:60])
+                    ),
+                    "payloadFull": (
+                        "\n---\n".join(p.payload_text for p in batch_pkts)
+                        if is_batch
+                        else (primary_res.get("payload") or pkt.payload_text)
+                    ),
+                    "status": "forwarded",
+                    "latencyUs": elapsed_us,
+                    "detail": f"Packet {seq_label} processed by '{handler_name}' [MessageResult: Forwarded -> '{all_out_str}']{batch_note}",
+                }
+                self.event_counter += 1
+                self.events.append(ev_hop)
+                return {"status": "ok", "event": ev_hop, "heldChannel": out_ch}
+
+        if consumed_results:
+            primary_res = consumed_results[0]
+            ev_consumed = {
                 "eventId": self.event_counter,
                 "msgId": pkt.seq_id,
                 "batchIds": [p.seq_id for p in batch_pkts],
                 "batchCount": len(batch_pkts),
-                "timestampNs": time.time_ns(),
+                "timestampNs": primary_res.get("timestampNs", time.time_ns()),
                 "type": "egress",
-                "source": info["curr_node_name"],
-                "target": next_handler["name"],
-                "targetType": next_handler.get("type"),
-                "channel": ch,
-                "payloadSummary": f"Batch of {len(batch_pkts)} messages" if len(batch_pkts) > 1 else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text),
-                "payloadFull": "\n---\n".join(p.payload_text for p in batch_pkts) if len(batch_pkts) > 1 else pkt.payload_text,
-                "status": "transmitted",
-                "latencyUs": 20.0,
-                "detail": f"{batch_ids_str} reached sink/egress handler '{next_handler['name']}'",
+                "result": "Consumed",
+                "source": source_name,
+                "target": handler_name,
+                "targetType": handler_type,
+                "channel": input_channel,
+                "payloadSummary": (
+                    f"Batch of {len(batch_pkts)} messages"
+                    if is_batch
+                    else (primary_res.get("summary") or pkt.payload_text[:60])
+                ),
+                "payloadFull": (
+                    "\n---\n".join(p.payload_text for p in batch_pkts)
+                    if is_batch
+                    else (primary_res.get("payload") or pkt.payload_text)
+                ),
+                "status": "consumed",
+                "latencyUs": elapsed_us,
+                "detail": f"Packet {seq_label} consumed by sink/egress handler '{handler_name}' [MessageResult: Consumed]",
             }
             self.event_counter += 1
-            self.events.append(ev_sink)
-            return {"status": "ok", "event": ev_sink, "finishedPacket": pkt.seq_id}
+            self.events.append(ev_consumed)
+            self._advance_or_clear_branches(pending_branches)
+            return {"status": "ok", "event": ev_consumed, "finishedPacket": pkt.seq_id}
 
-        # Intermediate handler
-        next_held = self._poll_held_output(next_out_ch, timeout_sec=0.25)
-        if next_held:
-            out_batch_count = len(next_held) if isinstance(next_held, list) else 1
-            self.active_in_flight = {
-                "packet": pkt,
-                "batch": batch_pkts,
-                "curr_node_name": next_handler["name"],
-                "curr_node_type": next_handler.get("type"),
-                "output_channel": next_out_ch,
-                "held_data": next_held,
-            }
-            batch_note = f" (Batch of {out_batch_count} messages)" if out_batch_count > 1 else ""
-            ev_hop = {
-                "eventId": self.event_counter,
-                "msgId": pkt.seq_id,
-                "batchIds": [p.seq_id for p in batch_pkts],
-                "batchCount": out_batch_count,
-                "timestampNs": time.time_ns(),
-                "type": "hop",
-                "source": info["curr_node_name"],
-                "target": next_handler["name"],
-                "targetType": next_handler.get("type"),
-                "channel": ch,
-                "payloadSummary": f"Batch of {out_batch_count} messages" if out_batch_count > 1 else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text),
-                "payloadFull": "\n---\n".join(p.payload_text for p in batch_pkts) if len(batch_pkts) > 1 else pkt.payload_text,
-                "status": "at_node",
-                "latencyUs": 15.0,
-                "detail": f"{batch_ids_str} forwarded from '{info['curr_node_name']}' to '{next_handler['name']}' -> held at '{next_out_ch}'{batch_note}",
-            }
-            self.event_counter += 1
-            self.events.append(ev_hop)
-            return {"status": "ok", "event": ev_hop, "heldChannel": next_out_ch}
+        # Dropped (either explicit MessageResult::Dropped or handler discarded without forwarding)
+        primary_res = dropped_results[0] if dropped_results else {}
+        reason = primary_res.get("reason") or "Message rejected by handler"
+        error_code = int(primary_res.get("errorCode") or 0)
+        code_suffix = f" (code {error_code})" if error_code else ""
+
+        ev_drop = {
+            "eventId": self.event_counter,
+            "msgId": pkt.seq_id,
+            "batchIds": [p.seq_id for p in batch_pkts],
+            "batchCount": len(batch_pkts),
+            "timestampNs": primary_res.get("timestampNs", time.time_ns()),
+            "type": "drop",
+            "result": "Dropped",
+            "reason": reason,
+            "errorCode": error_code,
+            "source": source_name,
+            "target": handler_name,
+            "targetType": handler_type,
+            "channel": input_channel,
+            "payloadSummary": (
+                f"Batch of {len(batch_pkts)} messages"
+                if is_batch
+                else (primary_res.get("summary") or pkt.payload_text[:60])
+            ),
+            "payloadFull": (
+                "\n---\n".join(p.payload_text for p in batch_pkts)
+                if is_batch
+                else (primary_res.get("payload") or pkt.payload_text)
+            ),
+            "status": "dropped",
+            "latencyUs": elapsed_us,
+            "detail": f"Packet {seq_label} dropped by '{handler_name}' [MessageResult: Dropped - {reason}{code_suffix}]",
+        }
+        self.event_counter += 1
+        self.events.append(ev_drop)
+        self._advance_or_clear_branches(pending_branches)
+        return {"status": "dropped", "event": ev_drop}
+
+    def _advance_or_clear_branches(self, pending_branches: list[dict[str, Any]]):
+        if pending_branches:
+            nxt = pending_branches[0]
+            nxt["pending_branches"] = pending_branches[1:]
+            self.active_in_flight = nxt
         else:
-            # Dropped at this handler! (e.g. XmlVerificationHandler discarded invalid schema)
             self.active_in_flight = None
-            ev_drop = {
-                "eventId": self.event_counter,
-                "msgId": pkt.seq_id,
-                "batchIds": [p.seq_id for p in batch_pkts],
-                "batchCount": len(batch_pkts),
-                "timestampNs": time.time_ns(),
-                "type": "drop",
-                "source": info["curr_node_name"],
-                "target": next_handler["name"],
-                "targetType": next_handler.get("type"),
-                "channel": ch,
-                "payloadSummary": f"Batch of {len(batch_pkts)} messages" if len(batch_pkts) > 1 else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text),
-                "payloadFull": "\n---\n".join(p.payload_text for p in batch_pkts) if len(batch_pkts) > 1 else pkt.payload_text,
-                "status": "dropped",
-                "latencyUs": 20.0,
-                "detail": f"{batch_ids_str} dropped by '{next_handler['name']}' (0 bytes emitted to '{next_out_ch}')",
-            }
-            self.event_counter += 1
-            self.events.append(ev_drop)
-            return {"status": "dropped", "event": ev_drop}
+
+    def _wait_for_message_results(
+        self,
+        expected_handler: str,
+        expected_count: int = 1,
+        timeout_sec: float = 0.5,
+    ) -> list[dict[str, Any]]:
+        """
+        Polls /tmp/proxy_sim_events.sock for MessageResult JSON payloads emitted by SimBackend::onMessageResult.
+        """
+        if not self.events_sock:
+            return []
+
+        matched: list[dict[str, Any]] = []
+        deadline = time.time() + timeout_sec
+
+        while time.time() < deadline and len(matched) < expected_count:
+            try:
+                raw, _ = self.events_sock.recvfrom(65535)
+                if raw:
+                    ev = json.loads(raw.decode("utf-8", errors="replace"))
+                    if ev.get("type") == "message_result" and ev.get("handler") == expected_handler:
+                        matched.append(ev)
+                        # Extend deadline slightly to drain remaining batch items if any
+                        deadline = min(deadline, time.time() + 0.05)
+                        continue
+            except (BlockingIOError, socket.timeout):
+                pass
+            except Exception:
+                pass
+            time.sleep(0.002)
+
+        return matched
 
     def _poll_held_output(self, channel_name: Optional[str], timeout_sec: float = 0.15) -> Optional[list[bytes]]:
         """
         Polls the hold socket for one or more batched messages emitted by the upstream handler.
-        Returns a list of datagram byte buffers if any were emitted.
         """
-        if not channel_name or channel_name not in self.hold_sockets:
+        if not channel_name:
             return None
-        sock = self.hold_sockets[channel_name]
+        sock = self._ensure_hold_socket(channel_name)
+        if not sock:
+            return None
         start = time.time()
         batch: list[bytes] = []
 
-        # Wait for the first message
         while time.time() - start < timeout_sec:
             try:
                 data, _ = sock.recvfrom(65535)
@@ -456,13 +748,12 @@ class InteractiveSimulationCoordinator:
                 pass
             except Exception:
                 break
-            time.sleep(0.005)
+            time.sleep(0.002)
 
         if not batch:
             return None
 
-        # Speculatively drain any additional batched datagrams queued in the socket
-        drain_deadline = time.time() + 0.05
+        drain_deadline = time.time() + 0.02
         while time.time() < drain_deadline:
             try:
                 data, _ = sock.recvfrom(65535)
@@ -475,55 +766,12 @@ class InteractiveSimulationCoordinator:
 
         return batch
 
-    def step_back(self) -> dict[str, Any]:
-        """
-        Reverts the pipeline state to the previous step snapshot.
-        """
-        with self.lock:
-            if not self.step_history:
-                return {"status": "error", "message": "No previous steps to revert."}
-
-            prev_snap = self.step_history.pop()
-            self.current_packet_idx = prev_snap["current_packet_idx"]
-            self.active_in_flight = prev_snap["active_in_flight"]
-            self.event_counter = prev_snap["event_counter"]
-            
-            # Truncate events list back to snapshot length
-            del self.events[prev_snap["events_len"]:]
-
-            # Drain any hold sockets to prevent desync
-            for sock in self.hold_sockets.values():
-                while True:
-                    try:
-                        sock.recvfrom(65535)
-                    except Exception:
-                        break
-
-            active_event = self.events[-1] if self.events else None
-            return {
-                "status": "ok",
-                "currentPacketIdx": self.current_packet_idx,
-                "inFlight": bool(self.active_in_flight),
-                "event": active_event,
-            }
-
     def trigger_generator(self, node_name: str) -> dict[str, Any]:
         """
-        Triggers a generator node on demand:
-          1. Finds the generator handler specification.
-          2. Creates its configured payload as a raw envelope.
-          3. Holds the message in the generator's output channel hold socket.
-          4. Emits a hop/trigger event and marks it as active in-flight held at that node.
+        Triggers a generator node on demand and holds the generated envelope at its output channel.
         """
         with self.lock:
-            snapshot = self._snapshot_state()
-
-            gen_handler = None
-            for h in self.handlers:
-                if h.get("name") == node_name:
-                    gen_handler = h
-                    break
-
+            gen_handler = next((h for h in self.handlers if h.get("name") == node_name), None)
             if not gen_handler:
                 return {"status": "error", "message": f"Handler node '{node_name}' not found."}
 
@@ -531,20 +779,15 @@ class InteractiveSimulationCoordinator:
             if not out_ch:
                 return {"status": "error", "message": f"Handler '{node_name}' has no output_channel."}
 
-            # Drain hold socket only if we are not accumulating an in-flight batch at this channel
-            if out_ch in self.hold_sockets and not (self.active_in_flight and self.active_in_flight.get("curr_node_name") == gen_handler["name"]):
-                while True:
-                    try:
-                        self.hold_sockets[out_ch].recvfrom(65535)
-                    except Exception:
-                        break
+            if out_ch in self.hold_sockets and not (
+                self.active_in_flight and self.active_in_flight.get("curr_node_name") == gen_handler["name"]
+            ):
+                self._drain_socket(self.hold_sockets[out_ch])
 
-            # Resolve message text
             h_config = gen_handler.get("config", {})
             msg_text = h_config.get("dummy.message", f"Message from {node_name}")
             payload_bytes = msg_text.encode("utf-8")
 
-            # Pack raw MessageEnvelope
             header = struct.pack(
                 "<HBBHIQ",
                 0x5058,  # magic 'PX'
@@ -568,6 +811,7 @@ class InteractiveSimulationCoordinator:
                 payload_text=msg_text,
             )
             self.pcap_packets.append(synthetic_pkt)
+            self.current_packet_idx = len(self.pcap_packets)
 
             is_accumulating = (
                 self.active_in_flight is not None
@@ -577,11 +821,7 @@ class InteractiveSimulationCoordinator:
 
             if is_accumulating:
                 existing_held = self.active_in_flight["held_data"]
-                if isinstance(existing_held, list):
-                    held_batch = existing_held + [raw_envelope]
-                else:
-                    held_batch = [existing_held, raw_envelope]
-
+                held_batch = (existing_held if isinstance(existing_held, list) else [existing_held]) + [raw_envelope]
                 existing_batch_pkts = self.active_in_flight.get("batch") or [self.active_in_flight["packet"]]
                 all_batch_pkts = existing_batch_pkts + [synthetic_pkt]
 
@@ -599,28 +839,32 @@ class InteractiveSimulationCoordinator:
                 ev_gen = {
                     "eventId": self.event_counter,
                     "msgId": synthetic_pkt.seq_id,
-                    "batchIds": [p.seq_id for p in all_batch_pkts],
+                    "batchIds": batch_ids,
                     "batchCount": batch_len,
                     "timestampNs": time.time_ns(),
                     "type": "hop",
+                    "result": "Forwarded",
                     "source": gen_handler["name"],
                     "target": gen_handler["name"],
                     "targetType": gen_handler.get("type"),
                     "channel": out_ch,
                     "payloadSummary": f"Batch of {batch_len} messages [Pkts {batch_ids_str}]",
                     "payloadFull": "\n---\n".join(p.payload_text for p in all_batch_pkts),
-                    "status": "at_node",
+                    "status": "forwarded",
                     "latencyUs": 5.0,
                     "detail": f"Generator '{gen_handler['name']}' accumulated message #{synthetic_pkt.seq_id} -> held batch of {batch_len} at '{out_ch}'",
                 }
             else:
                 self.active_in_flight = {
+                    "stage": "held",
                     "packet": synthetic_pkt,
                     "batch": [synthetic_pkt],
                     "curr_node_name": gen_handler["name"],
                     "curr_node_type": gen_handler.get("type"),
+                    "input_channel": None,
                     "output_channel": out_ch,
                     "held_data": [raw_envelope],
+                    "pending_branches": [],
                 }
 
                 ev_gen = {
@@ -630,42 +874,25 @@ class InteractiveSimulationCoordinator:
                     "batchCount": 1,
                     "timestampNs": time.time_ns(),
                     "type": "hop",
+                    "result": "Forwarded",
                     "source": gen_handler["name"],
                     "target": gen_handler["name"],
                     "targetType": gen_handler.get("type"),
                     "channel": out_ch,
                     "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
                     "payloadFull": msg_text,
-                    "status": "at_node",
+                    "status": "forwarded",
                     "latencyUs": 5.0,
                     "detail": f"Generator '{gen_handler['name']}' triggered -> held at output channel '{out_ch}'",
                 }
+
             self.event_counter += 1
             self.events.append(ev_gen)
-            if not is_accumulating:
-                self.step_history.append(snapshot)
-
-            batch_obj = None
-            if is_accumulating:
-                batch_obj = {
-                    "id": f"batch_{all_batch_pkts[0].seq_id}_{len(all_batch_pkts)}",
-                    "batchCount": len(all_batch_pkts),
-                    "batchIds": [p.seq_id for p in all_batch_pkts],
-                    "timestampNs": all_batch_pkts[0].timestamp_ns,
-                    "srcIp": all_batch_pkts[0].src_ip,
-                    "srcPort": all_batch_pkts[0].src_port,
-                    "dstIp": all_batch_pkts[0].dst_ip,
-                    "dstPort": all_batch_pkts[0].dst_port,
-                    "size": sum(len(p.raw_payload) for p in all_batch_pkts),
-                    "payloadSummary": f"Batch of {len(all_batch_pkts)} messages [Pkts {batch_ids_str}]",
-                    "payloadFull": "\n---\n".join(f"[Message #{p.seq_id}]: {p.payload_text}" for p in all_batch_pkts),
-                }
 
             return {
                 "status": "ok",
                 "event": ev_gen,
                 "packet": synthetic_pkt.to_dict(),
-                "batchPacket": batch_obj,
                 "heldChannel": out_ch,
                 "inFlight": True,
             }
@@ -674,27 +901,19 @@ class InteractiveSimulationCoordinator:
         with self.lock:
             self.current_packet_idx = 0
             self.events.clear()
-            self.step_history.clear()
             self.event_counter = 1
             self.active_in_flight = None
-            for sock in self.hold_sockets.values():
-                while True:
-                    try:
-                        sock.recvfrom(65535)
-                    except Exception:
-                        break
+            self._drain_all_sockets()
 
     def run_to_completion(self, max_steps: int = 10000) -> list[dict[str, Any]]:
         """
-        Fast-forward headless loop: advances the pipeline step-by-step until all
-        packets have reached egress or drop, or max_steps limit is reached.
-        Returns the list of recorded simulation events.
+        Fast-forward headless loop: loads each packet and steps it through the pipeline
+        until all packets have reached Consumed, Egress, or Dropped.
         """
         steps = 0
         while steps < max_steps:
-            res = self.step_forward()
+            res = self.step_forward(auto_load=True)
             steps += 1
             if res.get("status") == "finished":
                 break
         return list(self.events)
-

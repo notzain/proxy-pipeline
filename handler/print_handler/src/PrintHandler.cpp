@@ -42,7 +42,6 @@ Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view ch
     Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
     return Core::Message::Consumed { };
-    return Core::Message::Consumed { };
 }
 
 void PrintHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

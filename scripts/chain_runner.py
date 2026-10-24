@@ -154,7 +154,11 @@ def run_chain(
                 cwd=str(root_dir),
             )
             processes.append((handler_name, proc, conf_file))
-            time.sleep(0.12)
+
+        if coordinator and backend == "sim":
+            coordinator.wait_for_handlers_ready(timeout_sec=5.0)
+        else:
+            time.sleep(0.2)
 
         print(f"\n[ChainRunner] All {len(processes)} handler(s) started and ready.")
 
@@ -170,8 +174,14 @@ def run_chain(
 
             if export_trace_path:
                 print(f"[ChainRunner] Exporting execution trace to: {export_trace_path}")
-                TraceManager.save_trace(recorded_events, export_trace_path, chain_config=chain_def)
-                print(f"[ChainRunner] Successfully saved trace artifact ({len(recorded_events)} events with embedded topology).")
+                packets_meta = [p.to_dict() for p in coordinator.pcap_packets]
+                TraceManager.save_trace(
+                    recorded_events,
+                    export_trace_path,
+                    chain_config=chain_def,
+                    packets=packets_meta,
+                )
+                print(f"[ChainRunner] Successfully saved trace artifact ({len(recorded_events)} events with embedded topology and packets).")
 
             if assert_trace_path:
                 print(f"[ChainRunner] Asserting execution trace against expected reference: {assert_trace_path}")
@@ -286,17 +296,21 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Standalone trace viewer mode (no chain config required)
+    # Standalone trace viewer mode (no chain config or backend required)
     if args.view_trace:
         from proxy_runner.trace_viewer import run_trace_viewer
         return run_trace_viewer(args.view_trace, port=args.port)
 
+    if args.config and args.config.name.endswith(".trace.json"):
+        from proxy_runner.trace_viewer import run_trace_viewer
+        return run_trace_viewer(args.config, port=args.port)
+
     if not args.config:
         parser.error("the following arguments are required: config (or use --view-trace)")
 
-    # Default to 'sim' backend if running headless or with trace operations
+    # Default to 'sim' backend if running headless, with --pcap, or with trace operations
     backend_override = args.backend
-    if (args.headless or args.export_trace or args.assert_trace) and not backend_override:
+    if (args.headless or args.pcap or args.export_trace or args.assert_trace) and not backend_override:
         backend_override = "sim"
 
     return run_chain(

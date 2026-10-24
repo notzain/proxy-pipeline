@@ -1,4 +1,6 @@
 #include "core/simulation/SimulationBackend.hpp"
+#include <type_traits>
+#include <variant>
 
 namespace Core::Simulation {
 
@@ -29,6 +31,46 @@ std::unique_ptr<::Backend::IOutputChannel> SimulationBackend::createOutputChanne
     auto ch = std::make_unique<MockOutputChannel>(m_clock);
     m_outputMap[std::string(name)] = ch.get();
     return ch;
+}
+
+bool SimulationBackend::tracksMessageResults() const noexcept
+{
+    return true;
+}
+
+void SimulationBackend::onMessageResult(
+    std::string_view inputChannel,
+    std::span<const std::byte>,
+    const ::Backend::MessageResult& result)
+{
+    RecordedMessageResult entry;
+    entry.inputChannel = std::string(inputChannel);
+    entry.recordedTimeNs = m_clock ? m_clock->nowNs() : 0;
+
+    std::visit(
+        [&](const auto& outcome) {
+            using T = std::decay_t<decltype(outcome)>;
+            if constexpr (std::is_same_v<T, ::Backend::Forwarded>) {
+                entry.resultType = "Forwarded";
+                entry.outputChannel = std::string(outcome.channel);
+            } else if constexpr (std::is_same_v<T, ::Backend::Consumed>) {
+                entry.resultType = "Consumed";
+            } else if constexpr (std::is_same_v<T, ::Backend::Dropped>) {
+                entry.resultType = "Dropped";
+                entry.dropReason = std::string(outcome.reason);
+                entry.errorCode = outcome.errorCode;
+            }
+        },
+        result);
+
+    std::lock_guard lock(m_resultsMutex);
+    m_recordedResults.push_back(std::move(entry));
+}
+
+std::vector<RecordedMessageResult> SimulationBackend::getRecordedResults() const
+{
+    std::lock_guard lock(m_resultsMutex);
+    return m_recordedResults;
 }
 
 MockOutputChannel* SimulationBackend::getOutputChannel(std::string_view name) const

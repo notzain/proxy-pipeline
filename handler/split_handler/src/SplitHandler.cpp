@@ -39,8 +39,8 @@ bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backen
     }
     m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inputChannel));
 
-    std::string outChannelsStr = config.getOr<std::string>("split.output_channels", "");
-    std::vector<std::string> outChannelNames = splitString(outChannelsStr, ',');
+    m_outputChannelsStr = config.getOr<std::string>("split.output_channels", "");
+    std::vector<std::string> outChannelNames = splitString(m_outputChannelsStr, ',');
 
     for (const auto& outName : outChannelNames) {
         auto outChannel = backend.createOutputChannel(outName, config);
@@ -66,7 +66,7 @@ Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view ch
         }
     }
     Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
-    return Core::Message::Forwarded { };
+    return Core::Message::Forwarded { .channel = m_outputChannelsStr };
 }
 
 void SplitHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

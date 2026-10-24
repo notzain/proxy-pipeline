@@ -126,14 +126,14 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
             auto* target = rule.targetChannel();
             if (target) {
                 target->send(message.rawBuffer());
-                return Core::Message::Forwarded { };
+                return Core::Message::Forwarded { .channel = rule.targetChannelName() };
             }
         }
     }
 
     if (m_defaultOutputChannel) {
         m_defaultOutputChannel->send(message.rawBuffer());
-        return Core::Message::Forwarded { };
+        return Core::Message::Forwarded { .channel = m_defaultChannelName };
     }
 
     Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
