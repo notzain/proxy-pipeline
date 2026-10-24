@@ -30,7 +30,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param message Non-owning view of the received enveloped message.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Batch printing hook for incoming message batches.

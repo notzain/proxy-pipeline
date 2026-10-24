@@ -47,10 +47,10 @@ bool UdpEgressHandler::configure(const Core::Config::Configuration& config, ::Ba
     return true;
 }
 
-void UdpEgressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     if (!m_udpOut) {
-        return;
+        return Core::Message::Consumed { };
     }
 
     auto payload = message.payload();
@@ -70,7 +70,7 @@ void UdpEgressHandler::onMessageReceived(std::string_view channelName, const Cor
             if (!m_udpOut->sendTo(payload, originAddr)) {
                 Proxy::Log::warn("[UdpEgressHandler] Failed to send reply to origin client {}", originAddr.toString());
             }
-            return;
+            return Core::Message::Consumed { };
         }
     }
 
@@ -81,6 +81,7 @@ void UdpEgressHandler::onMessageReceived(std::string_view channelName, const Cor
     if (!m_udpOut->send(payload)) {
         Proxy::Log::warn("[UdpEgressHandler] Failed to forward packet to {}:{}", m_destHost, m_destPort);
     }
+    return Core::Message::Consumed { };
 }
 
 void UdpEgressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

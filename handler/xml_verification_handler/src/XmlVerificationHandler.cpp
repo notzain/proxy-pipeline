@@ -65,7 +65,7 @@ bool XmlVerificationHandler::validate(std::span<const std::byte> xmlData) const
     return m_validator && m_validator->validate(xmlData);
 }
 
-void XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     if (validate(message.payload())) {
         Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes payload) verified against XSD schema. Forwarding to '{}'...",
@@ -77,10 +77,15 @@ void XmlVerificationHandler::onMessageReceived(std::string_view channelName, con
         } else {
             Proxy::Log::warn("[XmlVerificationHandler] Output channel '{}' not found", m_outputChannelName);
         }
-    } else {
-        Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
-            channelName, message.payload().size(), m_schemaPath.string());
+        return Core::Message::Forwarded { .channel = m_outputChannelName };
     }
+
+    Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
+        channelName, message.payload().size(), m_schemaPath.string());
+    return Core::Message::Dropped {
+        .reason = "Rejected: XSD schema validation failure",
+        .errorCode = 400
+    };
 }
 
 void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

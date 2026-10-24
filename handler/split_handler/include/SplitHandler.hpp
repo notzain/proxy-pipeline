@@ -30,7 +30,7 @@ public:
      * @param channelName Identifying name of the receiving channel.
      * @param message Enveloped message view.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Callback invoked when a batch of messages is received on an input channel.

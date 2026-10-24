@@ -49,7 +49,7 @@ bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::B
     return true;
 }
 
-void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult UdpIngressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     Proxy::Log::debug("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
         message.payload().size(), message.metadata().size(), channelName, m_outputChannelName);
@@ -61,6 +61,7 @@ void UdpIngressHandler::onMessageReceived(std::string_view channelName, const Co
     } else {
         Proxy::Log::warn("[UdpIngressHandler] Output channel '{}' not found", m_outputChannelName);
     }
+    return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
 void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

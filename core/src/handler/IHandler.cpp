@@ -79,8 +79,9 @@ const std::vector<IHandler::NamedInputChannel>& IHandler::getInputChannels() con
     return m_inputChannels;
 }
 
-void IHandler::onMessageReceived(std::string_view, const Message::MessageView&)
+Message::MessageResult IHandler::onMessageReceived(std::string_view, const Message::MessageView&)
 {
+    return Message::Consumed { };
 }
 
 void IHandler::onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages)
@@ -97,7 +98,7 @@ void IHandler::onBatchReceived(std::string_view channelName, std::span<const Mes
             double durationUs = static_cast<double>(nowNs - msg.timestampNs()) / 1000.0;
             latencyHist.observe(durationUs);
         }
-        onMessageReceived(channelName, msg);
+        (void)onMessageReceived(channelName, msg);
     }
 }
 

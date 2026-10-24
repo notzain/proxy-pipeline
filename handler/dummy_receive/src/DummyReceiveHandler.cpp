@@ -20,7 +20,7 @@ bool DummyReceiveHandler::configure(const Core::Config::Configuration& config, :
     return true;
 }
 
-void DummyReceiveHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult DummyReceiveHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     auto payload = message.payload();
     std::string textFormatted;
@@ -38,6 +38,7 @@ void DummyReceiveHandler::onMessageReceived(std::string_view channelName, const 
 
     Proxy::Log::info("[DummyReceive] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[DummyReceive] Channel '{}' hex dump: {}", channelName, hexFormatted);
+    return Core::Message::Consumed { };
 }
 
 } // namespace Proxy::Handler

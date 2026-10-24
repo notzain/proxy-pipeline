@@ -366,6 +366,8 @@
       <button id="btn-step-back" onclick="stepBack()">⏮ Back</button>
       <button id="btn-step" onclick="stepForward()">⏭ Step</button>
       <button id="btn-reset" onclick="resetSim()">↺ Reset</button>
+      <input type="file" id="trace-file-input" accept=".json" style="display: none;" onchange="handleTraceFileSelect(event)">
+      <button id="btn-load-trace" onclick="document.getElementById('trace-file-input').click()" style="border-color: #38bdf8; color: #38bdf8;">📂 Load Trace</button>
       <div class="speed-ctrl">
         <span>Interval</span>
         <input id="speed-slider" type="range" min="0.2" max="3.0" step="0.2" value="1.0" oninput="updateSpeed(this.value)">
@@ -376,10 +378,10 @@
 
   <main>
     <!-- Left: Preloaded PCAP Packets Panel + Dedicated PCAP Packet Inspector -->
-    <div class="panel">
+    <div class="panel" id="pcap-panel">
       <div class="panel-header">
-        <span>PCAP Packets (<span id="pcap-count">0</span>)</span>
-        <span style="font-size: 11px; color: var(--text-muted);">Queue</span>
+        <span id="pcap-panel-title">PCAP Packets (<span id="pcap-count">0</span>)</span>
+        <span id="pcap-panel-subtitle" style="font-size: 11px; color: var(--text-muted);">Queue</span>
       </div>
 
       <!-- Dedicated Inspector: Selected PCAP Packet -->
@@ -492,6 +494,9 @@
     let selectedPacketId = null;
     let selectedTraceEventId = null;
     let selectedNodeName = null;
+    let offlineTraceMode = false;
+    let offlineAllEvents = [];
+    let offlineStepIdx = 0;
 
     const canvas = document.getElementById("sim-canvas");
     const ctx = canvas.getContext("2d");
@@ -522,9 +527,12 @@
       try {
         const resp = await fetch("/api/simulation");
         simData = await resp.json();
+        document.getElementById("pcap-panel-title").innerHTML = `PCAP Packets (<span id="pcap-count">${simData.packetCount}</span>)`;
+        document.getElementById("pcap-panel-subtitle").textContent = "Queue";
         document.getElementById("chain-badge").textContent = `Chain: ${simData.chain.backend.toUpperCase()} | PCAP: ${simData.pcap}`;
         document.getElementById("stat-total").textContent = simData.packetCount;
-        document.getElementById("pcap-count").textContent = simData.packetCount;
+        const pcapCountEl = document.getElementById("pcap-count");
+        if (pcapCountEl) pcapCountEl.textContent = simData.packetCount;
         document.getElementById("trace-count").textContent = simData.events.length;
         
         updateStats();
@@ -602,10 +610,12 @@
       });
 
       const numCols = Math.max(...ranks.values(), 0) + 1;
-      const colSpacing = (w - 180) / Math.max(numCols - 1, 1);
+      const leftMargin = 150; // Ensure comfortable padding on the left for the Ingress Queue container
+      const rightMargin = 90;
+      const colSpacing = (w - leftMargin - rightMargin) / Math.max(numCols - 1, 1);
 
       columns.forEach((colHandlers, r) => {
-        const colX = numCols === 1 ? w / 2 : 90 + r * colSpacing;
+        const colX = numCols === 1 ? Math.max(leftMargin + 70, w / 2) : leftMargin + r * colSpacing;
         const rowSpacing = (h - 90) / (colHandlers.length + 1);
         colHandlers.forEach((handler, rowIdx) => {
           const nodeY = 45 + (rowIdx + 1) * rowSpacing;
@@ -669,12 +679,61 @@
         ctx.fillText(`channel: ${ch.name}`, midX, midY);
       });
 
-      // Draw Handler Nodes
-      handlersLayout.forEach(h => {
+      // Draw Handler Nodes and Ingress Ingestion Cloud/Queue
+      handlersLayout.forEach((h, hIdx) => {
         const x = h.x - h.width/2;
         const y = h.y - h.height/2;
         const isTarget = lastEvent && (lastEvent.target === h.name || lastEvent.source === h.name);
         const isSelected = selectedNodeName === h.name;
+
+        // Only draw on ingress nodes (handlers with type udp_ingress_handler or receiving external udp_network / external ingress events)
+        const isIngressNode = h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
+        if (isIngressNode) {
+          // Draw Ingress Queue / Cloud hugging the left side of the ingress handler node
+          const cloudW = 54;
+          const cloudH = h.height - 6;
+          const cloudX = x - cloudW - 14;
+          const cloudY = y + 3;
+
+          ctx.save();
+          // Subtle pulse glow if currently receiving or holding ingress packet
+          const isIngressActive = lastEvent && (lastEvent.type === "ingress" || (lastEvent.type === "hop" && lastEvent.source === "ingress"));
+          ctx.shadowColor = isIngressActive ? "rgba(52, 211, 153, 0.65)" : "rgba(56, 189, 248, 0.2)";
+          ctx.shadowBlur = isIngressActive ? 16 : 6;
+
+          // Cloud / Ingress Queue container with dashed wire-frame style
+          ctx.fillStyle = isIngressActive ? "rgba(6, 78, 59, 0.45)" : "rgba(15, 23, 42, 0.75)";
+          ctx.beginPath();
+          ctx.roundRect(cloudX, cloudY, cloudW, cloudH, [10, 4, 4, 10]);
+          ctx.fill();
+
+          ctx.strokeStyle = isIngressActive ? "#34d399" : "rgba(148, 163, 184, 0.45)";
+          ctx.lineWidth = isIngressActive ? 2 : 1.5;
+          ctx.setLineDash([4, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Ingress Queue Header Label
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = isIngressActive ? "#6ee7b7" : "rgba(148, 163, 184, 0.85)";
+          ctx.font = "bold 9px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("UDP IN", cloudX + cloudW/2, cloudY + 16);
+          ctx.font = "8px sans-serif";
+          ctx.fillText("queue", cloudX + cloudW/2, cloudY + 28);
+
+          // Connector dots / arrow bridging the cloud to the node entrance
+          ctx.strokeStyle = isIngressActive ? "#34d399" : "rgba(148, 163, 184, 0.35)";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(cloudX + cloudW, h.y);
+          ctx.lineTo(x, h.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.restore();
+        }
 
         if (isSelected) {
           ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
@@ -776,16 +835,26 @@
         ctx.save();
         const pulse = p.progress >= 1.0 ? Math.sin(Date.now() / 200) * 1.5 : 0;
         ctx.shadowColor = p.color;
-        ctx.shadowBlur = 18 + pulse * 2;
+        ctx.shadowBlur = p.isIngress ? 24 : 18 + pulse * 2;
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(curX, curY, 7 + pulse, 0, Math.PI * 2);
+        const headRadius = p.isIngress ? 8.5 : 7;
+        ctx.arc(curX, curY, headRadius + pulse, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(curX, curY, 4.5 + pulse * 0.5, 0, Math.PI * 2);
+        ctx.arc(curX, curY, (headRadius * 0.65) + pulse * 0.5, 0, Math.PI * 2);
         ctx.fill();
+
+        // Extra outer ripple ring for incoming ingress packets
+        if (p.isIngress && p.progress < 1.0) {
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
@@ -820,21 +889,43 @@
       const targetNode = handlersLayout.find(h => h.name === event.target);
       if (!targetNode) return;
 
+      const isIngress = event.type === "ingress" || event.channel === "udp_network" || (event.source && event.source.includes(":"));
+      const isHopAtIngress = event.type === "hop" && (event.source === "ingress" || !handlersLayout.some(h => h.name === event.source));
+
+      const cloudW = 54;
+      const cloudCenter = targetNode.x - targetNode.width / 2 - 14 - cloudW / 2;
+
       let startX = targetNode.x - targetNode.width / 2 - 80;
       let startY = targetNode.y;
+      let endX = targetNode.x;
+      let endY = targetNode.y;
 
       const srcNode = handlersLayout.find(h => h.name === event.source);
       if (srcNode) {
-        // Transition directly from source node's right edge to target node's left edge
+        // Inter-node hop: Transition directly from source node's right edge to target node's left edge
         startX = srcNode.x + srcNode.width / 2;
         startY = srcNode.y;
+        endX = targetNode.x;
+      } else if (isIngress) {
+        // Step 1: External packet injection materializes inside the ingress queue cloud
+        // It animates a high-energy materialize pulse directly within the cloud
+        startX = cloudCenter - 18;
+        startY = targetNode.y;
+        endX = cloudCenter;
+      } else if (isHopAtIngress) {
+        // Step 2: Next hop releases the held packet from the queue cloud straight into network_ingress
+        startX = cloudCenter;
+        startY = targetNode.y;
+        endX = targetNode.x;
       }
 
-      let endX = targetNode.x;
-      let endY = targetNode.y;
       if (event.type === "egress") {
         endX = targetNode.x + targetNode.width / 2 + 60;
       }
+
+      const particleColor = event.type === "drop" 
+        ? "#f87171" 
+        : (isIngress ? "#34d399" : (event.type === "egress" ? "#a78bfa" : "#38bdf8"));
 
       activeParticles = [{
         startX: startX,
@@ -842,12 +933,152 @@
         endX: endX,
         endY: endY,
         progress: 0.0,
-        speed: 0.022,
-        color: event.type === "drop" ? "#f87171" : "#38bdf8"
+        speed: isIngress ? 0.045 : 0.024,
+        color: particleColor,
+        isIngress: isIngress
       }];
     }
 
+    function handleTraceFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const doc = JSON.parse(e.target.result);
+          loadStandaloneTrace(doc, file.name);
+        } catch (err) {
+          alert("Invalid trace JSON file: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function loadStandaloneTrace(doc, fileName) {
+      if (isPlaying) togglePlay();
+
+      let events = [];
+      let topology = null;
+
+      if (Array.isArray(doc)) {
+        events = doc;
+      } else if (typeof doc === "object") {
+        events = doc.events || [];
+        topology = doc.topology || null;
+      }
+
+      // Reconstruct or use embedded topology
+      let handlers = [];
+      let backendName = "sim";
+
+      if (topology && topology.handlers && topology.handlers.length > 0) {
+        handlers = topology.handlers;
+        backendName = topology.backend || "sim";
+      } else {
+        // Auto-discover nodes and channels from events
+        const nodeMap = new Map();
+        events.forEach(ev => {
+          if (ev.target && !nodeMap.has(ev.target)) {
+            nodeMap.set(ev.target, {
+              name: ev.target,
+              type: ev.targetType || "handler",
+              input_channel: ev.channel,
+              output_channel: null
+            });
+          }
+          if (ev.source && !nodeMap.has(ev.source) && !ev.source.includes(":") && ev.source !== "ingress") {
+            nodeMap.set(ev.source, {
+              name: ev.source,
+              type: "handler",
+              input_channel: null,
+              output_channel: ev.channel
+            });
+          }
+        });
+        handlers = Array.from(nodeMap.values());
+      }
+
+      // Standalone traces are independent of PCAPs - start at the beginning of trace
+      offlineTraceMode = true;
+      offlineAllEvents = events;
+      offlineStepIdx = events.length > 0 ? 1 : 0; // start at the first event
+
+      simData = {
+        chain: { backend: backendName, handlers: handlers },
+        pcap: fileName || "Loaded Trace",
+        packetCount: 0,
+        packets: [],
+        events: offlineAllEvents.slice(0, offlineStepIdx),
+        currentPacketIdx: 0,
+        inFlight: false,
+        inFlightSummary: null
+      };
+
+      document.getElementById("chain-badge").textContent = `Standalone Trace: ${fileName || "trace.json"}`;
+      document.getElementById("chain-badge").style.borderColor = "#38bdf8";
+      document.getElementById("stat-total").textContent = offlineAllEvents.length;
+      document.getElementById("pcap-panel-title").innerHTML = `Trace Replay (${offlineAllEvents.length} events)`;
+      document.getElementById("pcap-panel-subtitle").textContent = "Standalone Mode";
+      document.getElementById("trace-count").textContent = simData.events.length;
+
+      updateStats();
+      resizeCanvas();
+      renderPcapList();
+      renderTraceList();
+
+      if (simData.events.length > 0) {
+        const firstEv = simData.events[0];
+        lastEvent = firstEv;
+        selectedTraceEventId = firstEv.eventId;
+        inspectTraceEvent(firstEv);
+        triggerTransitionAnimation(firstEv);
+      }
+    }
+
+    function updateOfflineTraceListSelection(targetIdx) {
+      const container = document.getElementById("trace-list");
+      if (!container) return;
+
+      const items = container.querySelectorAll(".list-item");
+      if (items.length === 0) {
+        renderTraceList();
+        return;
+      }
+
+      items.forEach((el, elIdx) => {
+        el.classList.toggle("active", elIdx === targetIdx);
+        el.style.opacity = elIdx >= offlineStepIdx ? "0.4" : "1.0";
+      });
+
+      if (targetIdx >= 0 && items[targetIdx]) {
+        items[targetIdx].scrollIntoView({ block: "nearest", behavior: "auto" });
+      }
+    }
+
     async function stepForward() {
+      if (offlineTraceMode) {
+        if (offlineStepIdx >= offlineAllEvents.length) {
+          document.getElementById("stat-current").textContent = "Trace End";
+          if (isPlaying) togglePlay();
+          return;
+        }
+        offlineStepIdx++;
+        simData.events = offlineAllEvents.slice(0, offlineStepIdx);
+        const ev = offlineAllEvents[offlineStepIdx - 1];
+        lastEvent = ev;
+        selectedTraceEventId = ev.eventId;
+        document.getElementById("trace-count").textContent = simData.events.length;
+        updateStats();
+
+        // Update existing DOM elements in place and scroll towards the newly selected item
+        updateOfflineTraceListSelection(offlineStepIdx - 1);
+
+        inspectTraceEvent(ev);
+        triggerTransitionAnimation(ev);
+        return;
+      }
+
       try {
         const resp = await fetch("/api/simulation/step", { method: "POST" });
         const res = await resp.json();
@@ -874,6 +1105,32 @@
     }
 
     async function stepBack() {
+      if (offlineTraceMode) {
+        if (isPlaying) togglePlay();
+        if (offlineStepIdx <= 0) return;
+        offlineStepIdx--;
+        simData.events = offlineAllEvents.slice(0, offlineStepIdx);
+        document.getElementById("trace-count").textContent = simData.events.length;
+        updateStats();
+
+        // Update existing DOM elements in place and scroll towards the newly selected item
+        updateOfflineTraceListSelection(offlineStepIdx - 1);
+
+        if (offlineStepIdx > 0) {
+          const ev = offlineAllEvents[offlineStepIdx - 1];
+          lastEvent = ev;
+          selectedTraceEventId = ev.eventId;
+          inspectTraceEvent(ev);
+          triggerTransitionAnimation(ev);
+        } else {
+          lastEvent = null;
+          selectedTraceEventId = null;
+          activeParticles = [];
+          clearTraceInspector();
+        }
+        return;
+      }
+
       try {
         if (isPlaying) togglePlay();
         const resp = await fetch("/api/simulation/step_back", { method: "POST" });
@@ -928,6 +1185,18 @@
 
     async function resetSim() {
       if (isPlaying) togglePlay();
+      if (offlineTraceMode) {
+        offlineStepIdx = 0;
+        simData.events = [];
+        lastEvent = null;
+        activeParticles = [];
+        selectedTraceEventId = null;
+        document.getElementById("trace-count").textContent = "0";
+        updateStats();
+        renderTraceList();
+        clearTraceInspector();
+        return;
+      }
       await fetch("/api/simulation/reset", { method: "POST" });
       lastEvent = null;
       activeParticles = [];
@@ -958,6 +1227,24 @@
     function renderPcapList() {
       const container = document.getElementById("pcap-list");
       container.innerHTML = "";
+
+      if (offlineTraceMode) {
+        const traceNotice = document.createElement("div");
+        traceNotice.style.padding = "20px 14px";
+        traceNotice.style.fontSize = "12px";
+        traceNotice.style.color = "var(--text-muted)";
+        traceNotice.style.textAlign = "center";
+        traceNotice.style.lineHeight = "1.5";
+        traceNotice.innerHTML = `
+          <div style="font-size: 20px; margin-bottom: 8px;">📜</div>
+          <strong style="color: var(--accent);">Standalone Trace Loaded</strong><br>
+          <span style="font-size: 11px;">Independent execution trace with ${offlineAllEvents.length} recorded events.</span><br><br>
+          Click any event in the <strong>Execution Trace</strong> on the right to jump directly to that point, then use <strong>⏮ Back</strong> and <strong>⏭ Step</strong> to navigate.
+        `;
+        container.appendChild(traceNotice);
+        return;
+      }
+
       if (!simData || !simData.packets || simData.packets.length === 0) {
         // Helpful empty state for generator-driven chains
         const emptyNotice = document.createElement("div");
@@ -1100,19 +1387,46 @@
     /* Render Execution Trace List (Right Panel) */
     function renderTraceList() {
       const container = document.getElementById("trace-list");
+      const prevScrollTop = container.scrollTop;
       container.innerHTML = "";
       if (!simData || !simData.events) return;
 
-      simData.events.forEach((ev) => {
+      const eventsToRender = offlineTraceMode ? offlineAllEvents : simData.events;
+
+      eventsToRender.forEach((ev, idx) => {
         const item = document.createElement("div");
         item.className = "list-item";
         if (ev.eventId === selectedTraceEventId) {
           item.classList.add("active");
         }
 
-        item.onclick = () => {
+        // In offline trace mode, dim future events that haven't been stepped to yet
+        if (offlineTraceMode && idx >= offlineStepIdx) {
+          item.style.opacity = "0.4";
+        }
+
+        item.onclick = (e) => {
+          if (e) e.stopPropagation();
+          if (isPlaying) togglePlay();
+
           selectedTraceEventId = ev.eventId;
           lastEvent = ev;
+
+          if (offlineTraceMode) {
+            // Seek to this selected event so forward/backward steps resume from here
+            offlineStepIdx = idx + 1;
+            simData.events = offlineAllEvents.slice(0, offlineStepIdx);
+            document.getElementById("trace-count").textContent = simData.events.length;
+            updateStats();
+
+            // In-place UI update without destroying DOM elements or resetting scroll position!
+            const allItems = container.querySelectorAll(".list-item");
+            allItems.forEach((el, elIdx) => {
+              el.classList.toggle("active", elIdx === idx);
+              el.style.opacity = elIdx >= offlineStepIdx ? "0.4" : "1.0";
+            });
+          }
+
           inspectTraceEvent(ev);
           triggerTransitionAnimation(ev);
         };
@@ -1129,11 +1443,28 @@
         container.appendChild(item);
       });
 
-      // Auto-scroll trace container to the bottom so the latest step event is always visible
-      container.scrollTop = container.scrollHeight;
+      // Restore scroll position so re-rendering does not reset scroll
+      container.scrollTop = prevScrollTop;
+
+      // Only adjust scroll if the newly selected active item is outside the visible container
+      const activeItem = container.querySelector(".list-item.active");
+      if (activeItem) {
+        const cTop = container.scrollTop;
+        const cBottom = cTop + container.clientHeight;
+        const eTop = activeItem.offsetTop - container.offsetTop;
+        const eBottom = eTop + activeItem.offsetHeight;
+
+        if (eTop < cTop || eBottom > cBottom) {
+          activeItem.scrollIntoView({ block: "nearest", behavior: "auto" });
+        }
+      }
     }
 
     async function selectPacket(pktId) {
+      lastEvent = null;
+      activeParticles = [];
+      if (offlineTraceMode) return;
+
       try {
         const resp = await fetch("/api/simulation/select", {
           method: "POST",
@@ -1142,8 +1473,6 @@
         });
         const res = await resp.json();
         if (res.status === "ok") {
-          lastEvent = null;
-          activeParticles = [];
           await fetchState();
         }
       } catch (e) {
@@ -1187,13 +1516,12 @@
 
       // Update active highlight in execution trace list
       const items = document.querySelectorAll("#trace-list .list-item");
-      if (simData && simData.events) {
-        simData.events.forEach((itemEv, idx) => {
-          if (items[idx]) {
-            items[idx].classList.toggle("active", itemEv.eventId === ev.eventId);
-          }
-        });
-      }
+      const listEvents = offlineTraceMode ? offlineAllEvents : (simData ? simData.events : []);
+      listEvents.forEach((itemEv, idx) => {
+        if (items[idx]) {
+          items[idx].classList.toggle("active", itemEv.eventId === ev.eventId);
+        }
+      });
     }
 
     function clearTraceInspector() {

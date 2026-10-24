@@ -8,7 +8,7 @@ BenchmarkReceiver::BenchmarkReceiver(std::size_t expectedCount)
     m_receiveTimestamps.reserve(m_expectedCount);
 }
 
-void BenchmarkReceiver::onMessageReceived(std::string_view, const Core::Message::MessageView& message)
+Core::Message::MessageResult BenchmarkReceiver::onMessageReceived(std::string_view, const Core::Message::MessageView& message)
 {
     {
         std::lock_guard lock(m_mutex);
@@ -20,6 +20,7 @@ void BenchmarkReceiver::onMessageReceived(std::string_view, const Core::Message:
         m_cv.notify_all();
         stop();
     }
+    return Core::Message::Consumed { };
 }
 
 bool BenchmarkReceiver::waitForCompletion(std::chrono::milliseconds timeout, std::chrono::milliseconds idleDrainTimeout)

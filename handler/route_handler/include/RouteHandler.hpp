@@ -24,7 +24,7 @@ public:
 
     bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
 
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
     void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
 
     /**

@@ -51,7 +51,7 @@ public:
      * @brief Ingress callback for enveloped messages received from the internal pipeline.
      * Restores client destination from UdpMetadata and transmits message.payload() via UDP.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Vectorized ingress callback for batches of enveloped messages.

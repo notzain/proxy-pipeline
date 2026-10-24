@@ -52,7 +52,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param message Validated view of the received enveloped message.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Vectorized ingress callback for batches of enveloped messages.

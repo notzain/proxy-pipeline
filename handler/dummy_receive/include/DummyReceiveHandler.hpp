@@ -28,7 +28,7 @@ public:
      * @param channelName Name of the channel.
      * @param buffer Non-owning view of the raw byte buffer received.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
 private:
     std::string m_channelName;

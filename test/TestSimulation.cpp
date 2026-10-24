@@ -161,11 +161,15 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
             return true;
         }
 
-        void onMessageReceived(std::string_view, const Core::Message::MessageView& msg) override
+        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& msg) override
         {
             if (out) {
                 out->send(msg.payload());
+                return Core::Message::Forwarded { };
+                return Core::Message::Forwarded { };
             }
+            return Core::Message::Consumed { };
+            return Core::Message::Consumed { };
         }
     };
 

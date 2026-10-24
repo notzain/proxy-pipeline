@@ -119,23 +119,28 @@ const std::vector<RouteRule>& RouteHandler::rules() const noexcept
     return m_rules;
 }
 
-void RouteHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     for (const auto& rule : m_rules) {
         if (rule.matches(message)) {
             auto* target = rule.targetChannel();
             if (target) {
                 target->send(message.rawBuffer());
-                return;
+                return Core::Message::Forwarded { };
             }
         }
     }
 
     if (m_defaultOutputChannel) {
         m_defaultOutputChannel->send(message.rawBuffer());
-    } else {
-        Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
+        return Core::Message::Forwarded { };
     }
+
+    Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
+    return Core::Message::Dropped {
+        .reason = "Matched no routing rule and no default channel configured",
+        .errorCode = 404
+    };
 }
 
 void RouteHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

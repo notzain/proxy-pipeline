@@ -37,7 +37,7 @@ class BenchmarkReceiver : public Core::Handler::IHandler {
 public:
     explicit BenchmarkReceiver(std::size_t expectedCount);
 
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     bool waitForCompletion(
         std::chrono::milliseconds timeout,

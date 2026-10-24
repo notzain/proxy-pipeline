@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/message/MessageResult.hpp"
+
 namespace Backend {
 class IConfig;
 class IBackend;
@@ -106,12 +108,13 @@ public:
      * @brief Ingress callback invoked when an enveloped message has been received on an input channel.
      *
      * Subclasses interested in processing incoming messages override this.
-     * Default implementation is a no-op.
+     * Default implementation returns Consumed.
      *
      * @param channelName Name of the channel that received the message.
      * @param message Validated non-owning view of the envelope, metadata, and payload.
+     * @return MessageResult Strongly-typed result (Forwarded, Consumed, or Dropped).
      */
-    virtual void onMessageReceived(std::string_view channelName, const Message::MessageView& message);
+    [[nodiscard]] virtual Message::MessageResult onMessageReceived(std::string_view channelName, const Message::MessageView& message);
 
     /**
      * @brief Ingress callback invoked when a batch of enveloped messages has been received on an input channel.

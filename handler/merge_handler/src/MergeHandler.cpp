@@ -60,7 +60,7 @@ bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void MergeHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
         channelName, message.payload().size(), m_outputChannelName);
@@ -72,6 +72,7 @@ void MergeHandler::onMessageReceived(std::string_view channelName, const Core::M
     } else {
         Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", m_outputChannelName);
     }
+    return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
 void MergeHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

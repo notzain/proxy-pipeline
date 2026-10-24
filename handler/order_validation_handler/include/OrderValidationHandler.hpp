@@ -50,7 +50,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param buffer Byte buffer of the message payload.
      */
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
      * @brief Batch ingress callback for incoming messages.

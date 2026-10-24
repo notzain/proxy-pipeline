@@ -95,7 +95,7 @@ public:
         m_outChannel = out;
     }
 
-    void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
+    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
     {
         std::lock_guard lock(m_handlerMutex);
         std::string text(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
@@ -109,6 +109,7 @@ public:
         if (m_count >= 2) {
             stop();
         }
+        return Core::Message::Forwarded { };
     }
 
     std::mutex m_handlerMutex;
@@ -242,7 +243,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
             m_outChannel = out;
         }
 
-        void onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
+        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
         {
             if (m_outChannel) {
                 m_outChannel->send(message.rawBuffer());
@@ -251,6 +252,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
             if (m_count >= 2) {
                 stop();
             }
+            return Core::Message::Forwarded { };
         }
 
     private:
@@ -334,7 +336,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 {
     class JumboVerifyHandler : public Core::Handler::IHandler {
     public:
-        void onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
+        Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             lastReceivedChannel = std::string(channelName);
@@ -344,6 +346,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
             if (message.payload().size() > 2048) {
                 stop();
             }
+            return Core::Message::Consumed { };
         }
 
         std::mutex m_mutex;
@@ -453,13 +456,14 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
         {
         }
 
-        void onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
+        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             received.emplace_back(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
             if (received.size() >= m_expectedCount) {
                 stop();
             }
+            return Core::Message::Consumed { };
         }
 
         std::mutex m_mutex;

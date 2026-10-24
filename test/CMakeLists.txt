@@ -50,3 +50,15 @@ target_compile_features(proxy_tests PRIVATE cxx_std_20)
 include(CTest)
 include(Catch)
 catch_discover_tests(proxy_tests)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(
+    NAME simulation_trace_regression_test
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/chain_runner.py"
+        "${CMAKE_SOURCE_DIR}/chains/example_shm_full_proxy_chain.toml"
+        --pcap "${CMAKE_SOURCE_DIR}/sample_orders.pcap"
+        --assert-trace "${CMAKE_SOURCE_DIR}/test/traces/example_shm_full_proxy_chain.trace.json"
+        --bin-dir "$<TARGET_FILE_DIR:proxy_tests>"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+

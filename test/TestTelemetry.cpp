@@ -139,9 +139,10 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
     public:
         std::atomic<std::size_t> receivedCount { 0 };
 
-        void onMessageReceived(std::string_view, const Core::Message::MessageView&) override
+        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView&) override
         {
             receivedCount.fetch_add(1, std::memory_order_relaxed);
+            return Core::Message::Consumed { };
         }
     };
 

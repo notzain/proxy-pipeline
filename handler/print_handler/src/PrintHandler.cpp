@@ -23,7 +23,7 @@ bool PrintHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void PrintHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     auto payload = message.payload();
     std::string textFormatted;
@@ -41,6 +41,8 @@ void PrintHandler::onMessageReceived(std::string_view channelName, const Core::M
 
     Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
+    return Core::Message::Consumed { };
+    return Core::Message::Consumed { };
 }
 
 void PrintHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

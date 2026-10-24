@@ -55,7 +55,7 @@ bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backen
     return true;
 }
 
-void SplitHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
         channelName, message.payload().size());
@@ -66,6 +66,7 @@ void SplitHandler::onMessageReceived(std::string_view channelName, const Core::M
         }
     }
     Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
+    return Core::Message::Forwarded { };
 }
 
 void SplitHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)

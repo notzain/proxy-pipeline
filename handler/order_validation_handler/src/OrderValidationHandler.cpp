@@ -900,19 +900,25 @@ bool OrderValidationHandler::validateOrderFast(const Proxy::Model::OrderView& or
     return true;
 }
 
-void OrderValidationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     auto order = parseOrder(message.payload());
     if (!order.has_value()) {
         Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to Order. Discarding.",
             channelName, message.payload().size());
-        return;
+        return Core::Message::Dropped {
+            .reason = "Failed XML deserialization to Order",
+            .errorCode = 400
+        };
     }
 
     if (!validateOrder(*order)) {
         Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
             order->customer, order->item, order->quantity);
-        return;
+        return Core::Message::Dropped {
+            .reason = "Failed domain business rules validation (customer/item/qty)",
+            .errorCode = 422
+        };
     }
 
     Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
@@ -925,6 +931,7 @@ void OrderValidationHandler::onMessageReceived(std::string_view channelName, con
     } else {
         Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found", m_outputChannelName);
     }
+    return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
 void OrderValidationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
