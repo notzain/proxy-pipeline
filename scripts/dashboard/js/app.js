@@ -4,7 +4,7 @@
  *   1. "realtime": Live SimBackend execution where packets are loaded from PCAP and stepped forward into handlers.
  *   2. "trace": Standalone execution trace replay (export.trace.json) supporting forward and backward stepping without a running backend.
  */
-import { CanvasRenderer } from "./canvas.js?v=6";
+import { CanvasRenderer } from "./canvas.js?v=7";
 
 export function createSimulationApp() {
   return {
@@ -53,11 +53,7 @@ export function createSimulationApp() {
           this.togglePlay();
         } else if (e.code === "ArrowRight") {
           e.preventDefault();
-          if (this.mode === "realtime" && !this.state.inFlight) {
-            this.loadNextPacket();
-          } else {
-            this.stepForward();
-          }
+          this.stepForward();
         } else if (e.code === "ArrowLeft") {
           if (this.mode === "trace") {
             e.preventDefault();
@@ -329,12 +325,12 @@ export function createSimulationApp() {
         return;
       }
 
-      // REAL-TIME SIMULATION MODE: Step in-flight packet into next handler
+      // REAL-TIME SIMULATION MODE: Step in-flight packet into next handler or auto-load next packet
       try {
         const resp = await fetch("/api/simulation/step", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ autoLoad: false })
+          body: JSON.stringify({ autoLoad: true })
         });
         const res = await resp.json();
         if (res.status === "finished") {
@@ -395,15 +391,11 @@ export function createSimulationApp() {
     async playLoop() {
       if (!this.isPlaying) return;
       if (this.mode === "realtime") {
-        if (!this.state.inFlight) {
-          if (this.state.currentPacketIdx >= this.state.packetCount) {
-            this.isPlaying = false;
-            return;
-          }
-          await this.loadNextPacket();
-        } else {
-          await this.stepForward();
+        if (!this.state.inFlight && this.state.currentPacketIdx >= this.state.packetCount) {
+          this.isPlaying = false;
+          return;
         }
+        await this.stepForward();
       } else {
         await this.stepForward();
       }

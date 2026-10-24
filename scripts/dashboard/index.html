@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Proxy :: Interactive Simulation &amp; Trace Dashboard</title>
-  <link rel="stylesheet" href="css/dashboard.css?v=3">
-  <script src="vendor/petite-vue.iife.js?v=3"></script>
+  <link rel="stylesheet" href="css/dashboard.css?v=7">
+  <script src="vendor/petite-vue.iife.js?v=7"></script>
 </head>
 <body v-scope @vue:mounted="init()">
 
@@ -30,16 +30,10 @@
     <div class="controls">
       <!-- REAL-TIME SIMULATION CONTROLS -->
       <div v-if="mode === 'realtime'" style="display: contents;">
-        <button class="btn-load"
-                @click="loadNextPacket()"
-                :disabled="state.inFlight || state.currentPacketIdx >= state.packetCount"
-                title="Instruct SimBackend to load the next PCAP packet into chain ingress">
-          📥 Load Next Packet
-        </button>
         <button class="primary"
                 @click="stepForward()"
-                :disabled="!state.inFlight"
-                title="Step the in-flight packet forward into the next handler">
+                :disabled="!state.inFlight && state.currentPacketIdx >= state.packetCount"
+                title="Step forward through handlers or auto-load the next packet">
           ⏭ Step Forward
         </button>
         <button @click="togglePlay()" title="Automatically load and step packets through the chain">
@@ -339,7 +333,7 @@
 
   <!-- ES6 App Module Bootstrapper -->
   <script type="module">
-    import { createSimulationApp } from "./js/app.js?v=6";
+    import { createSimulationApp } from "./js/app.js?v=7";
 
     window.app = createSimulationApp();
     PetiteVue.createApp(window.app).mount("body");
