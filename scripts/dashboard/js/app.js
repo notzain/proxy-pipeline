@@ -4,7 +4,7 @@
  *   1. "realtime": Live SimBackend execution where packets are loaded from PCAP and stepped forward into handlers.
  *   2. "trace": Standalone execution trace replay (export.trace.json) supporting forward and backward stepping without a running backend.
  */
-import { CanvasRenderer } from "./canvas.js?v=7";
+import { CanvasRenderer } from "./canvas.js?v=9";
 
 export function createSimulationApp() {
   return {
@@ -16,6 +16,9 @@ export function createSimulationApp() {
       pcap: "Connecting...",
       packetCount: 0,
       packets: [],
+      displayQueue: [],
+      hasPendingQueue: false,
+      pendingQueueCount: 0,
       events: [],
       currentPacketIdx: 0,
       inFlight: false,
@@ -100,12 +103,22 @@ export function createSimulationApp() {
         this.state.pcap = data.pcap || "Loaded";
         this.state.packetCount = data.packetCount || 0;
         this.state.packets = data.packets || [];
+        this.state.displayQueue = data.displayQueue || [];
+        this.state.hasPendingQueue = !!data.hasPendingQueue;
+        this.state.pendingQueueCount = data.pendingQueueCount || 0;
         this.state.events = data.events || [];
         this.state.currentPacketIdx = data.currentPacketIdx || 0;
         this.state.inFlight = !!data.inFlight;
         this.state.inFlightStage = data.inFlightStage || null;
         this.state.inFlightSummary = data.inFlightSummary || null;
         this.state.batchGroups = data.batchGroups || [];
+
+        // If lastEvent is not set (e.g. on page refresh), restore the latest event from events array
+        if (!this.state.lastEvent && this.state.events.length > 0) {
+          const latestEv = this.state.events[this.state.events.length - 1];
+          this.state.lastEvent = latestEv;
+          this.state.selectedTraceEventId = latestEv.eventId;
+        }
 
         this.updateStats();
         if (this.canvasRenderer) {
@@ -153,6 +166,8 @@ export function createSimulationApp() {
         } else {
           this.state.stats.currentStatus = "In-Flight";
         }
+      } else if (this.state.hasPendingQueue) {
+        this.state.stats.currentStatus = `Queued (${this.state.pendingQueueCount || 1} waiting)`;
       } else if (this.state.currentPacketIdx >= this.state.packetCount && this.state.packetCount > 0) {
         this.state.stats.currentStatus = "All Completed";
       } else {
@@ -399,12 +414,42 @@ export function createSimulationApp() {
     },
 
     scrollTraceIntoView(idx) {
-      const container = document.getElementById("trace-list");
-      if (!container) return;
-      const items = container.querySelectorAll(".list-item");
-      if (items[idx]) {
-        items[idx].scrollIntoView({ block: "nearest", behavior: "auto" });
-      }
+      requestAnimationFrame(() => {
+        const container = document.getElementById("trace-list");
+        const item = container?.querySelectorAll(".list-item")[idx];
+        if (!container || !item) return;
+
+        const containerBounds = container.getBoundingClientRect();
+        const itemBounds = item.getBoundingClientRect();
+        if (itemBounds.bottom > containerBounds.bottom) {
+          container.scrollTop += itemBounds.bottom - containerBounds.bottom;
+        } else if (itemBounds.top < containerBounds.top) {
+          container.scrollTop -= containerBounds.top - itemBounds.top;
+        }
+      });
+    },
+
+    scrollTraceToLatest() {
+      requestAnimationFrame(() => {
+        const container = document.getElementById("trace-list");
+        if (container) container.scrollTop = container.scrollHeight;
+      });
+    },
+
+    scrollPacketIntoView(packetId) {
+      requestAnimationFrame(() => {
+        const container = document.getElementById("packet-list");
+        const item = document.getElementById(`packet-item-${packetId}`);
+        if (!container || !item) return;
+
+        const containerBounds = container.getBoundingClientRect();
+        const itemBounds = item.getBoundingClientRect();
+        if (itemBounds.bottom > containerBounds.bottom) {
+          container.scrollTop += itemBounds.bottom - containerBounds.bottom;
+        } else if (itemBounds.top < containerBounds.top) {
+          container.scrollTop -= containerBounds.top - itemBounds.top;
+        }
+      });
     },
 
     togglePlay() {
@@ -420,7 +465,7 @@ export function createSimulationApp() {
     async playLoop() {
       if (!this.isPlaying) return;
       if (this.mode === "realtime") {
-        if (!this.state.inFlight && this.state.currentPacketIdx >= this.state.packetCount) {
+        if (!this.state.inFlight && !this.state.hasPendingQueue && this.state.currentPacketIdx >= this.state.packetCount) {
           this.isPlaying = false;
           return;
         }
@@ -468,8 +513,19 @@ export function createSimulationApp() {
         const res = await resp.json();
         if (res.status === "ok") {
           await this.fetchState();
-          if (res.event) this.inspectTraceEvent(res.event);
-          if (res.packet) this.inspectPacket(res.packet);
+          if (res.event) {
+            // If this event was queued behind an active in-flight message, don't steal the canvas focus / particle
+            if (res.isQueued && this.state.inFlight) {
+              this.state.selectedTraceEventId = res.event.eventId;
+            } else {
+              this.inspectTraceEvent(res.event);
+            }
+            this.scrollTraceToLatest();
+          }
+          if (res.packet) {
+            this.inspectPacket(res.packet);
+            this.scrollPacketIntoView(res.packet.id);
+          }
         } else {
           alert(`Trigger failed: ${res.message}`);
         }
@@ -625,6 +681,15 @@ export function createSimulationApp() {
       this.state.pcap = fileName || "export.trace.json";
       this.state.packetCount = packets.length;
       this.state.packets = packets;
+      this.state.displayQueue = packets.map((p, idx) => ({
+        key: `pkt_${p.id}`,
+        isBatch: false,
+        id: p.id,
+        packet: p,
+        pIdx: idx,
+        isActive: false,
+        isCompleted: false,
+      }));
       this.state.events = this.traceAllEvents.slice(0, this.traceStepIdx);
       this.state.currentPacketIdx = 0;
       this.state.inFlight = false;

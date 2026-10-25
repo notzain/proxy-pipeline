@@ -89,3 +89,12 @@ This feature establishes an explicit, strongly typed classification system for h
 - [x] Run unit and simulation tests (`ctest` / `proxy_tests` - 121,328 assertions passed across 64 test cases).
 - [x] Verify `example_shm_ingress_chain.toml` metadata inspection (`role: external_ingress`, `protocol: udp`).
 - [x] Verify generator chain (`example_file_chain.toml` / `dummy_send` with `role: generator`).
+
+### Phase 6: Interactive Simulation Queue & Trace Visualization
+- [x] Preserve the initial PCAP packet set and restore it on simulation reset.
+- [x] Queue generated messages and pending branches while another message is in flight, and expose pending queue state to the dashboard.
+- [x] Render PCAP entries as individual packets or grouped batches, with active, queued, and completed states.
+- [x] Keep Step Forward and Auto-Play available while queued messages remain, even after all PCAP packets have been loaded.
+- [x] Scroll newly triggered trace entries and packets into view.
+- [x] Animate forwarded messages along their outgoing channels, consumed messages from the consuming node's input edge through the node, and advance particles using elapsed time for frame-rate-independent motion.
+- [x] Display all packet IDs in batch node badges.

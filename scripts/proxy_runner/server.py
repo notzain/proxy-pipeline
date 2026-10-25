@@ -78,6 +78,7 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                     "channel": info.get("output_channel"),
                     "batchCount": len(batch_pkts),
                     "batchIds": [p.seq_id for p in batch_pkts],
+                    "msgId": self.coordinator.active_in_flight["packet"].seq_id if self.coordinator.active_in_flight.get("packet") else None,
                     "pendingBranchesCount": pending_count,
                 }
 
@@ -94,16 +95,98 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
             chain_meta = dict(self.coordinator.chain_config)
             chain_meta["handlers"] = handlers_meta
 
+            # Compute queue display items (grouping accumulated batch packets into cohesive units)
+            display_queue = []
+            rendered_batch_keys = set()
+            all_groups = [list(g) for g in self.coordinator.batch_groups]
+            if in_flight_summary and in_flight_summary.get("batchCount", 0) > 1:
+                if_batch_ids = in_flight_summary.get("batchIds", [])
+                if not any(set(g) == set(if_batch_ids) for g in all_groups):
+                    all_groups.append(if_batch_ids)
+
+            # Pending queue IDs
+            pending_batch_ids: list[list[int]] = []
+            for b in self.coordinator.pending_queue:
+                bpkts = b.get("batch") or ([b["packet"]] if b.get("packet") else [])
+                pending_batch_ids.append([p.seq_id for p in bpkts])
+
+            for p_idx, pkt in enumerate(packets_meta):
+                pid = pkt["id"]
+                found_group = next((g for g in all_groups if pid in g and len(g) > 1), None)
+                if found_group:
+                    g_key = tuple(sorted(found_group))
+                    if g_key not in rendered_batch_keys:
+                        rendered_batch_keys.add(g_key)
+                        group_pkts = [p for p in packets_meta if p["id"] in found_group]
+                        total_bytes = sum(p.get("size", 0) for p in group_pkts)
+                        is_active = (
+                            in_flight_summary is not None
+                            and any(bid in in_flight_summary.get("batchIds", []) for bid in found_group)
+                        )
+                        is_queued = not is_active and any(
+                            any(bid in pb for bid in found_group)
+                            for pb in pending_batch_ids
+                        )
+                        is_completed = not is_active and not is_queued and any(
+                            ev.get("type") in ("egress", "drop")
+                            and (
+                                (ev.get("batchIds") and any(bid in found_group for bid in ev.get("batchIds", [])))
+                                or ev.get("msgId") in found_group
+                            )
+                            for ev in self.coordinator.events
+                        )
+                        display_queue.append({
+                            "key": f"batch_{'_'.join(str(x) for x in g_key)}",
+                            "isBatch": True,
+                            "id": found_group[0],
+                            "batchIds": found_group,
+                            "batchCount": len(found_group),
+                            "packets": group_pkts,
+                            "size": total_bytes,
+                            "isActive": is_active,
+                            "isQueued": is_queued,
+                            "isCompleted": is_completed,
+                            "heldNode": in_flight_summary.get("node") if is_active else None,
+                            "heldChannel": in_flight_summary.get("channel") if is_active else None,
+                        })
+                else:
+                    is_active = in_flight_summary is not None and (
+                        in_flight_summary.get("batchIds") == [pid]
+                        or in_flight_summary.get("msgId") == pid
+                    )
+                    is_queued = not is_active and any(pid in pb for pb in pending_batch_ids)
+                    is_completed = not is_active and not is_queued and any(
+                        ev.get("type") in ("egress", "drop")
+                        and (
+                            (ev.get("batchIds") and pid in ev.get("batchIds", []))
+                            or ev.get("msgId") == pid
+                        )
+                        for ev in self.coordinator.events
+                    )
+                    display_queue.append({
+                        "key": f"pkt_{pid}",
+                        "isBatch": False,
+                        "id": pid,
+                        "packet": pkt,
+                        "pIdx": p_idx,
+                        "isActive": is_active,
+                        "isQueued": is_queued,
+                        "isCompleted": is_completed,
+                    })
+
             self._send_json(200, {
                 "mode": "realtime",
                 "chain": chain_meta,
                 "pcap": self.pcap_path,
                 "packetCount": len(self.coordinator.pcap_packets),
                 "packets": packets_meta,
+                "displayQueue": display_queue,
                 "batchGroups": self.coordinator.batch_groups,
                 "events": self.coordinator.events,
                 "currentPacketIdx": self.coordinator.current_packet_idx,
                 "inFlight": bool(self.coordinator.active_in_flight),
+                "hasPendingQueue": len(self.coordinator.pending_queue) > 0,
+                "pendingQueueCount": len(self.coordinator.pending_queue),
                 "inFlightStage": in_flight_stage,
                 "inFlightSummary": in_flight_summary,
             })
