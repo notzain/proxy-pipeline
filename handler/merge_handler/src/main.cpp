@@ -20,8 +20,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    Proxy::Handler::MergeHandler handler;
-    if (!handler.configure(config, *backend)) {
+    Proxy::Handler::MergeHandler handler(*backend);
+    if (!handler.configure(config)) {
         return 1;
     }
 

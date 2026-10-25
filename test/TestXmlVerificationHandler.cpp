@@ -1,4 +1,5 @@
 #include "XmlVerificationHandler.hpp"
+#include "core/simulation/SimulationBackend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
@@ -43,7 +44,8 @@ const std::string sampleXsd = R"(<?xml version="1.0" encoding="UTF-8"?>
 TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compliant XML", "[handler][xml]")
 {
     TempSchemaFile schema(sampleXsd);
-    Proxy::Handler::XmlVerificationHandler handler(schema.path, "valid_out");
+    Core::Simulation::SimulationBackend backend;
+    Proxy::Handler::XmlVerificationHandler handler(backend, schema.path, "valid_out");
 
     REQUIRE(handler.isSchemaLoaded());
 

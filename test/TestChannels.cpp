@@ -1,6 +1,7 @@
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
+#include "core/simulation/SimulationBackend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <fmt/core.h>
 #include <memory>
@@ -90,6 +91,11 @@ public:
 
 class TestChainedHandler : public Core::Handler::IHandler {
 public:
+    explicit TestChainedHandler(::Backend::IBackend& backend)
+        : Core::Handler::IHandler(backend)
+    {
+    }
+
     void setOutChannel(::Backend::IOutputChannel* out)
     {
         m_outChannel = out;
@@ -124,7 +130,8 @@ private:
 
 TEST_CASE("IHandler output channel registration and direct dispatch", "[channel][core]")
 {
-    TestChainedHandler handler;
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
     auto mockChan = std::make_unique<MockOutputChannel>();
     auto* rawChan = mockChan.get();
 
@@ -143,7 +150,8 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
 
 TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 {
-    TestChainedHandler handler;
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
     handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
@@ -168,7 +176,8 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 
 TEST_CASE("IHandler Dedicated thread execution model with async start", "[channel][core]")
 {
-    TestChainedHandler handler;
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
     handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
@@ -189,7 +198,8 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
 
 TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 {
-    TestChainedHandler handler;
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
     handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
@@ -238,6 +248,11 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 {
     class MockMergeHandler : public Core::Handler::IHandler {
     public:
+        explicit MockMergeHandler(::Backend::IBackend& backend)
+            : Core::Handler::IHandler(backend)
+        {
+        }
+
         void setOutChannel(::Backend::IOutputChannel* out)
         {
             m_outChannel = out;
@@ -260,7 +275,8 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
         std::atomic<int> m_count { 0 };
     };
 
-    MockMergeHandler merge;
+    Core::Simulation::SimulationBackend backend;
+    MockMergeHandler merge(backend);
     auto inA = std::make_unique<MockInputChannel>(std::vector<std::string> { "input1" });
     auto inB = std::make_unique<MockInputChannel>(std::vector<std::string> { "input2" });
     auto outChan = std::make_unique<MockOutputChannel>();
@@ -336,6 +352,11 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 {
     class JumboVerifyHandler : public Core::Handler::IHandler {
     public:
+        explicit JumboVerifyHandler(::Backend::IBackend& backend)
+            : Core::Handler::IHandler(backend)
+        {
+        }
+
         Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
@@ -360,7 +381,8 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 
     SECTION("ThreadPool execution model receives oversized 4096-byte packet")
     {
-        JumboVerifyHandler handler;
+        Core::Simulation::SimulationBackend backend;
+        JumboVerifyHandler handler(backend);
         handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
 
         // Generate a 4096-byte payload (exceeds 2048-byte default batch slot)
@@ -378,7 +400,8 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 
     SECTION("Dedicated thread model receives oversized 8192-byte packet")
     {
-        JumboVerifyHandler handler;
+        Core::Simulation::SimulationBackend backend;
+        JumboVerifyHandler handler(backend);
         handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
 
         std::string jumboPayload(8192, 'Y');
@@ -395,7 +418,8 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 
     SECTION("Sequential model receives oversized 4096-byte packet")
     {
-        JumboVerifyHandler handler;
+        Core::Simulation::SimulationBackend backend;
+        JumboVerifyHandler handler(backend);
         handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
         std::string jumboPayload(4096, 'Z');
@@ -451,8 +475,9 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
 {
     class OrderVerifyHandler : public Core::Handler::IHandler {
     public:
-        explicit OrderVerifyHandler(std::size_t expectedCount)
-            : m_expectedCount(expectedCount)
+        OrderVerifyHandler(::Backend::IBackend& backend, std::size_t expectedCount)
+            : Core::Handler::IHandler(backend)
+            , m_expectedCount(expectedCount)
         {
         }
 
@@ -480,7 +505,8 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
         expected.push_back(fmt::format("seq_{}", i));
     }
 
-    OrderVerifyHandler handler(kTotalMessages);
+    Core::Simulation::SimulationBackend backend;
+    OrderVerifyHandler handler(backend, kTotalMessages);
     handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 4);
     handler.registerInputChannel("ordered_chan", std::make_unique<MockInputChannel>(expected));
 

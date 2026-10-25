@@ -1,6 +1,7 @@
 #include "OrderValidationHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
+#include "core/simulation/SimulationBackend.hpp"
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <memory>
@@ -35,7 +36,8 @@ private:
 
 TEST_CASE("OrderValidationHandler deserialization and domain validation", "[order_validation]")
 {
-    Proxy::Handler::OrderValidationHandler handler("validated_orders");
+    Core::Simulation::SimulationBackend backend;
+    Proxy::Handler::OrderValidationHandler handler(backend, "validated_orders");
     auto mockOut = std::make_unique<TestMockOutputChannel>();
     auto* mockOutPtr = mockOut.get();
     handler.setOutputChannel(handler.registerOutputChannel("validated_orders", std::move(mockOut)));
@@ -209,7 +211,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
 TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_validation]")
 {
-    Proxy::Handler::OrderValidationHandler handler("bench_out");
+    Core::Simulation::SimulationBackend backend;
+    Proxy::Handler::OrderValidationHandler handler(backend, "bench_out");
     auto mockOut = std::make_unique<TestMockOutputChannel>();
     handler.setOutputChannel(handler.registerOutputChannel("bench_out", std::move(mockOut)));
 

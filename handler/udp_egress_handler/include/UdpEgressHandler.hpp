@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Backend {
 class IBackend;
@@ -29,7 +30,7 @@ namespace Proxy::Handler {
  */
 class UdpEgressHandler : public Core::Handler::IHandler {
 public:
-    UdpEgressHandler();
+    explicit UdpEgressHandler(::Backend::IBackend& backend);
     ~UdpEgressHandler() override;
 
     /**
@@ -42,10 +43,9 @@ public:
      * - "egress.input_channel" or "channel.input" (name of backend ingress channel)
      *
      * @param config Strongly-typed configuration store.
-     * @param backend Active pipeline transport backend.
      * @return true If configuration succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     [[nodiscard]] Core::Handler::HandlerRole role() const noexcept override { return Core::Handler::HandlerRole::ExternalEgress; }
     [[nodiscard]] Core::Handler::HandlerProtocol protocol() const noexcept override { return Core::Handler::HandlerProtocol::Udp; }
@@ -59,7 +59,10 @@ public:
     /**
      * @brief Vectorized ingress callback for batches of enveloped messages.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
 private:
     std::string m_inputChannelName;

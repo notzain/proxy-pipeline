@@ -9,12 +9,10 @@
 
 namespace Proxy::Handler {
 
-bool PrintHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool PrintHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_channelName = config.getOr<std::string>("print.channel", "default");
-    auto inChannel = backend.createInputChannel(m_channelName, config);
+    auto inChannel = backend().createInputChannel(m_channelName, config);
     if (!inChannel) {
         Proxy::Log::error("[PrintHandler] Failed to create input channel '{}'", m_channelName);
         return false;
@@ -44,11 +42,15 @@ Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view ch
     return Core::Message::Consumed { };
 }
 
-void PrintHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void PrintHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
     Proxy::Log::info("[PrintHandler] Channel '{}' received batch of {} message(s)", channelName, messages.size());
-    for (const auto& msg : messages) {
-        onMessageReceived(channelName, msg);
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = onMessageReceived(channelName, messages[i]);
     }
 }
 

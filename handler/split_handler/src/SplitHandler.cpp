@@ -27,12 +27,10 @@ std::vector<std::string> splitString(std::string_view str, char delimiter)
 
 namespace Proxy::Handler {
 
-bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
-    auto inputChannel = backend.createInputChannel(m_inputChannelName, config);
+    auto inputChannel = backend().createInputChannel(m_inputChannelName, config);
     if (!inputChannel) {
         Proxy::Log::error("[SplitHandler] Failed to create input channel '{}'", m_inputChannelName);
         return false;
@@ -43,7 +41,7 @@ bool SplitHandler::configure(const Core::Config::Configuration& config, ::Backen
     std::vector<std::string> outChannelNames = splitString(m_outputChannelsStr, ',');
 
     for (const auto& outName : outChannelNames) {
-        auto outChannel = backend.createOutputChannel(outName, config);
+        auto outChannel = backend().createOutputChannel(outName, config);
         if (!outChannel) {
             Proxy::Log::error("[SplitHandler] Failed to create output channel '{}'", outName);
             return false;
@@ -69,11 +67,17 @@ Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view ch
     return Core::Message::Forwarded { .channel = m_outputChannelsStr };
 }
 
-void SplitHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void SplitHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
-        return;
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelsStr };
     }
+    if (messages.empty())
+        return;
 
     Core::Memory::SmallSpanBuffer spans(messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {

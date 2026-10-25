@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Proxy::Handler {
 
@@ -18,14 +19,15 @@ namespace Proxy::Handler {
  */
 class OrderValidationHandler : public Core::Handler::IHandler {
 public:
-    OrderValidationHandler() = default;
+    using Core::Handler::IHandler::IHandler;
 
     /**
-     * @brief Constructs an OrderValidationHandler with an output channel name.
+     * @brief Constructs an OrderValidationHandler with a backend and output channel name.
      *
+     * @param backend Backend used to create channels and report message results.
      * @param outputChannelName Name of the output channel to forward valid order messages to.
      */
-    explicit OrderValidationHandler(std::string outputChannelName);
+    OrderValidationHandler(::Backend::IBackend& backend, std::string outputChannelName);
 
     ~OrderValidationHandler() override;
 
@@ -38,10 +40,9 @@ public:
      * @brief Configures OrderValidationHandler and creates input and output channels via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If configuration and channel initialization succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     /**
      * @brief Ingress callback for incoming messages.
@@ -59,7 +60,10 @@ public:
      * @param channelName Name of the receiving channel.
      * @param messages Batch of enveloped message views.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Deserializes an XML buffer into an Order model.

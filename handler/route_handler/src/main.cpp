@@ -20,8 +20,8 @@ int main(int argc, char* argv[])
 
     backend->configure(config);
 
-    Proxy::Handler::RouteHandler handler;
-    if (!handler.configure(config, *backend)) {
+    Proxy::Handler::RouteHandler handler(*backend);
+    if (!handler.configure(config)) {
         std::cerr << "Failed to configure RouteHandler\n";
         return 1;
     }

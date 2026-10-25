@@ -8,10 +8,17 @@
 
 namespace Proxy::Handler {
 
-XmlVerificationHandler::XmlVerificationHandler() = default;
+XmlVerificationHandler::XmlVerificationHandler(::Backend::IBackend& backend)
+    : Core::Handler::IHandler(backend)
+{
+}
 
-XmlVerificationHandler::XmlVerificationHandler(std::filesystem::path schemaPath, std::string outputChannelName)
-    : m_schemaPath(std::move(schemaPath))
+XmlVerificationHandler::XmlVerificationHandler(
+    ::Backend::IBackend& backend,
+    std::filesystem::path schemaPath,
+    std::string outputChannelName)
+    : Core::Handler::IHandler(backend)
+    , m_schemaPath(std::move(schemaPath))
     , m_outputChannelName(std::move(outputChannelName))
     , m_validator(std::make_unique<XmlSchemaValidator>(m_schemaPath))
 {
@@ -19,10 +26,8 @@ XmlVerificationHandler::XmlVerificationHandler(std::filesystem::path schemaPath,
 
 XmlVerificationHandler::~XmlVerificationHandler() = default;
 
-bool XmlVerificationHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool XmlVerificationHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     std::string xsdPath = config.getOr<std::string>("xml.xsd_path", "");
     if (xsdPath.empty()) {
         Proxy::Log::error("[XmlVerificationHandler] Missing mandatory configuration: 'xml.xsd_path'");
@@ -38,14 +43,14 @@ bool XmlVerificationHandler::configure(const Core::Config::Configuration& config
     m_inputChannelName = config.getOr<std::string>("xml.input_channel", config.getOr<std::string>("channel.input", "xml_in"));
     m_outputChannelName = config.getOr<std::string>("xml.output_channel", config.getOr<std::string>("channel.output", "xml_out"));
 
-    auto inChannel = backend.createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
     if (!inChannel) {
         Proxy::Log::error("[XmlVerificationHandler] Failed to create input channel '{}'", m_inputChannelName);
         return false;
     }
     m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
 
-    auto outChannel = backend.createOutputChannel(m_outputChannelName, config);
+    auto outChannel = backend().createOutputChannel(m_outputChannelName, config);
     if (!outChannel) {
         Proxy::Log::error("[XmlVerificationHandler] Failed to create output channel '{}'", m_outputChannelName);
         return false;
@@ -88,21 +93,30 @@ Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::stri
     };
 }
 
-void XmlVerificationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void XmlVerificationHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
+    if (messages.empty())
         return;
-    }
 
     Core::Memory::SmallSpanBuffer spans(messages.size());
     std::size_t validCount = 0;
+    const auto count = std::min(messages.size(), outResults.size());
 
-    for (const auto& msg : messages) {
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& msg = messages[i];
         if (validate(msg.payload())) {
             spans[validCount++] = msg.rawBuffer();
+            outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
         } else {
             Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
                 channelName, msg.payload().size(), m_schemaPath.string());
+            outResults[i] = Core::Message::Dropped {
+                .reason = "Rejected: XSD schema validation failure",
+                .errorCode = 400
+            };
         }
     }
 

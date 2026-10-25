@@ -21,8 +21,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    Proxy::Handler::OrderValidationHandler handler;
-    if (!handler.configure(config, *backend)) {
+    Proxy::Handler::OrderValidationHandler handler(*backend);
+    if (!handler.configure(config)) {
         return 1;
     }
 

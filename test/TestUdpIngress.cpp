@@ -274,9 +274,9 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
     config.set("ingress.output_channel", "pipeline_ingress_queue");
 
     DummyTestBackend backend;
-    Proxy::Handler::UdpIngressHandler handler;
+    Proxy::Handler::UdpIngressHandler handler(backend);
 
-    REQUIRE(handler.configure(config, backend));
+    REQUIRE(handler.configure(config));
     REQUIRE(backend.m_lastCreatedOutput != nullptr);
 
     SECTION("Single datagram received and forwarded as valid envelope")
@@ -340,8 +340,8 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     config.set("egress.mode", "reply_to_origin");
     config.set("egress.input_channel", "pipeline_out");
 
-    Proxy::Handler::UdpEgressHandler egressHandler;
-    REQUIRE(egressHandler.configure(config, backend));
+    Proxy::Handler::UdpEgressHandler egressHandler(backend);
+    REQUIRE(egressHandler.configure(config));
 
     // Run Egress handler to process message
     egressHandler.startAsync();
@@ -399,8 +399,8 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     config.set("egress.mode", "reply_to_origin");
     config.set("egress.input_channel", "pipeline_out");
 
-    Proxy::Handler::UdpEgressHandler egressHandler;
-    REQUIRE(egressHandler.configure(config, backend));
+    Proxy::Handler::UdpEgressHandler egressHandler(backend);
+    REQUIRE(egressHandler.configure(config));
 
     egressHandler.startAsync();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));

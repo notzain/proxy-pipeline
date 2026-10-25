@@ -26,28 +26,27 @@
 
 namespace Proxy::Handler {
 
-OrderValidationHandler::OrderValidationHandler(std::string outputChannelName)
-    : m_outputChannelName(std::move(outputChannelName))
+OrderValidationHandler::OrderValidationHandler(::Backend::IBackend& backend, std::string outputChannelName)
+    : Core::Handler::IHandler(backend)
+    , m_outputChannelName(std::move(outputChannelName))
 {
 }
 
 OrderValidationHandler::~OrderValidationHandler() = default;
 
-bool OrderValidationHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool OrderValidationHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_inputChannelName = config.getOr<std::string>("order.input_channel", config.getOr<std::string>("channel.input", "order_in"));
     m_outputChannelName = config.getOr<std::string>("order.output_channel", config.getOr<std::string>("channel.output", "order_out"));
 
-    auto inChannel = backend.createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
     if (!inChannel) {
         Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", m_inputChannelName);
         return false;
     }
     m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
 
-    auto outChannel = backend.createOutputChannel(m_outputChannelName, config);
+    auto outChannel = backend().createOutputChannel(m_outputChannelName, config);
     if (!outChannel) {
         Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", m_outputChannelName);
         return false;
@@ -934,29 +933,43 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
     return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
-void OrderValidationHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void OrderValidationHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
+    if (messages.empty())
         return;
-    }
 
     Core::Memory::SmallSpanBuffer spans(messages.size());
     std::size_t validCount = 0;
-    for (const auto& msg : messages) {
+    const auto count = std::min(messages.size(), outResults.size());
+
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& msg = messages[i];
         auto order = parseOrder(msg.payload());
         if (!order.has_value()) {
             Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization. Discarding.",
                 channelName, msg.payload().size());
+            outResults[i] = Core::Message::Dropped {
+                .reason = "Failed XML deserialization to Order",
+                .errorCode = 400
+            };
             continue;
         }
 
         if (!validateOrder(*order)) {
             Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
                 order->customer, order->item, order->quantity);
+            outResults[i] = Core::Message::Dropped {
+                .reason = "Failed domain business rules validation (customer/item/qty)",
+                .errorCode = 422
+            };
             continue;
         }
 
         spans[validCount++] = msg.rawBuffer();
+        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
     }
 
     if (validCount == 0) {

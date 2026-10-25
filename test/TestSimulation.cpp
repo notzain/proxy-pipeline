@@ -10,9 +10,12 @@
 #include "core/simulation/SimulationBackend.hpp"
 #include "core/simulation/SimulationClock.hpp"
 #include <arpa/inet.h>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+#include <span>
 #include <string>
+#include <vector>
 
 TEST_CASE("Core::Simulation::SimulationClock virtual stepping and realtime", "[simulation]")
 {
@@ -151,13 +154,17 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
     class SimEchoHandler : public Core::Handler::IHandler {
     public:
+        explicit SimEchoHandler(::Backend::IBackend& backend)
+            : Core::Handler::IHandler(backend)
+        {
+        }
+
         ::Backend::IOutputChannel* out { nullptr };
 
-        bool configure(const Core::Config::Configuration& cfg, ::Backend::IBackend& backend) override
+        bool onConfigure(const Core::Config::Configuration& cfg) override
         {
-            IHandler::configure(cfg, backend);
-            registerInputChannel("ingress", backend.createInputChannel("ingress", cfg));
-            out = registerOutputChannel("egress", backend.createOutputChannel("egress", cfg));
+            registerInputChannel("ingress", backend().createInputChannel("ingress", cfg));
+            out = registerOutputChannel("egress", backend().createOutputChannel("egress", cfg));
             return true;
         }
 
@@ -171,9 +178,9 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
         }
     };
 
-    SimEchoHandler handler;
+    SimEchoHandler handler(simBackend);
     handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
-    REQUIRE(handler.configure(config, simBackend));
+    REQUIRE(handler.configure(config));
 
     auto* inCh = simBackend.getInputChannel("ingress");
     auto* outCh = simBackend.getOutputChannel("egress");
@@ -205,4 +212,52 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
     REQUIRE(results[0].resultType == "Forwarded");
     REQUIRE(results[0].outputChannel == "egress");
     REQUIRE(results[0].recordedTimeNs == 100'000ULL);
+}
+
+TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[simulation][batch]")
+{
+    Core::Simulation::SimulationBackend backend;
+
+    class BatchResultHandler : public Core::Handler::IHandler {
+    public:
+        using Core::Handler::IHandler::IHandler;
+
+        void onBatchReceived(
+            std::string_view,
+            std::span<const Core::Message::MessageView> messages,
+            std::span<Core::Message::MessageResult> outResults) override
+        {
+            if (outResults.size() >= 2) {
+                outResults[0] = Core::Message::Forwarded { .channel = "accepted" };
+                outResults[1] = Core::Message::Dropped {
+                    .reason = "invalid test message",
+                    .errorCode = 400
+                };
+            }
+        }
+    };
+
+    BatchResultHandler handler(backend);
+    std::string firstPayload = "valid";
+    std::string secondPayload = "invalid";
+    auto firstEnvelope = Core::Message::MessageEnvelope::packRaw(
+        std::as_bytes(std::span(firstPayload.data(), firstPayload.size())));
+    auto secondEnvelope = Core::Message::MessageEnvelope::packRaw(
+        std::as_bytes(std::span(secondPayload.data(), secondPayload.size())));
+    std::array<Core::Message::MessageView, 2> messages {
+        *Core::Message::MessageView::from(firstEnvelope),
+        *Core::Message::MessageView::from(secondEnvelope)
+    };
+
+    handler.processBatch("input", messages);
+
+    const auto results = backend.getRecordedResults();
+    REQUIRE(results.size() == messages.size());
+    CHECK(results[0].inputChannel == "input");
+    CHECK(results[0].resultType == "Forwarded");
+    CHECK(results[0].outputChannel == "accepted");
+    CHECK(results[1].inputChannel == "input");
+    CHECK(results[1].resultType == "Dropped");
+    CHECK(results[1].dropReason == "invalid test message");
+    CHECK(results[1].errorCode == 400);
 }

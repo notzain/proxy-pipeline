@@ -6,6 +6,7 @@
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/ProtocolId.hpp"
 #include "core/message/UdpMetadata.hpp"
+#include "core/simulation/SimulationBackend.hpp"
 #include <arpa/inet.h>
 #include <catch2/catch_test_macros.hpp>
 #include <mutex>
@@ -46,7 +47,8 @@ public:
 
 TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
 {
-    Proxy::Handler::RouteHandler router;
+    Core::Simulation::SimulationBackend backend;
+    Proxy::Handler::RouteHandler router(backend);
 
     auto vipChan = std::make_unique<MockChannel>();
     auto stdChan = std::make_unique<MockChannel>();
@@ -58,7 +60,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
 
     router.registerOutputChannel("vip_out", std::move(vipChan));
     router.registerOutputChannel("std_out", std::move(stdChan));
-    router.setDefaultChannel(router.registerOutputChannel("def_out", std::move(defChan)));
+    router.setDefaultChannel(router.registerOutputChannel("def_out", std::move(defChan)), "def_out");
 
     // Rule 1: contains "VIP" -> vip_out
     Proxy::Handler::RouteRule ruleVip(Proxy::Handler::MatchCriteria::PayloadContains { "VIP" }, "vip_out");
@@ -127,7 +129,12 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
             *Core::Message::MessageView::from(env4)
         };
 
-        router.onBatchReceived("in", batch);
+        std::array<Core::Message::MessageResult, 4> results;
+        router.onBatchReceived("in", batch, results);
+        CHECK(std::get<Core::Message::Forwarded>(results[0]).channel == "vip_out");
+        CHECK(std::get<Core::Message::Forwarded>(results[1]).channel == "std_out");
+        CHECK(std::get<Core::Message::Forwarded>(results[2]).channel == "vip_out");
+        CHECK(std::get<Core::Message::Forwarded>(results[3]).channel == "def_out");
 
         REQUIRE(vipPtr->sentPayloads.size() == 2);
         CHECK(vipPtr->sentPayloads[0] == "VIP 1");
@@ -142,7 +149,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
 
     SECTION("Client port metadata routing")
     {
-        Proxy::Handler::RouteHandler portRouter;
+        Proxy::Handler::RouteHandler portRouter(backend);
         auto portChan = std::make_unique<MockChannel>();
         auto* portPtr = portChan.get();
         portRouter.registerOutputChannel("port_out", std::move(portChan));

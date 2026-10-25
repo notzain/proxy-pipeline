@@ -63,6 +63,13 @@ public:
     using Timeout = std::chrono::milliseconds;
 
     /**
+     * @brief Constructs a handler with its transport backend.
+     *
+     * @param backend Backend used to create channels and report message results.
+     */
+    explicit IHandler(::Backend::IBackend& backend) noexcept;
+
+    /**
      * @brief Structure representing a registered input channel with its identifying name.
      */
     struct NamedInputChannel {
@@ -76,16 +83,25 @@ public:
     virtual ~IHandler();
 
     /**
-     * @brief Configures the handler from a Configuration store and initializes channels using the provided backend.
+     * @brief Configures the handler from a Configuration store and initializes channels.
      *
-     * Subclasses override this method to read handler-specific keys, create their input/output
-     * channels via the backend, and store direct handles to channels.
+     * Non-virtual template method that automatically initializes common base class concerns
+     * (such as live Telemetry StatsD exporter via configureTelemetry()) and then delegates
+     * to the protected onConfigure() hook for subclass-specific setup.
      *
      * @param config Strongly-typed key-value configuration.
-     * @param backend Underlying transport backend for creating channels.
      * @return true If configuration and channel initialization succeeded, false otherwise.
      */
-    virtual bool configure(const Config::Configuration& config, ::Backend::IBackend& backend);
+    bool configure(const Config::Configuration& config);
+
+    /**
+     * @brief Configures live Telemetry StatsD exporter from the provided Configuration.
+     *
+     * Automatically invoked by configure(), but can also be invoked standalone if needed.
+     *
+     * @param config Configuration containing telemetry.statsd.host / telemetry.host settings.
+     */
+    void configureTelemetry(const Config::Configuration& config);
 
     // --- Input Channel Management (Ingress) ---
 
@@ -125,15 +141,18 @@ public:
      *
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.
+     * @param outResults Output span populated with one result per message in input order.
      */
-    virtual void onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages);
+    virtual void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Message::MessageView> messages,
+        std::span<Message::MessageResult> outResults);
 
     /**
      * @brief Dispatches a received batch of messages to the handler.
      *
-     * When the bound backend tracks per-message outcomes (e.g. SimBackend), this method
-     * executes onMessageReceived() per message and reports each MessageResult to the backend.
-     * Otherwise, it invokes the virtual onBatchReceived() for vectorized fast-path processing.
+     * Invokes the batch callback and reports each returned result alongside its corresponding
+     * message to the injected backend.
      *
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.
@@ -228,6 +247,24 @@ public:
      */
     [[nodiscard]] bool isRunning() const noexcept;
 
+protected:
+    [[nodiscard]] ::Backend::IBackend& backend() noexcept;
+
+    /**
+     * @brief Subclass configuration hook invoked by configure().
+     *
+     * Subclasses override this method to read handler-specific keys, create their input/output
+     * channels via the injected backend, and store direct handles to channels.
+     * Subclasses do not need to call any base class configure methods.
+     *
+     * @param config Strongly-typed key-value configuration.
+     * @return true If handler-specific configuration succeeded, false otherwise.
+     */
+    virtual bool onConfigure(const Config::Configuration& /*config*/)
+    {
+        return true;
+    }
+
 private:
     /**
      * @brief Transparent hasher enabling C++20 heterogeneous lookup in `m_outputChannels`.
@@ -250,7 +287,7 @@ private:
     std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>, TransparentStringHash, std::equal_to<>> m_outputChannels;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
     std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
-    ::Backend::IBackend* m_backend { nullptr };
+    ::Backend::IBackend& m_backend;
 
     void registerSignalHandler();
     void unregisterSignalHandler();

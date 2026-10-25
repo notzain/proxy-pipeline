@@ -22,8 +22,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<::Backend::IBackend> backend = ::Backend::createBackend();
     backend->configure(config);
 
-    Proxy::Handler::DummySendHandler handler;
-    if (!handler.configure(config, *backend)) {
+    Proxy::Handler::DummySendHandler handler(*backend);
+    if (!handler.configure(config)) {
         return 1;
     }
 

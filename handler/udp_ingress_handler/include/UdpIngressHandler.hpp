@@ -5,6 +5,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Backend {
 class IBackend;
@@ -24,7 +25,7 @@ namespace Proxy::Handler {
  */
 class UdpIngressHandler : public Core::Handler::IHandler {
 public:
-    UdpIngressHandler() = default;
+    using Core::Handler::IHandler::IHandler;
     ~UdpIngressHandler() override = default;
 
     /**
@@ -37,10 +38,9 @@ public:
      * - "ingress.output_channel" or "channel.output" (name of backend egress channel)
      *
      * @param config Strongly-typed configuration store.
-     * @param backend Active pipeline transport backend for egress.
      * @return true If configuration and socket binding succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     [[nodiscard]] Core::Handler::HandlerRole role() const noexcept override { return Core::Handler::HandlerRole::ExternalIngress; }
     [[nodiscard]] Core::Handler::HandlerProtocol protocol() const noexcept override { return Core::Handler::HandlerProtocol::Udp; }
@@ -52,7 +52,10 @@ public:
      * @param buffer Non-owning view of the raw received payload.
      */
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
 private:
     std::string m_outputChannelName;

@@ -3,6 +3,7 @@
 #include "core/handler/IHandler.hpp"
 #include <chrono>
 #include <string>
+#include <utility>
 
 namespace Proxy::Handler {
 
@@ -11,18 +12,24 @@ namespace Proxy::Handler {
  */
 class DummySendHandler : public Core::Handler::IHandler {
 public:
-    DummySendHandler() = default;
-    DummySendHandler(std::string channelName, std::string messageText, std::chrono::milliseconds delay);
+    using Core::Handler::IHandler::IHandler;
+    /**
+     * @brief Constructs a sender with its backend and initial message settings.
+     */
+    DummySendHandler(
+        ::Backend::IBackend& backend,
+        std::string channelName,
+        std::string messageText,
+        std::chrono::milliseconds delay);
     ~DummySendHandler() override = default;
 
     /**
      * @brief Configures DummySendHandler and creates the output channel via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If output channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     [[nodiscard]] Core::Handler::HandlerRole role() const noexcept override { return Core::Handler::HandlerRole::Generator; }
 

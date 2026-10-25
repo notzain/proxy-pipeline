@@ -35,7 +35,7 @@ struct BenchmarkResult {
  */
 class BenchmarkReceiver : public Core::Handler::IHandler {
 public:
-    explicit BenchmarkReceiver(std::size_t expectedCount);
+    BenchmarkReceiver(::Backend::IBackend& backend, std::size_t expectedCount);
 
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 

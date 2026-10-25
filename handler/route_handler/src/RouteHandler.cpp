@@ -11,14 +11,12 @@ namespace Proxy::Handler {
 
 RouteHandler::~RouteHandler() = default;
 
-bool RouteHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_inputChannelName = config.getOr<std::string>("route.input_channel", config.getOr<std::string>("channel.input", "route_in"));
     m_defaultChannelName = config.getOr<std::string>("route.default_output", "");
 
-    auto inChan = backend.createInputChannel(m_inputChannelName, config);
+    auto inChan = backend().createInputChannel(m_inputChannelName, config);
     if (!inChan) {
         Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", m_inputChannelName);
         return false;
@@ -27,7 +25,7 @@ bool RouteHandler::configure(const Core::Config::Configuration& config, ::Backen
 
     // Register default output if configured
     if (!m_defaultChannelName.empty()) {
-        auto defChan = backend.createOutputChannel(m_defaultChannelName, config);
+        auto defChan = backend().createOutputChannel(m_defaultChannelName, config);
         if (defChan) {
             m_defaultOutputChannel = registerOutputChannel(m_defaultChannelName, std::move(defChan));
         } else {
@@ -84,7 +82,7 @@ bool RouteHandler::configure(const Core::Config::Configuration& config, ::Backen
             auto it = createdChannels.find(target);
             ::Backend::IOutputChannel* outPtr = nullptr;
             if (it == createdChannels.end()) {
-                auto outChan = backend.createOutputChannel(target, config);
+                auto outChan = backend().createOutputChannel(target, config);
                 if (outChan) {
                     outPtr = registerOutputChannel(target, std::move(outChan));
                     createdChannels[target] = outPtr;
@@ -109,9 +107,10 @@ void RouteHandler::addRule(RouteRule rule)
     m_rules.push_back(std::move(rule));
 }
 
-void RouteHandler::setDefaultChannel(::Backend::IOutputChannel* channel) noexcept
+void RouteHandler::setDefaultChannel(::Backend::IOutputChannel* channel, std::string channelName) noexcept
 {
     m_defaultOutputChannel = channel;
+    m_defaultChannelName = std::move(channelName);
 }
 
 const std::vector<RouteRule>& RouteHandler::rules() const noexcept
@@ -143,36 +142,47 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
     };
 }
 
-void RouteHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void RouteHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
+    if (messages.empty())
         return;
-    }
 
     // Fast path: if there is only 1 rule or all match default, optimize.
     // Otherwise bucket messages by target channel.
-    struct ChannelBucket {
-        ::Backend::IOutputChannel* channel { nullptr };
-        std::vector<std::span<const std::byte>> items;
-    };
-
     std::unordered_map<::Backend::IOutputChannel*, std::vector<std::span<const std::byte>>> buckets;
+    const auto count = std::min(messages.size(), outResults.size());
 
-    for (const auto& msg : messages) {
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& msg = messages[i];
         ::Backend::IOutputChannel* destination = nullptr;
+        std::string_view destinationName;
         for (const auto& rule : m_rules) {
             if (rule.matches(msg)) {
                 destination = rule.targetChannel();
+                if (destination) {
+                    destinationName = rule.targetChannelName();
+                }
                 break;
             }
         }
 
         if (!destination) {
             destination = m_defaultOutputChannel;
+            destinationName = m_defaultChannelName;
         }
 
         if (destination) {
             buckets[destination].push_back(msg.rawBuffer());
+            outResults[i] = Core::Message::Forwarded { .channel = destinationName };
+        } else {
+            Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
+            outResults[i] = Core::Message::Dropped {
+                .reason = "Matched no routing rule and no default channel configured",
+                .errorCode = 404
+            };
         }
     }
 

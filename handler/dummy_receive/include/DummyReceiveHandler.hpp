@@ -10,17 +10,16 @@ namespace Proxy::Handler {
  */
 class DummyReceiveHandler : public Core::Handler::IHandler {
 public:
-    DummyReceiveHandler() = default;
+    using Core::Handler::IHandler::IHandler;
     ~DummyReceiveHandler() override = default;
 
     /**
      * @brief Configures DummyReceiveHandler and creates the input channel via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If input channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     /**
      * @brief Callback invoked when a message arrives on an input channel.

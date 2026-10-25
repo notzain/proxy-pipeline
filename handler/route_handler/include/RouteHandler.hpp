@@ -19,13 +19,16 @@ namespace Proxy::Handler {
  */
 class RouteHandler : public Core::Handler::IHandler {
 public:
-    RouteHandler() = default;
+    using Core::Handler::IHandler::IHandler;
     ~RouteHandler() override;
 
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Adds an explicit routing rule programmatically.
@@ -35,7 +38,7 @@ public:
     /**
      * @brief Sets an explicit default fallback channel.
      */
-    void setDefaultChannel(::Backend::IOutputChannel* channel) noexcept;
+    void setDefaultChannel(::Backend::IOutputChannel* channel, std::string channelName = { }) noexcept;
 
     /**
      * @brief Accessor for configured rules.

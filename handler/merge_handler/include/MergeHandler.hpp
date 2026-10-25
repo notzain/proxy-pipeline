@@ -3,6 +3,7 @@
 #include "core/handler/IHandler.hpp"
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Proxy::Handler {
 
@@ -12,18 +13,17 @@ namespace Proxy::Handler {
  */
 class MergeHandler : public Core::Handler::IHandler {
 public:
-    MergeHandler() = default;
-    explicit MergeHandler(std::string outputChannelName);
+    using Core::Handler::IHandler::IHandler;
+    MergeHandler(::Backend::IBackend& backend, std::string outputChannelName);
     ~MergeHandler() override = default;
 
     /**
      * @brief Configures MergeHandler and creates input channels and the output channel via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     /**
      * @brief Callback invoked when a message arrives on any registered input channel.
@@ -41,7 +41,10 @@ public:
      * @param channelName Name of the input channel that received the messages.
      * @param messages Non-owning view of received enveloped messages.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
 private:
     std::string m_outputChannelName;

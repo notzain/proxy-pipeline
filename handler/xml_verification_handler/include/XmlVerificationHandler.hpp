@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Proxy::Handler {
 
@@ -23,15 +24,19 @@ class XmlSchemaValidator;
  */
 class XmlVerificationHandler : public Core::Handler::IHandler {
 public:
-    XmlVerificationHandler();
+    explicit XmlVerificationHandler(::Backend::IBackend& backend);
 
     /**
-     * @brief Constructs an XmlVerificationHandler with a schema file and output channel.
+     * @brief Constructs an XmlVerificationHandler with a backend, schema file, and output channel.
      *
+     * @param backend Backend used to create channels and report message results.
      * @param schemaPath Path to the .xsd schema file.
      * @param outputChannelName Name of the output channel to forward valid messages to.
      */
-    XmlVerificationHandler(std::filesystem::path schemaPath, std::string outputChannelName);
+    XmlVerificationHandler(
+        ::Backend::IBackend& backend,
+        std::filesystem::path schemaPath,
+        std::string outputChannelName);
 
     ~XmlVerificationHandler() override;
 
@@ -40,10 +45,9 @@ public:
      * and creates input and output channels via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If configuration, schema loading, and channel initialization succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     /**
      * @brief Ingress callback for incoming enveloped messages.
@@ -55,12 +59,16 @@ public:
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
 
     /**
-     * @brief Vectorized ingress callback for batches of enveloped messages.
+     * @brief Vectorized ingress callback populating per-message outcomes.
      *
      * @param channelName Name of the channel that received the messages.
      * @param messages Vectorized view of message views.
+     * @param outResults Output span populated with per-message processing outcomes in input order.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Validates an XML byte buffer against the loaded schema.

@@ -11,17 +11,16 @@ namespace Proxy::Handler {
  */
 class SplitHandler : public Core::Handler::IHandler {
 public:
-    SplitHandler() = default;
+    using Core::Handler::IHandler::IHandler;
     ~SplitHandler() override = default;
 
     /**
      * @brief Configures SplitHandler and creates the input channel and all output channels via the backend.
      *
      * @param config Configuration store.
-     * @param backend Backend instance.
      * @return true If channel creation succeeded, false otherwise.
      */
-    bool configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend) override;
+    bool onConfigure(const Core::Config::Configuration& config) override;
 
     /**
      * @brief Callback invoked when a message is received on an input channel.
@@ -39,7 +38,10 @@ public:
      * @param channelName Identifying name of the receiving channel.
      * @param messages Non-owning view of received enveloped messages.
      */
-    void onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages) override;
+    void onBatchReceived(
+        std::string_view channelName,
+        std::span<const Core::Message::MessageView> messages,
+        std::span<Core::Message::MessageResult> outResults) override;
 
 private:
     std::string m_inputChannelName;

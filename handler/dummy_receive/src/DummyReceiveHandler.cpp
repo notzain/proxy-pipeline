@@ -8,12 +8,10 @@
 
 namespace Proxy::Handler {
 
-bool DummyReceiveHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool DummyReceiveHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
-    auto inChannel = backend.createInputChannel(m_channelName, config);
+    auto inChannel = backend().createInputChannel(m_channelName, config);
     if (!inChannel) {
         Proxy::Log::error("[DummyReceive] Failed to create input channel '{}'", m_channelName);
         return false;

@@ -1,6 +1,7 @@
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
+#include "core/simulation/SimulationBackend.hpp"
 #include "core/telemetry/Counter.hpp"
 #include "core/telemetry/Gauge.hpp"
 #include "core/telemetry/Histogram.hpp"
@@ -137,6 +138,11 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
 
     class TelemetryTestHandler : public Core::Handler::IHandler {
     public:
+        explicit TelemetryTestHandler(::Backend::IBackend& backend)
+            : Core::Handler::IHandler(backend)
+        {
+        }
+
         std::atomic<std::size_t> receivedCount { 0 };
 
         Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView&) override
@@ -146,7 +152,8 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
         }
     };
 
-    TelemetryTestHandler handler;
+    Core::Simulation::SimulationBackend backend;
+    TelemetryTestHandler handler(backend);
     handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
     // Create a mock envelope with ingress timestamp
@@ -162,7 +169,7 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
     REQUIRE(optView.has_value());
 
     std::array<Core::Message::MessageView, 1> views { *optView };
-    handler.onBatchReceived("test_in", views);
+    handler.processBatch("test_in", views);
 
     REQUIRE(handler.receivedCount.load() == 1);
 

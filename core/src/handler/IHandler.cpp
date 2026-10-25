@@ -1,5 +1,6 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "core/telemetry/StatsDExporter.hpp"
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <csignal>
 #include <mutex>
+#include <stdexcept>
 
 namespace {
 // Global pointer to active handler instance for C signal dispatching
@@ -39,6 +41,11 @@ ExecutionModel parseExecutionModel(std::string_view name)
     return ExecutionModel::Dedicated;
 }
 
+IHandler::IHandler(::Backend::IBackend& backend) noexcept
+    : m_backend(backend)
+{
+}
+
 IHandler::~IHandler()
 {
     stop();
@@ -46,10 +53,14 @@ IHandler::~IHandler()
     unregisterSignalHandler();
 }
 
-bool IHandler::configure(const Config::Configuration& config, ::Backend::IBackend& backend)
+bool IHandler::configure(const Config::Configuration& config)
 {
-    m_backend = &backend;
+    configureTelemetry(config);
+    return onConfigure(config);
+}
 
+void IHandler::configureTelemetry(const Config::Configuration& config)
+{
     // Auto-configure telemetry StatsD exporter if telemetry.statsd.host or telemetry.host is set
     std::string statsdHost = config.getOr<std::string>("telemetry.statsd.host", config.getOr<std::string>("telemetry.host", ""));
     if (!statsdHost.empty()) {
@@ -63,7 +74,6 @@ bool IHandler::configure(const Config::Configuration& config, ::Backend::IBacken
         m_telemetryExporter = std::make_unique<Telemetry::StatsDExporter>(statsdHost, statsdPort, prefix);
         m_telemetryExporter->start(std::chrono::milliseconds(intervalMs));
     }
-    return true;
 }
 
 ::Backend::IInputChannel* IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
@@ -87,34 +97,45 @@ Message::MessageResult IHandler::onMessageReceived(std::string_view, const Messa
     return Message::Consumed { };
 }
 
-void IHandler::onBatchReceived(std::string_view channelName, std::span<const Message::MessageView> messages)
+void IHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Message::MessageView> messages,
+    std::span<Message::MessageResult> outResults)
 {
-    auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
-        "message_processing_duration_us", "Message transit and processing duration in microseconds");
-
-    uint64_t nowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-            .count());
-
-    for (const auto& msg : messages) {
-        if (msg.timestampNs() > 0 && nowNs >= msg.timestampNs()) {
-            double durationUs = static_cast<double>(nowNs - msg.timestampNs()) / 1000.0;
-            latencyHist.observe(durationUs);
-        }
-        auto result = onMessageReceived(channelName, msg);
-        if (m_backend) {
-            m_backend->onMessageResult(channelName, msg.rawBuffer(), result);
-        }
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = onMessageReceived(channelName, messages[i]);
     }
 }
 
 void IHandler::processBatch(std::string_view channelName, std::span<const Message::MessageView> messages)
 {
-    if (m_backend && m_backend->tracksMessageResults()) {
-        IHandler::onBatchReceived(channelName, messages);
-        return;
+    auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
+        "message_processing_duration_us", "Message transit and processing duration in microseconds");
+    uint64_t nowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+            .count());
+    for (const auto& message : messages) {
+        if (message.timestampNs() > 0 && nowNs >= message.timestampNs()) {
+            double durationUs = static_cast<double>(nowNs - message.timestampNs()) / 1000.0;
+            latencyHist.observe(durationUs);
+        }
     }
-    onBatchReceived(channelName, messages);
+
+    Core::Memory::SmallSpanBuffer<Message::MessageResult, 64> resultsBuffer(messages.size());
+    auto resultsSpan = resultsBuffer.span(messages.size());
+    onBatchReceived(channelName, messages, resultsSpan);
+
+    if (m_backend.tracksMessageResults()) {
+        for (std::size_t i = 0; i < messages.size(); ++i) {
+            m_backend.onMessageResult(channelName, messages[i].rawBuffer(), resultsSpan[i]);
+        }
+    }
+}
+
+::Backend::IBackend& IHandler::backend() noexcept
+{
+    return m_backend;
 }
 
 ::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
@@ -188,10 +209,8 @@ void IHandler::startAsync()
     ensureStrategy();
     registerSignalHandler();
 
-    // Auto-initialize telemetry StatsD exporter if telemetry.statsd.host or telemetry.host is set
-    // This ensures telemetry starts even if derived classes override configure() without calling IHandler::configure()
+    // Check environment variables as a seamless zero-config fallback if not configured via configure()
     if (!m_telemetryExporter) {
-        // Check environment variables as well for seamless zero-config overrides
         const char* envHost = std::getenv("PROXY_TELEMETRY_HOST");
         if (envHost && *envHost) {
             const char* envPort = std::getenv("PROXY_TELEMETRY_PORT");
@@ -203,9 +222,7 @@ void IHandler::startAsync()
 
     Proxy::Log::info("[IHandler] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...", m_inputChannels.size());
     m_strategy->start(*this);
-    if (m_backend) {
-        m_backend->onHandlerStarted();
-    }
+    m_backend.onHandlerStarted();
 }
 
 void IHandler::wait()

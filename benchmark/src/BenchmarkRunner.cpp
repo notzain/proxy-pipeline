@@ -2,8 +2,9 @@
 
 namespace Proxy::Benchmark {
 
-BenchmarkReceiver::BenchmarkReceiver(std::size_t expectedCount)
-    : m_expectedCount(expectedCount)
+BenchmarkReceiver::BenchmarkReceiver(::Backend::IBackend& backend, std::size_t expectedCount)
+    : Core::Handler::IHandler(backend)
+    , m_expectedCount(expectedCount)
 {
     m_receiveTimestamps.reserve(m_expectedCount);
 }

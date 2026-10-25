@@ -11,10 +11,8 @@
 
 namespace Proxy::Handler {
 
-bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_outputChannelName = config.getOr<std::string>(
         "ingress.output_channel",
         config.getOr<std::string>(
@@ -26,7 +24,7 @@ bool UdpIngressHandler::configure(const Core::Config::Configuration& config, ::B
                     config.getOr<std::string>("xml.output_channel", "ingress_out")))));
 
     // 1. Output channel is created through the active backend (e.g. SHM, UDS, etc.)
-    auto outChannel = backend.createOutputChannel(m_outputChannelName, config);
+    auto outChannel = backend().createOutputChannel(m_outputChannelName, config);
     if (!outChannel) {
         Proxy::Log::error("[UdpIngressHandler] Failed to create pipeline output channel '{}'", m_outputChannelName);
         return false;
@@ -64,11 +62,17 @@ Core::Message::MessageResult UdpIngressHandler::onMessageReceived(std::string_vi
     return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
-void UdpIngressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void UdpIngressHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
-        return;
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
     }
+    if (messages.empty())
+        return;
 
     Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, m_outputChannelName);

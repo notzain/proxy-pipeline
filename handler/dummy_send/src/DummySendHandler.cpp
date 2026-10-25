@@ -7,25 +7,28 @@
 
 namespace Proxy::Handler {
 
-DummySendHandler::DummySendHandler(std::string channelName, std::string messageText, std::chrono::milliseconds delay)
-    : m_channelName(std::move(channelName))
+DummySendHandler::DummySendHandler(
+    ::Backend::IBackend& backend,
+    std::string channelName,
+    std::string messageText,
+    std::chrono::milliseconds delay)
+    : Core::Handler::IHandler(backend)
+    , m_channelName(std::move(channelName))
     , m_messageText(std::move(messageText))
     , m_delay(delay)
     , m_lastSendTime(std::chrono::steady_clock::now() - delay)
 {
 }
 
-bool DummySendHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool DummySendHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     m_messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");
     int delayMs = config.getOr<int>("dummy.delay_ms", 1000);
     m_delay = std::chrono::milliseconds(delayMs);
     m_lastSendTime = std::chrono::steady_clock::now() - m_delay;
 
-    auto outChannel = backend.createOutputChannel(m_channelName, config);
+    auto outChannel = backend().createOutputChannel(m_channelName, config);
     if (!outChannel) {
         Proxy::Log::error("[DummySend] Failed to create output channel '{}'", m_channelName);
         return false;

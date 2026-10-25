@@ -11,13 +11,15 @@
 
 namespace Proxy::Handler {
 
-UdpEgressHandler::UdpEgressHandler() = default;
+UdpEgressHandler::UdpEgressHandler(::Backend::IBackend& backend)
+    : Core::Handler::IHandler(backend)
+{
+}
+
 UdpEgressHandler::~UdpEgressHandler() = default;
 
-bool UdpEgressHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_inputChannelName = config.getOr<std::string>(
         "egress.input_channel",
         config.getOr<std::string>(
@@ -31,7 +33,7 @@ bool UdpEgressHandler::configure(const Core::Config::Configuration& config, ::Ba
     m_destPort = static_cast<std::uint16_t>(config.getOr<int>("egress.dest_port", 9200));
 
     // 1. Create input channel through the chain's backend (e.g. SHM, UDS)
-    auto inChannel = backend.createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
     if (!inChannel) {
         Proxy::Log::error("[UdpEgressHandler] Failed to create input channel '{}'", m_inputChannelName);
         return false;
@@ -84,10 +86,14 @@ Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_vie
     return Core::Message::Consumed { };
 }
 
-void UdpEgressHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void UdpEgressHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    for (const auto& msg : messages) {
-        onMessageReceived(channelName, msg);
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = onMessageReceived(channelName, messages[i]);
     }
 }
 

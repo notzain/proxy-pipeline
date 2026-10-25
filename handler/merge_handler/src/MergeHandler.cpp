@@ -27,17 +27,16 @@ std::vector<std::string> splitString(std::string_view str, char delimiter)
 
 namespace Proxy::Handler {
 
-MergeHandler::MergeHandler(std::string outputChannelName)
-    : m_outputChannelName(std::move(outputChannelName))
+MergeHandler::MergeHandler(::Backend::IBackend& backend, std::string outputChannelName)
+    : Core::Handler::IHandler(backend)
+    , m_outputChannelName(std::move(outputChannelName))
 {
 }
 
-bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backend::IBackend& backend)
+bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    IHandler::configure(config, backend);
-
     m_outputChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
-    auto outputChannel = backend.createOutputChannel(m_outputChannelName, config);
+    auto outputChannel = backend().createOutputChannel(m_outputChannelName, config);
     if (!outputChannel) {
         Proxy::Log::error("[MergeHandler] Failed to create output channel '{}'", m_outputChannelName);
         return false;
@@ -48,7 +47,7 @@ bool MergeHandler::configure(const Core::Config::Configuration& config, ::Backen
     std::vector<std::string> inChannelNames = splitString(inChannelsStr, ',');
 
     for (const auto& inName : inChannelNames) {
-        auto inChannel = backend.createInputChannel(inName, config);
+        auto inChannel = backend().createInputChannel(inName, config);
         if (!inChannel) {
             Proxy::Log::error("[MergeHandler] Failed to create input channel '{}'", inName);
             return false;
@@ -75,11 +74,17 @@ Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view ch
     return Core::Message::Forwarded { .channel = m_outputChannelName };
 }
 
-void MergeHandler::onBatchReceived(std::string_view channelName, std::span<const Core::Message::MessageView> messages)
+void MergeHandler::onBatchReceived(
+    std::string_view channelName,
+    std::span<const Core::Message::MessageView> messages,
+    std::span<Core::Message::MessageResult> outResults)
 {
-    if (messages.empty()) {
-        return;
+    const auto count = std::min(messages.size(), outResults.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
     }
+    if (messages.empty())
+        return;
 
     Core::Memory::SmallSpanBuffer spans(messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
