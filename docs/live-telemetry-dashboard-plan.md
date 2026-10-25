@@ -8,10 +8,10 @@ This document records the agreed first-release scope and implementation approach
 
 ## Current state
 
-- `scripts/telemetry_dashboard.html` is the existing production metrics UI. It polls `/api/metrics` once per second and renders namespace tabs, summary metrics, latency distributions, and a raw metric table.
-- `scripts/read_telemetry.py` receives StatsD datagrams, retains counters and gauges, and serves the metrics page and API. It has no chain topology input or endpoint.
+- `scripts/telemetry_dashboard.html` is the consolidated production dashboard. It polls `/api/metrics` and `/api/topology`, and provides topology-first Overview and Metrics & Diagnostics views.
+- `scripts/read_telemetry.py` receives StatsD datagrams, retains counters and gauges, and serves the dashboard and APIs. The chain runner publishes sanitized topology to the collector.
 - The core exporter in `core/src/telemetry/StatsDExporter.cpp` sends registered metrics periodically; `core/src/handler/IHandler.cpp` configures the exporter per handler.
-- `scripts/proxy_runner/config.py` gives handlers a metric prefix containing the configured handler name. This provides some node identity in metric names, but not enough to infer the edges of a chain.
+- `scripts/proxy_runner/config.py` gives handlers a metric prefix containing the configured handler name. The topology projection connects those prefixes to declared handlers and channels.
 - `scripts/dashboard/live-topology-mockup.html` is a standalone visual prototype. Its chain, status, rates, and signals are synthetic and must not be presented as live data.
 - The simulation dashboard and `SimBackend` emit per-message events and payload summaries for stepping and animation. That event path is not appropriate as the production telemetry feed.
 
@@ -26,66 +26,68 @@ The topology should be driven by declared chain configuration and aggregated met
 
 Show explicit empty, stale, partial, and disconnected states. If no topology configuration is supplied, keep Metrics usable and show that topology is unavailable; do not substitute the illustrative mock chain.
 
-## Proposed implementation work
+## Design decisions and implementation
 
 ### 1. Publish topology from the chain runner
 
-**Likely files:** `scripts/chain_runner.py`, `scripts/read_telemetry.py`, and optionally a small helper under `scripts/proxy_runner/`.
+**Files:** `scripts/chain_runner.py`, `scripts/read_telemetry.py`, and `scripts/proxy_runner/topology.py`.
 
-- The chain runner will publish the chain it already loaded to the collector using an optional telemetry collector URL (CLI override and/or chain configuration). Do not require a second copy of the topology file at the collector.
-- Publish a sanitized projection: chain/environment identifier, handler names and types, input/output channel names, and derived edges. Do not send arbitrary handler config, secrets, or payload-related settings.
-- Support simple channels, multiple inputs/outputs, merge/split relationships, and route targets where those targets are statically declared. Document that dynamic destinations cannot be drawn unless explicitly modeled.
-- Accept topology publication at a bounded, validated `POST /api/topology`; serve the latest sanitized document via `GET /api/topology`. Keep `/api/metrics` available with its current data fields for compatibility.
-- When topology is absent or invalid, report that explicitly rather than fabricating nodes or silently returning an empty success-shaped topology.
+- The runner publishes its loaded chain using `--telemetry-url` or `config.telemetry.collector_url`; it republishes every five seconds to recover after collector restarts.
+- The published projection includes handler names/types, metric prefixes, channel names, derived edges, and unresolved output channels. Arbitrary handler configuration, secrets, and payload settings are excluded. Static route targets are included; dynamic destinations cannot be inferred.
+- The collector validates bounded `POST /api/topology` requests and serves the latest projection at `GET /api/topology`. `/api/metrics` retains its existing fields and adds `peakThroughput`.
+- Missing topology is reported explicitly; the dashboard does not substitute the illustrative mock chain.
 
 ### 2. Make telemetry aggregation reliable for the overview
 
-**Likely files:** `scripts/read_telemetry.py`, `scripts/telemetry_dashboard.html`, and focused Python tests.
+**Files:** `scripts/read_telemetry.py`, `scripts/telemetry_dashboard.html`, and `test/test_live_telemetry.py`.
 
-- Fix bandwidth rate calculation to use the byte counter delta, not the existing hard-coded 82 bytes/message.
-- Replace heuristic global aggregation (for example, taking the maximum of handler counters) with documented chain-level rules based on topology. Distinguish ingress totals from per-stage processed totals so branching does not inflate ingress.
-- Define metric semantics and units in the UI/API: counters are cumulative per handler prefix; rates derive from counter deltas; histogram values are cumulative buckets and must not be mislabeled as per-message samples.
-- Track last-seen/receive time and counter resets or process restarts so the UI can show stale data and avoid negative/spurious rates.
-- Bound storage for any directly exported timing samples; avoid retaining an ever-growing list for the lifetime of the collector.
-- Add validation/tests for StatsD packet parsing, counter updates, rate/reset calculations, byte throughput, namespace grouping, and topology projection.
+- Message and byte throughput are calculated from their respective counter deltas. Chain ingress totals use topology source nodes rather than summing every processing stage.
+- The collector estimates peak ingress throughput from successive source counter snapshots, exposes it to all clients, resets it when chain identity changes, and retains it until the collector restarts. The value is an interval-based estimate, not a persisted or exact instantaneous maximum.
+- Metric freshness is tracked per metric; stale/missing signals are shown as unavailable. Counter resets do not produce negative rates. Timing sample storage is bounded.
+- The dashboard labels the latency breakdown by neutral numeric ranges without assigning qualitative performance judgments. Existing bucket boundaries and colors are retained.
+- Focused tests cover collector parsing, topology validation/projection, peak calculation/reset, API behavior, and chain runner behavior.
 
 ### 3. Characterize current production instrumentation
 
-**Likely files:** `core/src/threading/*Strategy.cpp`, `core/src/handler/IHandler.cpp`, telemetry classes, `test/TestTelemetry.cpp`, and benchmark documentation.
+**Files:** `core/src/threading/*Strategy.cpp`, `core/src/handler/IHandler.cpp`, telemetry classes, and benchmark documentation.
 
-- Audit/fix the existing `message_processing_duration_us` histogram before relying on it for displayed p50/p99. The receive strategies and base handler path both appear to observe timestamp-to-current-time; confirm whether this duplicates observations and whether the metric is message age or actual handler processing duration.
-- First release uses currently available metrics only; missing queue/backpressure/readiness/outcome signals must appear as unavailable, not inferred from unrelated data.
-- Do not add per-message network exports, JSON events, or dashboard callbacks.
-- Measure telemetry-enabled versus disabled behavior at representative message sizes and high throughput; report throughput, CPU, tail latency, exporter traffic, and drops. The overhead target is intentionally unset until measurements are reviewed.
+- The displayed `message_processing_duration_us` metric is labeled as message age measured from the envelope timestamp at handler ingress; it is not handler execution time.
+- This release uses currently available metrics only. Queue depth, backpressure, readiness, application outcomes, CPU, and replica identity remain unavailable and are not inferred from unrelated measurements.
+- No per-message production event stream or payload export was added.
+- Telemetry-enabled versus disabled behavior has not yet been benchmarked. Measure throughput, CPU, tail latency, exporter traffic, and drops before setting an overhead budget.
 
 ### 4. Consolidate the frontend
 
-**Likely files:** `scripts/telemetry_dashboard.html`, and optionally extracted local CSS/JavaScript under `scripts/dashboard/`.
+**Files:** `scripts/telemetry_dashboard.html` and `scripts/telemetry_dashboard.css`.
 
-- Promote the topology-first layout from the prototype into the existing telemetry dashboard entry point.
-- Retain namespace filtering, latency distributions, and raw metrics in a Metrics/Diagnostics view rather than deleting those capabilities.
-- Consume `/api/topology` and `/api/metrics` separately. Render only configured topology nodes and use aggregated metrics to populate them.
-- Implement static topology layout for branches/merges and clickable node/channel details. Keep rendering bounded: rates update at a human-useful cadence and SVG/canvas pulses are capped independently of actual throughput.
-- Mark the view as live only when recent metric data is arriving; show metric age, missing signals, and collector disconnection clearly.
-- Remove the external Tailwind runtime dependency when consolidating the page; use local styles so the dashboard does not depend on a third-party script at runtime.
-- Leave `scripts/dashboard/live-topology-mockup.html` untouched as the original visual prototype unless a later request asks to retire it.
+- The Overview contains source KPIs, a configured chain topology, and selected-node details. Metrics & Diagnostics retains namespace filtering, latency distributions, and the raw metrics table.
+- The topology SVG adapts rank spacing to the available width and redraws when the viewport changes. At constrained widths it stays inside its frame and scrolls internally instead of widening the page.
+- The global 30-second source ingress activity graph is a responsive line chart with a labeled message-rate y-axis. Namespace selection does not reset its history.
+- The page uses local CSS rather than an external Tailwind runtime. The standalone mockup remains unchanged.
+- Latency range labels are descriptive only; colors remain as originally designed and are not presented as SLA/severity classifications.
 
 ### 5. Secure and operationalize serving
 
-**Likely files:** `scripts/read_telemetry.py` and deployment/run documentation.
+**Files:** `scripts/read_telemetry.py` and this feature document.
 
-- Default web serving to localhost; allow an explicit bind override for deployments. Remove wildcard CORS for the same-origin dashboard. Production remote access is expected to use an authenticated/restricted reverse proxy; this feature will not implement application authentication.
-- Document supported topology config, collector configuration, freshness behavior, expected metric prefixes, and deployment/network requirements.
-- Avoid exposing handler configuration or message content through topology/metrics APIs.
+- The HTTP dashboard bind defaults to localhost and has an explicit override; the StatsD UDP listener is separately configurable. Same-origin dashboard serving does not require wildcard CORS.
+- Remote access should use an authenticated/restricted reverse proxy; the collector does not implement application authentication.
+- The topology projection excludes arbitrary handler configuration and message content.
 
-## Suggested sequence
+The collector's configured UDP and HTTP ports must be available. Starting another collector on ports that are already bound currently causes its listener/server threads to report `Address already in use`; stop the existing collector or choose unused ports. Graceful startup error reporting for this collision is still needed.
 
-1. Agree on the topology source and what the dashboard promises when topology or a metric is unavailable.
-2. Correct/characterize the current metrics and add collector/parser/topology tests.
-3. Add the topology endpoint and data projection.
-4. Consolidate the frontend around the Overview and Metrics views.
-5. Add missing bounded instrumentation and verify its overhead with benchmarks.
-6. Secure and document the production deployment path.
+## Tasks / checklist
+
+- [x] Publish sanitized chain topology and validate collector API input.
+- [x] Consolidate topology overview and existing metrics diagnostics.
+- [x] Correct source ingress and byte-rate aggregation and show stale/missing metrics.
+- [x] Add responsive topology layout, throughput line chart, and labeled y-axis.
+- [x] Track peak ingress throughput in the collector and expose it to all clients.
+- [x] Handle chain runner SIGINT/SIGTERM/SIGHUP shutdown, skip exited handlers, tolerate process-group exit races, and clean up launched handler process groups on graceful exit.
+- [x] Add focused collector and runner regression tests.
+- [ ] Improve collector startup error reporting when configured UDP or HTTP ports are already occupied.
+- [ ] Benchmark telemetry-enabled versus telemetry-disabled performance at representative message sizes and throughput; agree on an overhead budget.
+- [ ] Add instance identity before claiming aggregation across concurrent replicas that share metric prefixes.
 
 ## Acceptance criteria
 
@@ -95,7 +97,7 @@ Show explicit empty, stale, partial, and disconnected states. If no topology con
 - Missing, stale, reset, and disconnected telemetry states are visible and do not appear healthy.
 - Flow animation has a fixed upper bound on simultaneous rendered pulses regardless of throughput.
 - No message payload or per-message event stream is sent to the production dashboard.
-- Focused tests cover collector parsing, rate math, topology projection, and aggregation rules; a documented benchmark compares telemetry-on and telemetry-off behavior.
+- Focused tests cover collector parsing, rate math, topology projection, peak tracking, and runner behavior. A documented telemetry-on/off benchmark remains outstanding.
 - Production serving has a defined network/access-control boundary and does not expose raw handler secrets.
 
 ## Agreed first-release decisions
