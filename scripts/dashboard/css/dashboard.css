@@ -374,6 +374,11 @@ canvas {
 .batch-card.active {
   background: rgba(56, 189, 248, 0.15);
   border-color: var(--accent);
+  border-left: 4px solid var(--accent);
+}
+
+.batch-card.completed {
+  border-left: 4px solid var(--success);
 }
 
 .batch-badge {

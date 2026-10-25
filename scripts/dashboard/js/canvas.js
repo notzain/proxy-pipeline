@@ -112,11 +112,22 @@ export class CanvasRenderer {
       const rowSpacing = (h - 90) / (colHandlers.length + 1);
       colHandlers.forEach((handler, rowIdx) => {
         const nodeY = 45 + (rowIdx + 1) * rowSpacing;
-        const isGenerator = !handler.input_channel && (!handler.input_channels || handler.input_channels.length === 0) && !!handler.output_channel;
+        const role = handler.role || (
+          (!handler.input_channel && (!handler.input_channels || handler.input_channels.length === 0) && !!handler.output_channel)
+            ? (handler.type === "udp_ingress_handler" ? "external_ingress" : "generator")
+            : "processor"
+        );
+        const isGenerator = role === "generator";
+        const isIngress = role === "external_ingress";
+        const protocol = handler.protocol || (handler.type === "udp_ingress_handler" ? "udp" : "none");
+
         this.handlersLayout.push({
           name: handler.name,
           type: handler.type,
+          role: role,
+          protocol: protocol,
           isGenerator: isGenerator,
+          isIngress: isIngress,
           x: colX,
           y: nodeY,
           width: 140,
@@ -164,56 +175,114 @@ export class CanvasRenderer {
       const bySource = this.channelsLayout.find(c => c.from.name === event.source && c.to.name === handlerName);
       if (bySource) return bySource;
     }
-    return this.channelsLayout.find(c => c.to.name === handlerName) || null;
+    return null;
+  }
+
+  findOutgoingChannelEdge(event) {
+    if (!event) return null;
+    const handlerName = event.handler || event.source;
+    const outCh = event.outputChannel || event.channel;
+    if (!handlerName || !outCh) return null;
+
+    return this.channelsLayout.find(c => c.from.name === handlerName && c.name === outCh) || null;
+  }
+
+  getEventPacketIds(event) {
+    if (Array.isArray(event?.batchIds) && event.batchIds.length > 0) {
+      return event.batchIds.map(String).sort();
+    }
+    return event?.msgId !== undefined && event?.msgId !== null ? [String(event.msgId)] : [];
   }
 
   triggerTransitionAnimation(event) {
     if (!event) return;
     const handlerName = event.handler || event.target;
     if (!handlerName) return;
-    const targetNode = this.handlersLayout.find(h => h.name === handlerName);
-    if (!targetNode) return;
+    const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
+    if (!handlerNode) return;
 
     const isIngress = event.type === "ingress";
-    const inEdge = this.findIncomingChannelEdge(event);
+    const isForwarded = event.result === "Forwarded" && !!(event.outputChannel || event.channel);
+    const isConsumed = event.result === "Consumed"
+      || (event.type === "egress" && event.result !== "Forwarded");
+    const isDropped = event.type === "drop" || event.result === "Dropped";
+    const edge = isForwarded
+      ? this.findOutgoingChannelEdge(event)
+      : this.findIncomingChannelEdge(event);
 
     const cloudW = 54;
-    const cloudCenter = targetNode.x - targetNode.width / 2 - 14 - cloudW / 2;
-
-    let startX = targetNode.x;
-    let startY = targetNode.y;
-    let endX = targetNode.x;
-    let endY = targetNode.y;
+    const cloudCenter = handlerNode.x - handlerNode.width / 2 - 14 - cloudW / 2;
+    let startX;
+    let startY;
+    let endX;
+    let endY;
 
     if (isIngress) {
-      // Step 1: External packet enters and stages inside the UDP IN ingress queue
       startX = cloudCenter - 22;
-      startY = targetNode.y;
+      startY = handlerNode.y;
       endX = cloudCenter;
-    } else if (inEdge) {
-      // Downstream handler step: Packet moves from upstream handler across the connecting channel into targetNode
-      startX = inEdge.from.x + inEdge.from.width / 2;
-      startY = inEdge.from.y;
-      endX = targetNode.x;
-      endY = targetNode.y;
-    } else if (!targetNode.isGenerator) {
-      // First handler step: Staged packet moves from UDP IN queue into the first handler node
+      endY = handlerNode.y;
+    } else if (isForwarded) {
+      startX = handlerNode.x + handlerNode.width / 2;
+      startY = handlerNode.y;
+      endX = edge ? edge.to.x - edge.to.width / 2 : startX + 76;
+      endY = edge ? edge.to.y : startY;
+    } else if (isConsumed) {
+      startX = edge ? edge.to.x - edge.to.width / 2 : cloudCenter;
+      startY = edge ? edge.to.y : handlerNode.y;
+      endX = handlerNode.x + handlerNode.width / 2;
+      endY = handlerNode.y;
+    } else if (isDropped) {
+      startX = edge ? edge.to.x - edge.to.width / 2 : cloudCenter;
+      startY = edge ? edge.to.y : handlerNode.y;
+      endX = handlerNode.x;
+      endY = handlerNode.y;
+    } else if (edge) {
+      startX = edge.from.x + edge.from.width / 2;
+      startY = edge.from.y;
+      endX = handlerNode.x - handlerNode.width / 2;
+      endY = handlerNode.y;
+    } else if (!handlerNode.isGenerator) {
       startX = cloudCenter;
-      startY = targetNode.y;
-      endX = targetNode.x;
+      startY = handlerNode.y;
+      endX = handlerNode.x - handlerNode.width / 2;
+      endY = handlerNode.y;
+    } else {
+      startX = handlerNode.x;
+      startY = handlerNode.y;
+      endX = handlerNode.x + handlerNode.width / 2 + 76;
+      endY = handlerNode.y;
     }
 
-    // Consistent color mapping matching .tag-ingress, .tag-hop, .tag-egress, .tag-drop in dashboard.css:
-    //   Loaded (ingress)    -> Blue   (#38bdf8)
-    //   Forwarded (hop)     -> Purple (#c084fc)
-    //   Consumed (egress)   -> Green  (#34d399)
-    //   Dropped (drop)      -> Purple (#c084fc) in transit, turning Red (#f87171) once it reaches the node
-    const transitColor = (isIngress || !inEdge)
+    const previousEvent = this.lastAnimationEvent;
+    const previousParticle = this.activeParticles[0];
+    const packetIds = this.getEventPacketIds(event);
+    const previousPacketIds = this.getEventPacketIds(previousEvent);
+    const followsPreviousEvent = (
+      previousEvent?.eventId !== undefined
+      && event.eventId === previousEvent.eventId + 1
+      && packetIds.length > 0
+      && packetIds.length === previousPacketIds.length
+      && packetIds.every((id, idx) => id === previousPacketIds[idx])
+      && previousParticle
+    );
+    if (followsPreviousEvent) {
+      const elapsed = performance.now() - previousParticle.startTime;
+      const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
+      const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
+      startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
+      startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+    }
+
+    const transitColor = isIngress
       ? "#38bdf8"
-      : "#c084fc";
+      : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
     const arrivalColor = isIngress
       ? "#38bdf8"
       : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
+
+    const distance = Math.hypot(endX - startX, endY - startY);
+    const durationMs = Math.min(700, Math.max(350, distance / 0.7));
 
     this.activeParticles = [{
       startX,
@@ -221,13 +290,16 @@ export class CanvasRenderer {
       endX,
       endY,
       progress: 0.0,
-      speed: isIngress ? 0.045 : 0.026,
+      startTime: performance.now(),
+      durationMs,
       color: transitColor,
       arrivalColor: arrivalColor,
       dropColor: "#f87171",
       isIngress: isIngress,
+      isConsumed: isConsumed,
       isDrop: event.type === "drop"
     }];
+    this.lastAnimationEvent = event;
   }
 
   setupClickHandler() {
@@ -295,6 +367,7 @@ export class CanvasRenderer {
     // Draw Handler Nodes & Queues
     const lastEventHandler = lastEvent ? (lastEvent.handler || lastEvent.target) : null;
     const activeIncomingEdge = this.findIncomingChannelEdge(lastEvent);
+    const activeOutgoingEdge = this.findOutgoingChannelEdge(lastEvent);
 
     this.handlersLayout.forEach((h) => {
       const x = h.x - h.width/2;
@@ -303,7 +376,7 @@ export class CanvasRenderer {
       const isTarget = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name;
       const isSelected = selectedNodeName === h.name;
 
-      const isIngressNode = h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
+      const isIngressNode = h.isIngress || h.type === "udp_ingress_handler" || h.inCh === "udp_network" || (h.config && h.config["ingress.port"]);
       if (isIngressNode) {
         const cloudW = 54;
         const cloudH = h.height - 6;
@@ -396,7 +469,13 @@ export class CanvasRenderer {
         ? "#7dd3fc"
         : (isTarget ? (dropReachedNode ? "#fca5a5" : (isConsumedTarget ? "#6ee7b7" : (isForwardedTarget ? "#e9d5ff" : "#7dd3fc"))) : "#94a3b8");
       ctx.font = "10px monospace";
-      ctx.fillText(h.isGenerator ? "generator" : h.type.replace("_handler", ""), h.x, titleY + 16);
+      let subtitle = h.type.replace("_handler", "");
+      if (h.isGenerator) {
+        subtitle = "⚡ generator";
+      } else if (h.isIngress) {
+        subtitle = `🌐 ingress [${h.protocol.toUpperCase()}]`;
+      }
+      ctx.fillText(subtitle, h.x, titleY + 16);
 
       if (h.isGenerator) {
         const btnW = 96;
@@ -419,25 +498,47 @@ export class CanvasRenderer {
       }
     });
 
-    // Highlight ONLY the channel being traversed in the current step (always purple for Forwarded transport, never red on drop)
-    if (activeIncomingEdge) {
+    // Highlight the same direction shown by the active event.
+    const activeEventEdge = lastEvent?.result === "Forwarded" ? activeOutgoingEdge : activeIncomingEdge;
+    if (activeEventEdge) {
       ctx.strokeStyle = "#c084fc";
       ctx.lineWidth = 4;
       ctx.shadowColor = ctx.strokeStyle;
       ctx.shadowBlur = 14;
       ctx.beginPath();
-      ctx.moveTo(activeIncomingEdge.from.x + activeIncomingEdge.from.width/2, activeIncomingEdge.from.y);
-      ctx.lineTo(activeIncomingEdge.to.x - activeIncomingEdge.to.width/2, activeIncomingEdge.to.y);
+      ctx.moveTo(activeEventEdge.from.x + activeEventEdge.from.width/2, activeEventEdge.from.y);
+      ctx.lineTo(activeEventEdge.to.x - activeEventEdge.to.width/2, activeEventEdge.to.y);
       ctx.stroke();
       ctx.shadowBlur = 0;
+    } else if (lastEvent?.result === "Forwarded" && lastEvent.outputChannel) {
+      const sourceNode = this.handlersLayout.find(h => h.name === lastEventHandler);
+      if (sourceNode) {
+        const startX = sourceNode.x + sourceNode.width / 2;
+        const endX = startX + 76;
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 3;
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.moveTo(startX, sourceNode.y);
+        ctx.lineTo(endX, sourceNode.y);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = "#c084fc";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(lastEvent.outputChannel, startX + 5, sourceNode.y - 10);
+      }
     }
 
     // Animate Particles
     for (let i = this.activeParticles.length - 1; i >= 0; i--) {
       const p = this.activeParticles[i];
       if (p.progress < 1.0) {
-        p.progress += p.speed || 0.025;
-        if (p.progress > 1.0) p.progress = 1.0;
+        const elapsed = performance.now() - p.startTime;
+        const linearProgress = Math.min(elapsed / p.durationMs, 1);
+        p.progress = linearProgress * linearProgress * (3 - 2 * linearProgress);
       }
 
       const curX = p.startX + (p.endX - p.startX) * p.progress;
@@ -445,11 +546,15 @@ export class CanvasRenderer {
       const reachedNode = p.progress >= 0.85;
       const reachedDropNode = p.isDrop && reachedNode;
       const activeColor = reachedNode ? (p.arrivalColor || p.color) : p.color;
+      const consumeProgress = p.isConsumed ? Math.max(0, (p.progress - 0.72) / 0.28) : 0;
+      const particleScale = p.isConsumed ? 1 - consumeProgress * 0.85 : 1;
+      const particleAlpha = p.isConsumed ? 1 - consumeProgress : 1;
 
       if (p.progress < 1.0) {
         ctx.save();
+        ctx.globalAlpha = particleAlpha;
         ctx.strokeStyle = activeColor;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3 * particleScale;
         ctx.shadowColor = activeColor;
         ctx.shadowBlur = 12;
         ctx.beginPath();
@@ -463,28 +568,43 @@ export class CanvasRenderer {
 
       const headRadius = p.isIngress ? 8.5 : 7;
 
-      ctx.save();
-      const pulse = p.progress >= 1.0 ? Math.sin(Date.now() / 200) * 1.5 : 0;
-      ctx.shadowColor = activeColor;
-      ctx.shadowBlur = p.isIngress ? 24 : 18 + pulse * 2;
-      ctx.fillStyle = reachedDropNode ? "rgba(248, 113, 113, 0.95)" : "#ffffff";
-      ctx.beginPath();
-      ctx.arc(curX, curY, headRadius + pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = activeColor;
-      ctx.beginPath();
-      ctx.arc(curX, curY, (headRadius * 0.65) + pulse * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (p.isIngress && p.progress < 1.0) {
-        ctx.strokeStyle = activeColor;
-        ctx.lineWidth = 1.5;
+      if (!p.isConsumed || consumeProgress < 1) {
+        ctx.save();
+        ctx.globalAlpha = particleAlpha;
+        ctx.shadowColor = activeColor;
+        ctx.shadowBlur = p.isIngress ? 24 : 18;
+        ctx.fillStyle = reachedDropNode ? "rgba(248, 113, 113, 0.95)" : "#ffffff";
         ctx.beginPath();
-        ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.arc(curX, curY, headRadius * particleScale, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = activeColor;
+        ctx.beginPath();
+        ctx.arc(curX, curY, headRadius * 0.65 * particleScale, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (p.isIngress && p.progress < 1.0) {
+          ctx.strokeStyle = activeColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
-      ctx.restore();
+
+      if (p.isConsumed && consumeProgress > 0 && consumeProgress < 1) {
+        ctx.save();
+        ctx.globalAlpha = 1 - consumeProgress;
+        ctx.strokeStyle = "#34d399";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#34d399";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(curX, curY, headRadius + consumeProgress * 22, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Once the particle reaches the node on a drop event, turn red and draw a clear cross-out (X) over it
       if (reachedDropNode) {
@@ -539,21 +659,25 @@ export class CanvasRenderer {
         ctx.fillStyle = showDropState
           ? "#991b1b"
           : (lastEvent.type === "egress" ? "#065f46" : (lastEvent.type === "hop" ? "#6b21a8" : "#0369a1"));
+        ctx.font = "bold 10px monospace";
+        const batchIds = Array.isArray(lastEvent.batchIds) ? lastEvent.batchIds : [];
+        const packetLabel = batchIds.length > 1
+          ? `P[${batchIds.join(",")}]`
+          : `P${lastEvent.msgId}`;
+        const actionLabel = lastEvent.result
+          ? lastEvent.result.toUpperCase()
+          : (lastEvent.type === "drop" ? "DROPPED" : (lastEvent.type === "egress" ? "CONSUMED" : (lastEvent.type === "ingress" ? "LOADED" : "HELD")));
+        const statusText = `${packetLabel} ${actionLabel}`;
+        const badgeWidth = Math.max(108, ctx.measureText(statusText).width + 16);
         ctx.beginPath();
-        ctx.roundRect(badgeX - 54, badgeY - 10, 108, 20, 6);
+        ctx.roundRect(badgeX - badgeWidth / 2, badgeY - 10, badgeWidth, 20, 6);
         ctx.fill();
 
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#f8fafc";
-        ctx.font = "bold 10px monospace";
         ctx.textAlign = "center";
-        const actionLabel = lastEvent.result
-          ? lastEvent.result.toUpperCase()
-          : (lastEvent.type === "drop" ? "DROPPED" : (lastEvent.type === "egress" ? "CONSUMED" : (lastEvent.type === "ingress" ? "LOADED" : "HELD")));
-        const statusText = `P${lastEvent.msgId} ${actionLabel}`;
         ctx.fillText(statusText, badgeX, badgeY + 3.5);
       }
     }
   }
 }
-

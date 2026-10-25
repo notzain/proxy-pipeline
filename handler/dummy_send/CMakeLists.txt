@@ -10,6 +10,8 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 # - dummy_send_file (linked with backend-file)
 # - dummy_send_socket (linked with backend-socket)
 proxy_add_handler_all_backends(dummy_send
+    ROLE generator
+    PROTOCOL none
     SOURCES ${SOURCES}
     INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/include"

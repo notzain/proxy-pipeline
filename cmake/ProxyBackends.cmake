@@ -88,7 +88,23 @@ function(proxy_discover_backends)
 endfunction()
 
 function(proxy_add_handler_all_backends handler_base_name)
-  cmake_parse_arguments(ARG "" "" "SOURCES;INCLUDE_DIRS;EXTRA_LIBS" ${ARGN})
+  cmake_parse_arguments(ARG "" "ROLE;PROTOCOL" "SOURCES;INCLUDE_DIRS;EXTRA_LIBS" ${ARGN})
+
+  if(NOT ARG_ROLE)
+    set(ARG_ROLE "processor")
+  endif()
+  if(NOT ARG_PROTOCOL)
+    set(ARG_PROTOCOL "none")
+  endif()
+
+  # Emit decoupled sidecar descriptor JSON for this handler next to binary
+  set(descriptor_dir "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+  if(NOT descriptor_dir)
+    set(descriptor_dir "${CMAKE_BINARY_DIR}/bin")
+  endif()
+  file(MAKE_DIRECTORY "${descriptor_dir}")
+  set(descriptor_content "{\n  \"name\": \"${handler_base_name}\",\n  \"role\": \"${ARG_ROLE}\",\n  \"protocol\": \"${ARG_PROTOCOL}\"\n}\n")
+  file(WRITE "${descriptor_dir}/${handler_base_name}.json" "${descriptor_content}")
 
   get_property(backend_targets GLOBAL PROPERTY PROXY_BACKEND_TARGETS)
   get_property(backend_names GLOBAL PROPERTY PROXY_BACKEND_NAMES)

@@ -8,6 +8,8 @@ Provides modular components for:
 - Web visualization & dashboard server (server.py)
 """
 
+from .handlers import HandlerDescriptor, HandlerProtocol, HandlerRole, load_handler_descriptor
+from .injectors import BasePacketInjector, UdpPacketInjector, UnixSocketPacketInjector, get_injector_for_handler
 from .pcap import PcapPacket, PcapReader
 from .config import load_chain_config, find_bin_dir, generate_handler_config
 from .coordinator import InteractiveSimulationCoordinator
@@ -17,6 +19,14 @@ from .server import start_dashboard_server
 __all__ = [
     "PcapPacket",
     "PcapReader",
+    "HandlerRole",
+    "HandlerProtocol",
+    "HandlerDescriptor",
+    "load_handler_descriptor",
+    "BasePacketInjector",
+    "UdpPacketInjector",
+    "UnixSocketPacketInjector",
+    "get_injector_for_handler",
     "load_chain_config",
     "find_bin_dir",
     "generate_handler_config",

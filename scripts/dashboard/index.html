@@ -32,7 +32,7 @@
       <div v-if="mode === 'realtime'" style="display: contents;">
         <button class="primary"
                 @click="stepForward()"
-                :disabled="!state.inFlight && state.currentPacketIdx >= state.packetCount"
+                :disabled="!state.inFlight && !state.hasPendingQueue && state.currentPacketIdx >= state.packetCount"
                 title="Step forward through handlers or auto-load the next packet">
           ⏭ Step Forward
         </button>
@@ -118,15 +118,19 @@
         <div class="inspector-title">
           <span>Packet Inspector</span>
           <span style="color: var(--accent); font-family: monospace;">
-            {{ state.selectedPacket ? '#' + state.selectedPacket.id : 'No Packet Selected' }}
+            {{ (state.selectedPacket && state.selectedPacket.batchCount > 1) ? '📦 Batch [' + state.selectedPacket.batchIds.join(', ') + ']' : (state.selectedPacket ? '#' + state.selectedPacket.id : 'No Packet Selected') }}
           </span>
         </div>
         <div class="meta-grid" v-if="state.selectedPacket">
-          <span class="k">Packet ID:</span><span class="v">#{{ state.selectedPacket.id }}</span>
+          <span class="k">{{ state.selectedPacket.batchCount > 1 ? 'Batch Size:' : 'Packet ID:' }}</span>
+          <span class="v">{{ state.selectedPacket.batchCount > 1 ? state.selectedPacket.batchCount + ' Messages (' + state.selectedPacket.size + ' B)' : '#' + state.selectedPacket.id }}</span>
           <span class="k">Timestamp:</span><span class="v">{{ state.selectedPacket.timestampNs }} ns</span>
-          <span class="k">Source:</span><span class="v">{{ state.selectedPacket.srcIp }}:{{ state.selectedPacket.srcPort }}</span>
-          <span class="k">Destination:</span><span class="v">{{ state.selectedPacket.dstIp }}:{{ state.selectedPacket.dstPort }}</span>
-          <span class="k">Size:</span><span class="v">{{ state.selectedPacket.size }} bytes</span>
+          <span class="k">{{ state.selectedPacket.batchCount > 1 ? 'Message IDs:' : 'Source:' }}</span>
+          <span class="v">{{ state.selectedPacket.batchCount > 1 ? '[' + state.selectedPacket.batchIds.join(', ') + ']' : state.selectedPacket.srcIp + ':' + state.selectedPacket.srcPort }}</span>
+          <span class="k">{{ state.selectedPacket.batchCount > 1 ? 'Location:' : 'Destination:' }}</span>
+          <span class="v">{{ state.selectedPacket.batchCount > 1 ? (state.inFlightSummary ? state.inFlightSummary.node + ' (' + state.inFlightSummary.channel + ')' : 'Queue') : state.selectedPacket.dstIp + ':' + state.selectedPacket.dstPort }}</span>
+          <span class="k" v-if="!state.selectedPacket.batchCount || state.selectedPacket.batchCount <= 1">Size:</span>
+          <span class="v" v-if="!state.selectedPacket.batchCount || state.selectedPacket.batchCount <= 1">{{ state.selectedPacket.size }} bytes</span>
         </div>
         <div class="meta-grid" v-else>
           <span class="k">Status:</span><span class="v" style="color: var(--text-muted);">Select any packet to inspect</span>
@@ -143,7 +147,7 @@
       </div>
 
       <!-- Left List Container -->
-      <div class="list-container">
+      <div class="list-container" id="packet-list">
         <!-- Generator Chain / Empty Packets Notice -->
         <div v-if="!state.packets || state.packets.length === 0" style="padding: 20px 14px; font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.5;">
           <div v-if="mode === 'trace'">
@@ -159,25 +163,64 @@
           </div>
         </div>
 
-        <!-- Rendered PCAP Queue Items -->
+        <!-- Rendered PCAP Queue Items (Pre-grouped displayQueue from backend) -->
         <div v-else style="display: contents;">
-          <div v-for="(pkt, pIdx) in state.packets" :key="pkt.id"
-               class="list-item"
-               :class="{
-                 active: state.selectedPacket && state.selectedPacket.id === pkt.id,
-                 completed: mode === 'realtime' && pIdx < state.currentPacketIdx && (!state.lastEvent || state.lastEvent.msgId !== pkt.id)
-               }"
-               @click="inspectPacket(pkt)">
-            <div class="item-top">
-              <span class="log-tag tag-ingress">PKT #{{ pkt.id }}</span>
-              <span class="log-time">
-                <strong v-if="mode === 'realtime' && state.inFlight && state.lastEvent && state.lastEvent.msgId === pkt.id" style="color: var(--accent);">● IN-FLIGHT</strong>
-                <strong v-else-if="mode === 'realtime' && pIdx === state.currentPacketIdx && !state.inFlight" style="color: #34d399;">NEXT</strong>
-                <span v-else>{{ pkt.size }} bytes</span>
-              </span>
+          <div v-for="item in state.displayQueue" :key="item.key" style="display: contents;">
+            <!-- Batch Group Card -->
+            <div v-if="item.isBatch"
+                 class="batch-card"
+                 :id="'packet-item-' + item.id"
+                 :class="{
+                   active: item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.some(bid => item.batchIds.includes(bid))))),
+                   completed: item.isCompleted
+                 }"
+                 @click="inspectPacket(item.packets[0])">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="batch-badge">📦 BATCH ({{ item.batchCount }})</span>
+                  <span style="font-size: 11px; font-weight: 600; color: var(--text);">Pkts [{{ item.batchIds.join(", ") }}]</span>
+                </div>
+                <span class="log-time">
+                  <strong v-if="mode === 'realtime' && item.isActive" style="color: var(--accent);">● IN-FLIGHT</strong>
+                  <strong v-else-if="mode === 'realtime' && item.isQueued" style="color: #c084fc;">QUEUED</strong>
+                  <span v-else>{{ item.size }} bytes</span>
+                </span>
+              </div>
+              <div v-if="item.heldNode" class="log-desc" style="color: var(--accent);">
+                Held at: <strong>{{ item.heldNode }}</strong> (channel: {{ item.heldChannel }})
+              </div>
+              <div v-else class="log-desc" style="color: var(--text-muted);">
+                {{ item.isCompleted ? "Delivered at chain egress" : "Queue Batch" }}
+              </div>
+              <div class="batch-sub-items">
+                <div v-for="p in item.packets" :key="p.id" style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted);">
+                  <span>#{{ p.id }}: {{ p.payloadSummary }}</span>
+                  <span style="font-family: monospace;">{{ p.size }}B</span>
+                </div>
+              </div>
             </div>
-            <div class="log-desc">{{ pkt.srcIp }}:{{ pkt.srcPort }} ➔ {{ pkt.dstIp }}:{{ pkt.dstPort }}</div>
-            <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ pkt.payloadSummary }}</div>
+
+            <!-- Single Individual Packet Item -->
+            <div v-else
+                 class="list-item"
+                 :id="'packet-item-' + item.id"
+                 :class="{
+                   active: item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.includes(item.id)))),
+                   completed: item.isCompleted
+                 }"
+                 @click="inspectPacket(item.packet)">
+              <div class="item-top">
+                <span class="log-tag tag-ingress">PKT #{{ item.id }}</span>
+                <span class="log-time">
+                  <strong v-if="mode === 'realtime' && item.isActive" style="color: var(--accent);">● IN-FLIGHT</strong>
+                  <strong v-else-if="mode === 'realtime' && item.isQueued" style="color: #c084fc;">QUEUED</strong>
+                  <strong v-else-if="mode === 'realtime' && item.pIdx === state.currentPacketIdx && !state.inFlight" style="color: #34d399;">NEXT</strong>
+                  <span v-else>{{ item.packet.size }} bytes</span>
+                </span>
+              </div>
+              <div class="log-desc">{{ item.packet.srcIp }}:{{ item.packet.srcPort }} ➔ {{ item.packet.dstIp }}:{{ item.packet.dstPort }}</div>
+              <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ item.packet.payloadSummary }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -333,7 +376,7 @@
 
   <!-- ES6 App Module Bootstrapper -->
   <script type="module">
-    import { createSimulationApp } from "./js/app.js?v=7";
+    import { createSimulationApp } from "./js/app.js?v=11";
 
     window.app = createSimulationApp();
     PetiteVue.createApp(window.app).mount("body");

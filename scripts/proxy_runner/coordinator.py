@@ -11,6 +11,13 @@ import threading
 import time
 from typing import Any, Optional
 
+from .handlers import (
+    HandlerDescriptor,
+    HandlerProtocol,
+    HandlerRole,
+    load_handler_descriptor,
+)
+from .injectors import get_injector_for_handler
 from .pcap import PcapPacket
 
 
@@ -29,7 +36,8 @@ class InteractiveSimulationCoordinator:
     def __init__(self, chain_config: dict[str, Any], pcap_packets: list[PcapPacket]):
         self.chain_config = chain_config
         self.handlers: list[dict[str, Any]] = chain_config.get("handlers", [])
-        self.pcap_packets = pcap_packets
+        self._initial_pcap_packets = list(pcap_packets)
+        self.pcap_packets = list(pcap_packets)
         self.current_packet_idx = 0
         self.events: list[dict[str, Any]] = []
         self.event_counter = 1
@@ -47,9 +55,11 @@ class InteractiveSimulationCoordinator:
         #   held_data: Optional[list[bytes]]
         #   pending_branches: list[dict[str, Any]] (for fan-out / SplitHandler)
         self.active_in_flight: Optional[dict[str, Any]] = None
+        self.pending_queue: list[dict[str, Any]] = []
 
         # Custom batch groupings: list of lists of packet IDs
         self.batch_groups: list[list[int]] = []
+        self.last_triggered_generator: Optional[str] = None
 
         # Build topology mapping: channel -> [consumer_handlers]
         self.channel_to_consumers: dict[str, list[dict[str, Any]]] = {}
@@ -273,8 +283,8 @@ class InteractiveSimulationCoordinator:
             if not first_handler:
                 return {"status": "error", "message": "No handlers defined in chain"}
 
-            is_generator = not first_handler.get("input_channel") and not first_handler.get("input_channels")
-            if is_generator and first_handler.get("type") != "udp_ingress_handler":
+            first_desc = load_handler_descriptor(first_handler.get("type", ""))
+            if first_desc.is_generator:
                 return {
                     "status": "error",
                     "message": f"Handler '{first_handler['name']}' is a generator with no input channel. Click '⚡ Trigger' on the node to emit messages.",
@@ -285,12 +295,12 @@ class InteractiveSimulationCoordinator:
                 chs = first_handler["input_channels"]
                 in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
 
-            udp_port = (
-                first_handler.get("config", {}).get("ingress.port")
-                if first_handler.get("type") == "udp_ingress_handler"
-                else None
+            is_ext_ingress = first_desc.is_external_ingress
+            ingress_channel_label = (
+                f"{first_desc.protocol.value}_network"
+                if is_ext_ingress
+                else (in_ch or "ingress")
             )
-            ingress_channel_label = "udp_network" if udp_port else (in_ch or "ingress")
 
             is_batch = len(current_batch_pkts) > 1
             seq_label = (
@@ -351,10 +361,21 @@ class InteractiveSimulationCoordinator:
     def step_forward(self, auto_load: bool = False) -> dict[str, Any]:
         """
         Steps the active in-flight packet forward into the next handler in the chain.
-        If no packet is currently loaded and auto_load is True, loads the next packet.
+        If no packet is currently in-flight:
+          - First checks if any branches are held in self.pending_queue, and promotes the next one.
+          - Otherwise, if auto_load is True, loads the next PCAP packet.
         """
         with self.lock:
             if self.active_in_flight is None:
+                if self.pending_queue:
+                    nxt = self.pending_queue.pop(0)
+                    self.active_in_flight = nxt
+                    stage = self.active_in_flight.get("stage")
+                    if stage == "loaded":
+                        return self._step_loaded_into_first_handler()
+                    else:
+                        return self._advance_in_flight()
+
                 if auto_load:
                     load_res = self._load_next_packet_unlocked()
                     return load_res
@@ -396,32 +417,19 @@ class InteractiveSimulationCoordinator:
             chs = first_handler["input_channels"]
             in_ch = chs[0] if isinstance(chs, list) and chs else str(chs).split(",")[0].strip()
 
-        first_in_sock = f"/tmp/proxy_sim_{in_ch}.sock" if in_ch else None
-        udp_port = (
-            first_handler.get("config", {}).get("ingress.port")
-            if first_handler.get("type") == "udp_ingress_handler"
-            else None
-        )
+        first_desc = load_handler_descriptor(first_handler.get("type", ""))
 
         # Drain any stale notifications before injecting
         self._drain_socket(self.events_sock)
         send_time_ns = time.time_ns()
 
-        # Inject packet(s) into first handler
-        if udp_port:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            for p in current_batch_pkts:
-                s.sendto(p.raw_payload, ("127.0.0.1", int(udp_port)))
-            s.close()
-        elif first_in_sock:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-            try:
-                for p in current_batch_pkts:
-                    env = p.pack_envelope()
-                    s.sendto(env, first_in_sock)
-            except Exception as ex:
-                print(f"[Coordinator] Error delivering to {first_in_sock}: {ex}")
-            s.close()
+        # Inject packet(s) using pluggable injector strategy
+        injector = get_injector_for_handler(
+            handler_spec=first_handler,
+            is_external_ingress=first_desc.is_external_ingress,
+            protocol=first_desc.protocol.value,
+        )
+        injector.inject(first_handler, current_batch_pkts)
 
         return self._process_handler_execution(
             handler_spec=first_handler,
@@ -685,11 +693,8 @@ class InteractiveSimulationCoordinator:
 
     def _advance_or_clear_branches(self, pending_branches: list[dict[str, Any]]):
         if pending_branches:
-            nxt = pending_branches[0]
-            nxt["pending_branches"] = pending_branches[1:]
-            self.active_in_flight = nxt
-        else:
-            self.active_in_flight = None
+            self.pending_queue = list(pending_branches) + self.pending_queue
+        self.active_in_flight = None
 
     def _wait_for_message_results(
         self,
@@ -773,13 +778,25 @@ class InteractiveSimulationCoordinator:
             if not gen_handler:
                 return {"status": "error", "message": f"Handler node '{node_name}' not found."}
 
+            gen_desc = load_handler_descriptor(gen_handler.get("type", ""))
+            if not gen_desc.is_generator:
+                return {
+                    "status": "error",
+                    "message": f"Handler '{node_name}' is not an autonomous generator (role: {gen_desc.role.value}).",
+                }
+
             out_ch = gen_handler.get("output_channel")
             if not out_ch:
                 return {"status": "error", "message": f"Handler '{node_name}' has no output_channel."}
 
-            if out_ch in self.hold_sockets and not (
-                self.active_in_flight and self.active_in_flight.get("curr_node_name") == gen_handler["name"]
-            ):
+            # Only drain the hold socket if this channel is not currently holding any queued messages
+            is_channel_in_flight = (
+                self.active_in_flight and (
+                    self.active_in_flight.get("output_channel") == out_ch
+                    or any(b.get("output_channel") == out_ch for b in self.active_in_flight.get("pending_branches", []))
+                )
+            )
+            if out_ch in self.hold_sockets and not is_channel_in_flight:
                 self._drain_socket(self.hold_sockets[out_ch])
 
             h_config = gen_handler.get("config", {})
@@ -811,21 +828,26 @@ class InteractiveSimulationCoordinator:
             self.pcap_packets.append(synthetic_pkt)
             self.current_packet_idx = len(self.pcap_packets)
 
-            is_accumulating = (
-                self.active_in_flight is not None
-                and self.active_in_flight.get("curr_node_name") == gen_handler["name"]
-                and self.active_in_flight.get("output_channel") == out_ch
-            )
+            # Check if we should accumulate into active_in_flight or the latest queued branch
+            target_branch = None
+            if self.last_triggered_generator == gen_handler["name"]:
+                if self.pending_queue and self.pending_queue[-1].get("curr_node_name") == gen_handler["name"] and self.pending_queue[-1].get("output_channel") == out_ch:
+                    target_branch = self.pending_queue[-1]
+                elif self.active_in_flight and self.active_in_flight.get("curr_node_name") == gen_handler["name"] and self.active_in_flight.get("output_channel") == out_ch:
+                    target_branch = self.active_in_flight
 
-            if is_accumulating:
-                existing_held = self.active_in_flight["held_data"]
+            self.last_triggered_generator = gen_handler["name"]
+
+            is_queued = False
+            if target_branch is not None:
+                existing_held = target_branch["held_data"]
                 held_batch = (existing_held if isinstance(existing_held, list) else [existing_held]) + [raw_envelope]
-                existing_batch_pkts = self.active_in_flight.get("batch") or [self.active_in_flight["packet"]]
+                existing_batch_pkts = target_branch.get("batch") or [target_branch["packet"]]
                 all_batch_pkts = existing_batch_pkts + [synthetic_pkt]
 
-                self.active_in_flight["held_data"] = held_batch
-                self.active_in_flight["batch"] = all_batch_pkts
-                self.active_in_flight["packet"] = all_batch_pkts[0]
+                target_branch["held_data"] = held_batch
+                target_branch["batch"] = all_batch_pkts
+                target_branch["packet"] = all_batch_pkts[0]
 
                 batch_ids = [p.seq_id for p in all_batch_pkts]
                 self.batch_groups = [grp for grp in self.batch_groups if not any(pid in grp for pid in batch_ids)]
@@ -833,6 +855,9 @@ class InteractiveSimulationCoordinator:
 
                 batch_len = len(all_batch_pkts)
                 batch_ids_str = ", ".join(str(p.seq_id) for p in all_batch_pkts)
+
+                is_queued = (target_branch is not self.active_in_flight)
+                action_word = "queued batch of" if is_queued else "held batch of"
 
                 ev_gen = {
                     "eventId": self.event_counter,
@@ -849,7 +874,40 @@ class InteractiveSimulationCoordinator:
                     "payloadFull": "\n---\n".join(p.payload_text for p in all_batch_pkts),
                     "status": "forwarded",
                     "latencyUs": 5.0,
-                    "detail": f"Generator '{gen_handler['name']}' accumulated message #{synthetic_pkt.seq_id} -> held batch of {batch_len} at '{out_ch}'",
+                    "detail": f"Generator '{gen_handler['name']}' accumulated message #{synthetic_pkt.seq_id} -> {action_word} {batch_len} at '{out_ch}'",
+                }
+            elif self.active_in_flight is not None:
+                # Another message is already in-flight or held elsewhere; queue this generated message into pending_queue
+                new_branch = {
+                    "stage": "held",
+                    "packet": synthetic_pkt,
+                    "batch": [synthetic_pkt],
+                    "curr_node_name": gen_handler["name"],
+                    "curr_node_type": gen_handler.get("type"),
+                    "input_channel": None,
+                    "output_channel": out_ch,
+                    "held_data": [raw_envelope],
+                    "pending_branches": [],
+                }
+                self.pending_queue.append(new_branch)
+                is_queued = True
+
+                ev_gen = {
+                    "eventId": self.event_counter,
+                    "msgId": synthetic_pkt.seq_id,
+                    "batchIds": [synthetic_pkt.seq_id],
+                    "batchCount": 1,
+                    "timestampNs": time.time_ns(),
+                    "type": "hop",
+                    "result": "Forwarded",
+                    "handler": gen_handler["name"],
+                    "handlerType": gen_handler.get("type"),
+                    "outputChannel": out_ch,
+                    "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
+                    "payloadFull": msg_text,
+                    "status": "forwarded",
+                    "latencyUs": 5.0,
+                    "detail": f"Generator '{gen_handler['name']}' triggered -> queued at output channel '{out_ch}'",
                 }
             else:
                 self.active_in_flight = {
@@ -890,15 +948,20 @@ class InteractiveSimulationCoordinator:
                 "event": ev_gen,
                 "packet": synthetic_pkt.to_dict(),
                 "heldChannel": out_ch,
-                "inFlight": True,
+                "inFlight": not is_queued,
+                "isQueued": is_queued,
             }
 
     def reset(self):
         with self.lock:
+            self.pcap_packets = list(self._initial_pcap_packets)
             self.current_packet_idx = 0
             self.events.clear()
             self.event_counter = 1
             self.active_in_flight = None
+            self.pending_queue.clear()
+            self.last_triggered_generator = None
+            self.batch_groups.clear()
             self._drain_all_sockets()
 
     def run_to_completion(self, max_steps: int = 10000) -> list[dict[str, Any]]:

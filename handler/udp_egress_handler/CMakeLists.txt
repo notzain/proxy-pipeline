@@ -12,6 +12,8 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 # - udp_egress_handler_socket (linked with backend-socket)
 # - udp_egress_handler_file (linked with backend-file)
 proxy_add_handler_all_backends(udp_egress_handler
+    ROLE external_egress
+    PROTOCOL udp
     SOURCES ${SOURCES}
     INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
