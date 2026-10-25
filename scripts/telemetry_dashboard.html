@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proxy Pipeline Telemetry Dashboard</title>
-    <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+    <title>Proxy Live Chain Telemetry</title>
+    <link rel="stylesheet" href="telemetry_dashboard.css">
     <style>
         :root {
             --background: #0f172a;
@@ -22,10 +22,43 @@
             color: var(--foreground);
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
+        .view-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); }
+        .view-tab { border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; background: transparent; color: var(--muted); cursor: pointer; }
+        .view-tab.active { color: var(--foreground); border-bottom-color: var(--primary); }
+        .throughput-chart { display: block; width: 100%; height: 190px; }
+        .topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+        .topology-layout > div { min-width: 0; }
+        .topology-frame { width: 100%; min-width: 0; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: rgba(2, 6, 23, .35); }
+        .topology-svg { display: block; min-width: 760px; min-height: 290px; }
+        .topology-node { cursor: pointer; }
+        .topology-node rect { fill: #172337; stroke: #34445a; stroke-width: 1.5; }
+        .topology-node.selected rect { stroke: #38bdf8; stroke-width: 2; }
+        .topology-node text { font-family: ui-sans-serif, system-ui, sans-serif; fill: #f8fafc; }
+        .topology-node .node-subtitle { fill: #94a3b8; font-size: 11px; }
+        .topology-node .node-stat { fill: #7dd3fc; font-family: ui-monospace, monospace; font-size: 12px; }
+        .topology-edge { stroke: #475569; stroke-width: 2; fill: none; marker-end: url(#topology-arrow); }
+        .topology-edge-label { fill: #cbd5e1; font: 11px ui-monospace, monospace; text-anchor: middle; }
+        .overview-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+        .overview-card { padding: 15px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+        .overview-card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+        .overview-card .value { margin-top: 8px; font: 700 23px ui-monospace, monospace; }
+        .overview-card .hint { margin-top: 5px; color: var(--muted); font-size: 11px; }
+        .topology-note { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; }
+        .detail-panel { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+        .detail-panel h3 { margin: 0 0 14px; font-size: 14px; }
+        .detail-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 12px; }
+        .detail-row span:first-child { color: var(--muted); }
+        .unavailable { color: #fbbf24; }
+        .connection-offline { color: #fbbf24 !important; }
+        [hidden] { display: none !important; }
+        @media (max-width: 850px) {
+            .topology-layout { grid-template-columns: minmax(0, 1fr); }
+            .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
     </style>
 </head>
 <body class="p-6 min-h-screen">
-    <div class="max-w-6xl mx-auto space-y-6">
+    <div class="space-y-6">
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-[var(--border)] pb-4">
             <div>
@@ -36,13 +69,54 @@
                 <p class="text-sm text-[var(--muted)] mt-1">Global pipeline health and per-namespace microservice diagnostics</p>
             </div>
             <div class="flex items-center gap-3">
-                <span id="connection-status" class="px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live Monitoring
+                <span id="connection-status" class="connection-offline px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5">
+                    Connecting to collector
                 </span>
                 <span id="last-update" class="text-xs text-[var(--muted)] font-mono">Updated: Just now</span>
             </div>
         </div>
 
+        <nav class="view-tabs" aria-label="Dashboard views">
+            <button class="view-tab active" type="button" data-view="overview">Overview</button>
+            <button class="view-tab" type="button" data-view="metrics">Metrics &amp; Diagnostics</button>
+        </nav>
+
+        <section id="overview-view" class="space-y-6" aria-label="Production overview">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold">Live chain overview</h2>
+                    <p class="text-xs text-[var(--muted)] mt-1" id="topology-description">Waiting for chain topology from the chain runner.</p>
+                </div>
+                <span class="text-xs text-[var(--muted)]" id="topology-freshness">Awaiting telemetry</span>
+            </div>
+            <div class="overview-kpis">
+                <article class="overview-card"><div class="label">Ingress rate</div><div class="value" id="overview-ingress-rate">—</div><div class="hint" id="overview-ingress-total">No source metrics</div></article>
+                <article class="overview-card"><div class="label">Ingress bandwidth</div><div class="value" id="overview-bandwidth">—</div><div class="hint">Calculated from byte counter deltas</div></article>
+                <article class="overview-card"><div class="label">Approx. message age p99</div><div class="value" id="overview-latency">—</div><div class="hint">Bucket-estimated timestamp histogram; not handler execution time</div></article>
+                <article class="overview-card"><div class="label">Malformed envelopes</div><div class="value" id="overview-drops">—</div><div class="hint">Application rejects are not currently instrumented</div></article>
+            </div>
+            <div class="topology-layout">
+                <div>
+                    <div class="topology-frame" id="topology-frame">
+                        <div class="topology-note" id="topology-status">No production topology has been published. Start the chain runner with a telemetry collector URL to display its topology.</div>
+                        <svg class="topology-svg" id="topology-svg" role="img" aria-label="Live chain topology" hidden></svg>
+                    </div>
+                    <div class="topology-note mt-2">Flow edges use a capped visual indicator. Labels show aggregated counter-derived rates; each handler is not a per-message animation.</div>
+                </div>
+                <aside class="detail-panel" aria-live="polite">
+                    <h3 id="node-detail-title">Select a handler</h3>
+                    <div class="detail-row"><span>Handler rate</span><strong id="node-detail-rate">—</strong></div>
+                    <div class="detail-row"><span>Approx. message age p99</span><strong id="node-detail-latency">—</strong></div>
+                    <div class="detail-row"><span>Malformed envelopes</span><strong id="node-detail-drops">—</strong></div>
+                    <div class="detail-row"><span>Queue / readiness</span><strong class="unavailable">Not instrumented</strong></div>
+                    <div class="detail-row"><span>CPU / replicas</span><strong class="unavailable">Not instrumented</strong></div>
+                    <p class="text-xs text-[var(--muted)] mt-3">Rates are derived from current cumulative metrics. Shared handler prefixes across replicas are not independently identifiable in the existing StatsD stream.</p>
+                </aside>
+            </div>
+            <div class="topology-note" id="topology-limitations">Telemetry data will be marked unavailable when the collector has not received recent metrics.</div>
+        </section>
+
+        <section id="metrics-view" class="space-y-6" aria-label="Metrics and diagnostics" hidden>
         <!-- Global Summary KPI Cards (Top Bar) -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Ingress Total -->
@@ -89,22 +163,22 @@
                 </div>
                 <div class="mt-3 flex items-baseline justify-between">
                     <span id="global-peak-throughput" class="text-3xl font-extrabold text-purple-400 font-mono">0</span>
-                    <span class="text-xs text-[var(--muted)] font-mono">msg/s peak</span>
+                    <span class="text-xs text-[var(--muted)] font-mono">msg/s peak · collector estimate</span>
                 </div>
             </div>
         </div>
 
-        <!-- Global Real-time Throughput Activity Bar -->
+        <!-- Global Real-time Throughput Activity -->
         <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-sm font-semibold uppercase tracking-wider text-[var(--foreground)]">Global Pipeline Throughput Activity</h2>
-                    <p class="text-xs text-[var(--muted)] mt-0.5">Rolling 30-second ingress and egress message velocity across all active nodes</p>
+                    <p class="text-xs text-[var(--muted)] mt-0.5">Rolling 30-second source ingress message rate</p>
                 </div>
                 <span class="text-xs font-mono text-[var(--primary)]" id="current-rate-label">Rate: 0 msg/s</span>
             </div>
-            <div class="h-32 flex items-end gap-1.5 pt-4 px-2 bg-slate-950/40 rounded-lg border border-[var(--border)]" id="throughput-chart">
-                <!-- Dynamic bars injected here -->
+            <div class="bg-slate-950/40 rounded-lg border border-[var(--border)] overflow-hidden">
+                <svg id="throughput-chart" class="throughput-chart" role="img" aria-label="Source ingress message rate over the last 30 seconds"></svg>
             </div>
             <div class="flex justify-between text-xs text-[var(--muted)] font-mono pt-1">
                 <span>-30s</span>
@@ -155,57 +229,475 @@
                 </table>
             </div>
         </div>
+        </section>
     </div>
 
     <script>
         const throughputHistory = new Array(30).fill(0);
-        let lastIngressTotal = 0;
-        let lastTimestamp = Date.now();
-        let peakRate = 0;
         let activeTab = "all";
         let latestData = { counters: {}, gauges: {}, timings: {} };
+        let latestTopology = null;
+        let previousCounters = {};
+        let selectedNodeName = null;
+        let sourceMetrics = null;
+        let topologyResizeFrame = 0;
+        let throughputResizeObserver = null;
 
-        function renderThroughputBars() {
-            const container = document.getElementById("throughput-chart");
-            container.innerHTML = "";
-            const maxVal = Math.max(...throughputHistory, 100);
-            throughputHistory.forEach(val => {
-                const heightPercent = Math.min(100, Math.max(4, (val / maxVal) * 100));
-                const bar = document.createElement("div");
-                bar.className = "flex-1 bg-gradient-to-t from-sky-600 to-sky-400 rounded-t transition-all duration-300";
-                bar.style.height = `${heightPercent}%`;
-                bar.title = `${Math.round(val)} msg/s`;
-                container.appendChild(bar);
+        document.querySelectorAll("[data-view]").forEach(button => {
+            button.addEventListener("click", () => {
+                document.querySelectorAll("[data-view]").forEach(tab => tab.classList.toggle("active", tab === button));
+                const showOverview = button.dataset.view === "overview";
+                document.getElementById("overview-view").hidden = !showOverview;
+                document.getElementById("metrics-view").hidden = showOverview;
+                if (showOverview && latestTopology) renderTopology(latestData, false);
             });
+        });
+        window.addEventListener("resize", () => {
+            if (document.getElementById("overview-view").hidden || !latestTopology || topologyResizeFrame) return;
+            topologyResizeFrame = requestAnimationFrame(() => {
+                topologyResizeFrame = 0;
+                renderTopology(latestData, false);
+            });
+        });
+        throughputResizeObserver = new ResizeObserver(() => renderThroughputChart());
+        throughputResizeObserver.observe(document.getElementById("throughput-chart").parentElement);
+
+        function renderThroughputChart() {
+            const svg = document.getElementById("throughput-chart");
+            const width = svg.clientWidth;
+            if (!width) return;
+
+            const height = 190;
+            const left = 62;
+            const right = width - 14;
+            const top = 12;
+            const bottom = height - 28;
+            const peak = Math.max(...throughputHistory, 0);
+            const magnitude = 10 ** Math.floor(Math.log10(peak || 1));
+            const normalizedPeak = peak / magnitude;
+            const ceiling = (normalizedPeak <= 1 ? 1 : normalizedPeak <= 2 ? 2 : normalizedPeak <= 5 ? 5 : 10) * magnitude;
+            const points = throughputHistory.map((value, index) => ({
+                x: left + (right - left) * index / Math.max(1, throughputHistory.length - 1),
+                y: bottom - (Math.max(0, value) / ceiling) * (bottom - top),
+                value,
+            }));
+            const make = (name, attributes, text = null) => {
+                const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+                for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+                if (text !== null) element.textContent = text;
+                return element;
+            };
+
+            svg.replaceChildren();
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+            for (let index = 0; index <= 4; index++) {
+                const value = ceiling * (4 - index) / 4;
+                const y = top + (bottom - top) * index / 4;
+                svg.append(make("line", { x1: left, y1: y, x2: right, y2: y, stroke: "#334155", "stroke-width": 1 }));
+                svg.append(make("text", {
+                    x: left - 10,
+                    y: y + 4,
+                    fill: "#94a3b8",
+                    "font-size": 11,
+                    "font-family": "ui-monospace, monospace",
+                    "text-anchor": "end",
+                }, Number(value.toPrecision(3)).toLocaleString()));
+            }
+
+            const path = points.map((point, index) =>
+                `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
+            ).join(" ");
+            svg.append(make("path", {
+                d: path,
+                fill: "none",
+                stroke: "#38bdf8",
+                "stroke-width": 2.5,
+                "stroke-linecap": "round",
+                "stroke-linejoin": "round",
+            }));
+            const lastPoint = points[points.length - 1];
+            svg.append(make("circle", {
+                cx: lastPoint.x,
+                cy: lastPoint.y,
+                r: 4,
+                fill: "#38bdf8",
+                stroke: "#0f172a",
+                "stroke-width": 2,
+            }));
         }
 
         async function fetchMetrics() {
             try {
-                const res = await fetch("/api/metrics");
+                const res = await fetch("/api/metrics", { cache: "no-store" });
                 if (!res.ok) throw new Error("HTTP error");
                 const data = await res.json();
                 latestData = data;
                 updateUI(data);
+
+                if (!data.topologyAvailable) {
+                    latestTopology = null;
+                    renderTopology(data);
+                    return;
+                }
+                const topologyResponse = await fetch("/api/topology", { cache: "no-store" });
+                if (topologyResponse.ok) {
+                    latestTopology = await topologyResponse.json();
+                    renderTopology(data);
+                } else {
+                    latestTopology = null;
+                    renderTopology(data);
+                }
             } catch (err) {
-                try {
-                    const fallbackRes = await fetch("http://127.0.0.1:8126/api/metrics");
-                    if (fallbackRes.ok) {
-                        const data = await fallbackRes.json();
-                        latestData = data;
-                        updateUI(data);
-                        return;
-                    }
-                } catch (_) {}
-                document.getElementById("connection-status").innerHTML =
-                    `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Listening (Waiting for UDP stream)`;
-                document.getElementById("connection-status").className =
-                    "px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
+                const connectionStatus = document.getElementById("connection-status");
+                connectionStatus.textContent = "Collector disconnected";
+                connectionStatus.className =
+                    "connection-offline px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
+                document.getElementById("topology-freshness").textContent = "Collector unavailable";
+                const topologyStatus = document.getElementById("topology-status");
+                topologyStatus.hidden = false;
+                topologyStatus.textContent = "Could not reach the telemetry collector.";
+                setTopologyVisibility(document.getElementById("topology-svg"), false);
             }
+        }
+
+        function setTopologyVisibility(svg, visible) {
+            if (visible) svg.removeAttribute("hidden");
+            else svg.setAttribute("hidden", "");
+        }
+
+        function svgElement(name, attributes = {}, text = null) {
+            const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+            for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+            if (text !== null) element.textContent = text;
+            return element;
+        }
+
+        function metricValue(data, prefix, suffix, kind = "counters") {
+            return Number((data[kind] || {})[`${prefix}.${suffix}`] || 0);
+        }
+
+        function metricStatus(data, name) {
+            const lastSeenAt = Number(data.metricLastSeen?.[name] || 0);
+            if (!lastSeenAt) return "NO DATA";
+            if (Date.now() / 1000 - lastSeenAt > 5) return "STALE";
+            return null;
+        }
+
+        function deriveCounterDeltas(data) {
+            const now = Number(data.timestamp) || Date.now() / 1000;
+            const counters = data.counters || {};
+            const elapsed = sourceMetrics && now > sourceMetrics.timestamp ? now - sourceMetrics.timestamp : 0;
+            const deltas = {};
+            for (const [name, rawValue] of Object.entries(counters)) {
+                const value = Number(rawValue);
+                const previous = previousCounters[name];
+                deltas[name] = previous === undefined || value < previous || elapsed <= 0
+                    ? 0
+                    : (value - previous) / elapsed;
+            }
+            previousCounters = { ...counters };
+            sourceMetrics = { timestamp: now };
+            return deltas;
+        }
+
+        function formatRate(rate) {
+            if (!Number.isFinite(rate)) return "—";
+            if (rate >= 1_000_000) return `${(rate / 1_000_000).toFixed(2)}M/s`;
+            if (rate >= 10_000) return `${(rate / 1000).toFixed(1)}k/s`;
+            return `${Math.round(rate).toLocaleString()}/s`;
+        }
+
+        function formatBandwidth(bytesPerSecond) {
+            if (!Number.isFinite(bytesPerSecond)) return "—";
+            if (bytesPerSecond >= 125_000_000) return `${(bytesPerSecond * 8 / 1_000_000_000).toFixed(2)} Gbit/s`;
+            if (bytesPerSecond >= 125_000) return `${(bytesPerSecond * 8 / 1_000_000).toFixed(1)} Mbit/s`;
+            return `${(bytesPerSecond * 8 / 1000).toFixed(1)} kbit/s`;
+        }
+
+        function sourceNodes(topology) {
+            const incoming = new Set(topology.edges.map(edge => edge.to));
+            return topology.nodes.filter(node => !incoming.has(node.name));
+        }
+
+        function histogramP99(data, prefix) {
+            const base = `${prefix}.message_processing_duration_us`;
+            const count = Number(data.counters?.[`${base}.count`] || data.gauges?.[`${base}.count`] || 0);
+            if (count <= 0) return null;
+            const bounds = [5, 25, 100, 1000, 5000, 25000];
+            const buckets = bounds.map(bound => Number(data.gauges?.[`${base}.bucket.${bound.toFixed(3)}`] || 0));
+            const target = count * 0.99;
+            let previousCount = 0;
+            let previousBound = 0;
+            for (let index = 0; index < bounds.length; index++) {
+                const bucketCount = Math.max(previousCount, buckets[index]);
+                if (bucketCount >= target) {
+                    return previousBound + (bounds[index] - previousBound) *
+                        ((target - previousCount) / Math.max(1, bucketCount - previousCount));
+                }
+                previousCount = bucketCount;
+                previousBound = bounds[index];
+            }
+            return buckets[buckets.length - 1] < target ? 30000 : null;
+        }
+
+        function renderTopology(data, recordSample = true) {
+            const status = document.getElementById("topology-status");
+            const svg = document.getElementById("topology-svg");
+            const description = document.getElementById("topology-description");
+            if (!latestTopology) {
+                status.hidden = false;
+                setTopologyVisibility(svg, false);
+                status.textContent = "No production topology has been published. Start the chain runner with --telemetry-url to display its chain.";
+                description.textContent = "Topology unavailable; metrics diagnostics remain available.";
+                document.getElementById("topology-freshness").textContent = "Topology unavailable";
+                updateOverviewMetrics(data, null);
+                updateMetricsSummary(data, null, recordSample);
+                return;
+            }
+
+            const lastReceivedAt = Number(data.lastReceivedAt || 0);
+            const ageSeconds = lastReceivedAt ? Math.max(0, Date.now() / 1000 - lastReceivedAt) : Infinity;
+            const isStale = ageSeconds > 5;
+            status.hidden = true;
+            setTopologyVisibility(svg, true);
+            description.textContent = `${latestTopology.chainId} · ${latestTopology.backend} · ${latestTopology.nodes.length} handlers · ${latestTopology.edges.length} channels`;
+            document.getElementById("topology-freshness").textContent = isStale
+                ? `Telemetry stale · last received ${Math.round(ageSeconds)}s ago`
+                : `Metrics received ${Math.max(0, Math.round(ageSeconds))}s ago`;
+            document.getElementById("topology-freshness").classList.toggle("unavailable", isStale);
+            updateOverviewMetrics(data, isStale ? null : latestTopology);
+            updateMetricsSummary(data, isStale ? null : latestTopology, recordSample);
+            drawTopology(svg, latestTopology, data, isStale);
+        }
+
+        function drawTopology(svg, topology, data, isStale) {
+            const nodeByName = new Map(topology.nodes.map(node => [node.name, node]));
+            const incomingCount = new Map(topology.nodes.map(node => [node.name, 0]));
+            const outgoing = new Map(topology.nodes.map(node => [node.name, []]));
+            topology.edges.forEach(edge => {
+                if (!nodeByName.has(edge.from) || !nodeByName.has(edge.to)) return;
+                incomingCount.set(edge.to, (incomingCount.get(edge.to) || 0) + 1);
+                outgoing.get(edge.from).push(edge.to);
+            });
+
+            const ranks = new Map();
+            const queue = topology.nodes.filter(node => incomingCount.get(node.name) === 0).map(node => node.name);
+            queue.forEach(name => ranks.set(name, 0));
+            const remaining = new Map(incomingCount);
+            for (let cursor = 0; cursor < queue.length; cursor++) {
+                const source = queue[cursor];
+                for (const target of outgoing.get(source)) {
+                    ranks.set(target, Math.max(ranks.get(target) || 0, (ranks.get(source) || 0) + 1));
+                    remaining.set(target, remaining.get(target) - 1);
+                    if (remaining.get(target) === 0) queue.push(target);
+                }
+            }
+            topology.nodes.forEach(node => { if (!ranks.has(node.name)) ranks.set(node.name, 0); });
+
+            const columns = new Map();
+            topology.nodes.forEach(node => {
+                const rank = ranks.get(node.name) || 0;
+                if (!columns.has(rank)) columns.set(rank, []);
+                columns.get(rank).push(node);
+            });
+            const maxRank = Math.max(...ranks.values(), 0);
+            const availableWidth = Math.max(760, document.getElementById("topology-frame").clientWidth - 2);
+            const columnGap = maxRank > 0
+                ? Math.max(320, (availableWidth - 70 - 170) / maxRank)
+                : 320;
+            const nodePositions = new Map();
+            for (const [rank, nodes] of columns) {
+                nodes.forEach((node, index) => nodePositions.set(node.name, {
+                    x: 35 + rank * columnGap,
+                    y: 34 + index * 112,
+                }));
+            }
+            const width = Math.max(760, availableWidth, 70 + maxRank * columnGap + 170);
+            const height = Math.max(290, 70 + Math.max(...Array.from(columns.values(), column => column.length)) * 112);
+            svg.replaceChildren();
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+            svg.setAttribute("width", width);
+            svg.setAttribute("height", height);
+            svg.style.width = `${width}px`;
+
+            const defs = svgElement("defs");
+            const marker = svgElement("marker", { id: "topology-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto" });
+            marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#64748b" }));
+            defs.append(marker);
+            svg.append(defs);
+
+            for (const edge of topology.edges) {
+                const from = nodePositions.get(edge.from);
+                const to = nodePositions.get(edge.to);
+                if (!from || !to) continue;
+                const x1 = from.x + 170;
+                const y1 = from.y + 40;
+                const x2 = to.x;
+                const y2 = to.y + 40;
+                const midX = (x1 + x2) / 2;
+                const path = svgElement("path", {
+                    class: "topology-edge",
+                    d: `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`,
+                });
+                svg.append(path);
+                const targetNode = nodeByName.get(edge.to);
+                const targetMetric = `${targetNode.metricPrefix}.messages_ingress_total`;
+                const targetStatus = isStale ? "STALE" : metricStatus(data, targetMetric);
+                const targetRate = targetStatus || formatRate(Number(data.rateDeltas?.[targetMetric] || 0));
+                svg.append(svgElement("text", {
+                    class: "topology-edge-label",
+                    x: midX,
+                    y: (y1 + y2) / 2 - 7,
+                }, `${edge.channel} · ${targetRate}`));
+            }
+
+            topology.nodes.forEach(node => {
+                const position = nodePositions.get(node.name);
+                const group = svgElement("g", {
+                    class: `topology-node${selectedNodeName === node.name ? " selected" : ""}`,
+                    transform: `translate(${position.x}, ${position.y})`,
+                    tabindex: "0",
+                    role: "button",
+                    "aria-label": `Inspect ${node.name}`,
+                });
+                group.append(svgElement("rect", { width: 170, height: 82, rx: 9 }));
+                group.append(svgElement("text", { x: 13, y: 23, "font-size": 13, "font-weight": 700 }, node.name));
+                group.append(svgElement("text", { class: "node-subtitle", x: 13, y: 41 }, node.type));
+                const ingressMetric = `${node.metricPrefix}.messages_ingress_total`;
+                const nodeStatus = isStale ? "STALE" : metricStatus(data, ingressMetric);
+                const rate = nodeStatus || formatRate(Number(data.rateDeltas?.[ingressMetric] || 0));
+                group.append(svgElement("text", { class: "node-stat", x: 13, y: 64 }, `IN ${rate}`));
+                group.addEventListener("click", () => selectTopologyNode(node, data));
+                group.addEventListener("keydown", event => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectTopologyNode(node, data);
+                    }
+                });
+                svg.append(group);
+            });
+
+            const unresolved = topology.unresolvedOutputChannels || [];
+            document.getElementById("topology-limitations").textContent = [
+                unresolved.length ? `Unconnected output channels: ${unresolved.join(", ")}.` : "",
+                "Queue depth, readiness, CPU, and application outcome metrics are not available in the current instrumentation.",
+                "Multiple replicas sharing a metric prefix cannot be distinguished by the current StatsD format."
+            ].filter(Boolean).join(" ");
+            const selectedNode = topology.nodes.find(node => node.name === selectedNodeName);
+            if (selectedNode) selectTopologyNode(selectedNode, data);
+        }
+
+        function selectTopologyNode(node, data) {
+            selectedNodeName = node.name;
+            const prefix = node.metricPrefix;
+            const ingressMetric = `${prefix}.messages_ingress_total`;
+            const ingressStatus = metricStatus(data, ingressMetric);
+            const dropCount = metricValue(data, prefix, "messages_dropped_total");
+            document.getElementById("node-detail-title").textContent = node.name;
+            document.getElementById("node-detail-rate").textContent = ingressStatus
+                ? "—"
+                : formatRate(Number(data.rateDeltas?.[ingressMetric] || 0));
+            document.getElementById("node-detail-latency").textContent = ingressStatus
+                ? "—"
+                : formatLatency(histogramP99(data, prefix));
+            document.getElementById("node-detail-drops").textContent = metricStatus(data, `${prefix}.messages_dropped_total`)
+                ? "—"
+                : `${dropCount.toLocaleString()} cumulative`;
+            document.querySelectorAll(".topology-node").forEach(group => {
+                group.classList.toggle("selected", group.getAttribute("aria-label") === `Inspect ${node.name}`);
+            });
+        }
+
+        function formatLatency(microseconds) {
+            if (microseconds === null || !Number.isFinite(microseconds)) return "—";
+            return microseconds >= 1000 ? `${(microseconds / 1000).toFixed(2)} ms` : `${microseconds.toFixed(1)} µs`;
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, character => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;"
+            })[character]);
+        }
+
+        function updateOverviewMetrics(data, topology) {
+            if (!topology) {
+                ["overview-ingress-rate", "overview-bandwidth", "overview-latency", "overview-drops"].forEach(id => {
+                    document.getElementById(id).textContent = "—";
+                });
+                document.getElementById("overview-ingress-total").textContent = "Topology or fresh metrics unavailable";
+                return;
+            }
+
+            const roots = sourceNodes(topology);
+            const rootsHaveFreshCounters = roots.length > 0 && roots.every(node =>
+                metricStatus(data, `${node.metricPrefix}.messages_ingress_total`) === null
+            );
+            const rootsHaveFreshByteCounters = roots.length > 0 && roots.every(node =>
+                metricStatus(data, `${node.metricPrefix}.bytes_ingress_total`) === null
+            );
+            const ingressRate = roots.reduce((sum, node) => sum + Number(data.rateDeltas?.[`${node.metricPrefix}.messages_ingress_total`] || 0), 0);
+            const byteRate = roots.reduce((sum, node) => sum + Number(data.rateDeltas?.[`${node.metricPrefix}.bytes_ingress_total`] || 0), 0);
+            const ingressTotal = roots.reduce((sum, node) => sum + metricValue(data, node.metricPrefix, "messages_ingress_total"), 0);
+            const dropped = topology.nodes.reduce((sum, node) => sum + metricValue(data, node.metricPrefix, "messages_dropped_total"), 0);
+            const hasDropMetrics = topology.nodes.some(node =>
+                metricStatus(data, `${node.metricPrefix}.messages_dropped_total`) === null
+            );
+            const p99s = roots.map(node => histogramP99(data, node.metricPrefix)).filter(Number.isFinite);
+            const p99 = p99s.length ? Math.max(...p99s) : null;
+            document.getElementById("overview-ingress-rate").textContent = rootsHaveFreshCounters
+                ? formatRate(ingressRate)
+                : "—";
+            document.getElementById("overview-ingress-total").textContent = rootsHaveFreshCounters
+                ? `${ingressTotal.toLocaleString()} cumulative source messages`
+                : "Source metrics unavailable";
+            document.getElementById("overview-bandwidth").textContent = rootsHaveFreshByteCounters
+                ? formatBandwidth(byteRate)
+                : "—";
+            document.getElementById("overview-latency").textContent = formatLatency(p99);
+            document.getElementById("overview-drops").textContent = hasDropMetrics ? dropped.toLocaleString() : "—";
+        }
+
+        function updateMetricsSummary(data, topology, recordSample = true) {
+            const roots = topology ? sourceNodes(topology) : [];
+            const hasFreshRootMetrics = roots.length > 0 && roots.every(node =>
+                metricStatus(data, `${node.metricPrefix}.messages_ingress_total`) === null
+            );
+            const total = roots.reduce((sum, node) => sum + metricValue(data, node.metricPrefix, "messages_ingress_total"), 0);
+            const messageRate = roots.reduce((sum, node) => sum + Number(data.rateDeltas?.[`${node.metricPrefix}.messages_ingress_total`] || 0), 0);
+            const byteTotal = roots.reduce((sum, node) => sum + metricValue(data, node.metricPrefix, "bytes_ingress_total"), 0);
+            const byteRate = roots.reduce((sum, node) => sum + Number(data.rateDeltas?.[`${node.metricPrefix}.bytes_ingress_total`] || 0), 0);
+            const dropped = topology
+                ? topology.nodes.reduce((sum, node) => sum + metricValue(data, node.metricPrefix, "messages_dropped_total"), 0)
+                : 0;
+            const unavailable = !topology || !hasFreshRootMetrics;
+            document.getElementById("global-ingress-total").textContent = unavailable ? "—" : total.toLocaleString();
+            document.getElementById("global-ingress-rate").textContent = unavailable ? "No fresh source metrics" : `+${Math.round(messageRate).toLocaleString()} msg/s`;
+            document.getElementById("global-bytes-total").textContent = unavailable ? "—" : `${(byteTotal / (1024 * 1024)).toFixed(2)} MB`;
+            document.getElementById("global-bandwidth-rate").textContent = unavailable
+                ? "—"
+                : `${(byteRate / (1024 * 1024)).toFixed(2)} MB/s`;
+            document.getElementById("global-dropped-total").textContent = unavailable ? "—" : dropped.toLocaleString();
+            document.getElementById("global-loss-pct").textContent = "Malformed envelopes only";
+            const peakRate = Number(data.peakThroughput) || 0;
+            if (recordSample) {
+                throughputHistory.shift();
+                throughputHistory.push(messageRate);
+            }
+            document.getElementById("global-peak-throughput").textContent = Math.round(peakRate).toLocaleString();
+            document.getElementById("current-rate-label").textContent = `Rate: ${Math.round(messageRate).toLocaleString()} msg/s`;
+            renderThroughputChart();
         }
 
         // Helper to extract namespaces from metric keys
         // e.g. "proxy.network_ingress.messages_ingress_total" -> "network_ingress"
         function extractNamespaces(data) {
+            if (latestTopology) {
+                return [...new Set(latestTopology.nodes.map(node => node.name))].sort();
+            }
             const allKeys = Object.keys(data.counters || {}).concat(Object.keys(data.gauges || {}));
             const nsSet = new Set();
             for (const key of allKeys) {
@@ -219,7 +711,8 @@
 
         function filterByNamespace(data, ns) {
             if (ns === "all") return data;
-            const prefix = `proxy.${ns}.`;
+            const topologyNode = latestTopology?.nodes.find(node => node.name === ns);
+            const prefix = `${topologyNode?.metricPrefix || `proxy.${ns}`}.`;
             const filtered = { counters: {}, gauges: {}, timings: {} };
             for (const [k, v] of Object.entries(data.counters || {})) {
                 if (k.startsWith(prefix)) filtered.counters[k] = v;
@@ -231,6 +724,15 @@
                 if (k.startsWith(prefix)) filtered.timings[k] = v;
             }
             return filtered;
+        }
+
+        function namespaceForMetric(metricName) {
+            const matchingNode = latestTopology?.nodes
+                .filter(node => metricName.startsWith(`${node.metricPrefix}.`))
+                .sort((left, right) => right.metricPrefix.length - left.metricPrefix.length)[0];
+            if (matchingNode) return matchingNode.name;
+            const parts = metricName.split(".");
+            return parts.length >= 3 && parts[0] === "proxy" ? parts[1] : "-";
         }
 
         function sumMetric(obj, suffix) {
@@ -246,75 +748,43 @@
         function renderTabs(namespaces) {
             const tabsContainer = document.getElementById("namespace-tabs");
             const allTabs = ["all", ...namespaces];
+            if (!allTabs.includes(activeTab)) activeTab = "all";
             document.getElementById("namespace-count-label").innerText = `${namespaces.length} Namespace(s) Active`;
-
-            tabsContainer.innerHTML = allTabs.map(tab => {
+            tabsContainer.replaceChildren();
+            allTabs.forEach(tab => {
                 const isActive = tab === activeTab;
                 const label = tab === "all" ? "All Namespaces" : tab;
-                const activeClass = "bg-sky-500 text-slate-950 font-bold shadow";
-                const inactiveClass = "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white";
-                return `<button onclick="switchTab('${tab}')" class="px-3.5 py-1.5 text-xs font-mono rounded-lg transition-colors ${isActive ? activeClass : inactiveClass}">
-                    ${label}
-                </button>`;
-            }).join("");
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = `px-3.5 py-1.5 text-xs font-mono rounded-lg transition-colors ${isActive ? "bg-sky-500 text-slate-950 font-bold shadow" : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"}`;
+                button.textContent = label;
+                button.addEventListener("click", () => switchTab(tab));
+                tabsContainer.append(button);
+            });
         }
 
         function switchTab(tab) {
             activeTab = tab;
-            updateUI(latestData);
+            updateUI(latestData, false);
+            renderTopology(latestData, false);
         }
 
-        function updateUI(data) {
-            const now = Date.now();
-            const dt = Math.max(0.001, (now - lastTimestamp) / 1000);
-            lastTimestamp = now;
-
+        function updateUI(data, refreshRates = true) {
+            if (refreshRates) data.rateDeltas = deriveCounterDeltas(data);
+            const lastReceivedAt = Number(data.lastReceivedAt || 0);
+            const metricAge = lastReceivedAt ? Date.now() / 1000 - lastReceivedAt : Infinity;
+            const metricsLive = metricAge <= 5;
+            const connectionStatus = document.getElementById("connection-status");
+            connectionStatus.textContent = metricsLive
+                ? "Live Monitoring"
+                : lastReceivedAt
+                    ? "Metrics stale"
+                    : "Waiting for metrics";
+            connectionStatus.className = metricsLive
+                ? "px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5"
+                : "connection-offline px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
             const namespaces = extractNamespaces(data);
             renderTabs(namespaces);
-
-            // --- 1. Top Bar Global Aggregates ---
-            const allCounters = { ...(data.counters || {}), ...(data.gauges || {}) };
-            // Compute global ingress (sum across stages or use first stage)
-            let globalIngress = 0;
-            let globalBytes = 0;
-            let globalDropped = 0;
-
-            // Ingress message sum
-            for (const [k, v] of Object.entries(allCounters)) {
-                if (k.endsWith("messages_ingress_total")) {
-                    globalIngress = Math.max(globalIngress, Number(v));
-                }
-                if (k.endsWith("bytes_ingress_total")) {
-                    globalBytes = Math.max(globalBytes, Number(v));
-                }
-                if (k.endsWith("messages_dropped_total")) {
-                    globalDropped += Number(v);
-                }
-            }
-
-            const delta = Math.max(0, globalIngress - lastIngressTotal);
-            if (lastIngressTotal === 0 && globalIngress > 0) {
-                lastIngressTotal = globalIngress;
-            } else {
-                lastIngressTotal = globalIngress;
-            }
-            const rate = delta / dt;
-
-            throughputHistory.shift();
-            throughputHistory.push(rate);
-            if (rate > peakRate) peakRate = rate;
-
-            document.getElementById("global-ingress-total").innerText = globalIngress.toLocaleString();
-            document.getElementById("global-ingress-rate").innerText = `+${Math.round(rate).toLocaleString()} msg/s`;
-            document.getElementById("global-bytes-total").innerText = `${(globalBytes / (1024 * 1024)).toFixed(2)} MB`;
-            document.getElementById("global-bandwidth-rate").innerText = `${((delta * 82) / (1024 * 1024 * dt)).toFixed(2)} MB/s`;
-            document.getElementById("global-dropped-total").innerText = globalDropped.toLocaleString();
-            const lossPct = globalIngress > 0 ? ((globalDropped / globalIngress) * 100).toFixed(2) : "0.0";
-            document.getElementById("global-loss-pct").innerText = `${lossPct}% loss`;
-            document.getElementById("global-peak-throughput").innerText = Math.round(peakRate).toLocaleString();
-            document.getElementById("current-rate-label").innerText = `Rate: ${Math.round(rate).toLocaleString()} msg/s`;
-
-            renderThroughputBars();
 
             // --- 2. Active Namespace Tab Content ---
             renderTabContent(data, activeTab);
@@ -322,10 +792,6 @@
             // --- 3. Metric Registry Table ---
             renderTable(data, activeTab);
 
-            document.getElementById("connection-status").innerHTML =
-                `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live (${globalIngress.toLocaleString()} msgs)`;
-            document.getElementById("connection-status").className =
-                "px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5";
             document.getElementById("last-update").innerText = `Updated: ${new Date().toLocaleTimeString()}`;
         }
 
@@ -333,6 +799,7 @@
             const container = document.getElementById("tab-content");
             const nsData = filterByNamespace(data, ns);
             const allItems = { ...(nsData.counters || {}), ...(nsData.gauges || {}) };
+            const sourceNodesForAll = ns === "all" && latestTopology ? sourceNodes(latestTopology) : [];
 
             // Metrics for this namespace
             let nsMsgs = 0;
@@ -340,14 +807,24 @@
             let nsDrops = 0;
             for (const [k, v] of Object.entries(allItems)) {
                 if (k.endsWith("messages_ingress_total")) {
-                    if (ns === "all") nsMsgs = Math.max(nsMsgs, Number(v));
+                    if (ns === "all" && sourceNodesForAll.length === 0) nsMsgs = Math.max(nsMsgs, Number(v));
                     else nsMsgs += Number(v);
                 }
                 if (k.endsWith("bytes_ingress_total")) {
-                    if (ns === "all") nsBytes = Math.max(nsBytes, Number(v));
+                    if (ns === "all" && sourceNodesForAll.length === 0) nsBytes = Math.max(nsBytes, Number(v));
                     else nsBytes += Number(v);
                 }
                 if (k.endsWith("messages_dropped_total")) nsDrops += Number(v);
+            }
+            if (sourceNodesForAll.length > 0) {
+                nsMsgs = sourceNodesForAll.reduce(
+                    (sum, node) => sum + metricValue(data, node.metricPrefix, "messages_ingress_total"),
+                    0
+                );
+                nsBytes = sourceNodesForAll.reduce(
+                    (sum, node) => sum + metricValue(data, node.metricPrefix, "bytes_ingress_total"),
+                    0
+                );
             }
 
             // Latency & Histogram parsing for this namespace
@@ -467,9 +944,9 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <h3 class="text-sm font-semibold uppercase tracking-wider text-[var(--foreground)]">
-                                Latency Bucket Distribution: <span class="text-sky-400 font-mono">${ns === 'all' ? 'All Combined Stages' : ns}</span>
+                            Latency Bucket Distribution: <span class="text-sky-400 font-mono">${ns === 'all' ? 'All Combined Stages' : escapeHtml(ns)}</span>
                             </h3>
-                            <p class="text-xs text-[var(--muted)] mt-0.5">Disjoint transit SLA breakdown (${totalSamples.toLocaleString()} sampled executions)</p>
+                            <p class="text-xs text-[var(--muted)] mt-0.5">Disjoint transit breakdown (${totalSamples.toLocaleString()} sampled executions)</p>
                         </div>
                         <span class="text-xs font-mono text-[var(--muted)]">7 Disjoint Tiers</span>
                     </div>
@@ -477,7 +954,7 @@
                     <div class="space-y-2.5 pt-2">
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">0 – 5 µs (Hot Path)</span>
+                                <span class="text-[var(--muted)]">≤ 5 µs</span>
                                 <span class="text-[var(--foreground)]">${c0_5.toLocaleString()} (${p0_5}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -487,7 +964,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">5 – 25 µs (Normal)</span>
+                                <span class="text-[var(--muted)]">&gt; 5 – 25 µs</span>
                                 <span class="text-[var(--foreground)]">${c5_25.toLocaleString()} (${p5_25}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -497,7 +974,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">25 – 100 µs (Jitter)</span>
+                                <span class="text-[var(--muted)]">&gt; 25 – 100 µs</span>
                                 <span class="text-[var(--foreground)]">${c25_100.toLocaleString()} (${p25_100}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -507,7 +984,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">100 – 1000 µs (0.1–1 ms)</span>
+                                <span class="text-[var(--muted)]">&gt; 100 µs – 1 ms</span>
                                 <span class="text-[var(--foreground)]">${c100_1000.toLocaleString()} (${p100_1000}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -517,7 +994,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">1 – 5 ms (Mild Outlier)</span>
+                                <span class="text-[var(--muted)]">&gt; 1 – 5 ms</span>
                                 <span class="text-[var(--foreground)]">${c1_5ms.toLocaleString()} (${p1_5ms}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -527,7 +1004,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">5 – 25 ms (Severe Delay)</span>
+                                <span class="text-[var(--muted)]">&gt; 5 – 25 ms</span>
                                 <span class="text-[var(--foreground)]">${c5_25ms.toLocaleString()} (${p5_25ms}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -537,7 +1014,7 @@
 
                         <div>
                             <div class="flex justify-between text-xs font-mono mb-1">
-                                <span class="text-[var(--muted)]">&gt; 25 ms (Critical)</span>
+                                <span class="text-[var(--muted)]">&gt; 25 ms</span>
                                 <span class="text-[var(--foreground)]">${cOver25ms.toLocaleString()} (${pOver25ms}%)</span>
                             </div>
                             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -553,24 +1030,37 @@
             const tbody = document.getElementById("metrics-table-body");
             const nsData = filterByNamespace(data, ns);
             const allItems = { ...nsData.counters, ...nsData.gauges };
-
-            let rows = "";
+            tbody.replaceChildren();
             for (const [k, v] of Object.entries(allItems)) {
                 const isCounter = nsData.counters && k in nsData.counters;
-                const parts = k.split(".");
-                const stageName = parts.length >= 3 && parts[0] === "proxy" ? parts[1] : "-";
-                rows += `<tr>
-                    <td class="py-2.5 px-4 font-semibold text-slate-200">${k}</td>
-                    <td class="py-2.5 px-4 font-mono text-sky-400">${stageName}</td>
-                    <td class="py-2.5 px-4 ${isCounter ? 'text-teal-400' : 'text-purple-400'}">${isCounter ? 'Counter' : 'Gauge'}</td>
-                    <td class="py-2.5 px-4 text-right text-emerald-400 font-mono">${Number(v).toLocaleString()}</td>
-                </tr>`;
+                const stageName = namespaceForMetric(k);
+                const row = document.createElement("tr");
+                const cells = [k, stageName, isCounter ? "Counter" : "Gauge", Number(v).toLocaleString()];
+                cells.forEach((value, index) => {
+                    const cell = document.createElement("td");
+                    cell.className = `py-2.5 px-4 ${index === 3 ? "text-right" : ""}`;
+                    cell.textContent = value;
+                    row.append(cell);
+                });
+                tbody.append(row);
             }
-            tbody.innerHTML = rows || `<tr><td colspan="4" class="py-3 px-4 text-slate-500">No active metrics registered for this namespace</td></tr>`;
+            if (tbody.children.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 4;
+                cell.className = "py-3 px-4 text-slate-500";
+                cell.textContent = "No active metrics registered for this namespace";
+                row.append(cell);
+                tbody.append(row);
+            }
         }
 
-        renderThroughputBars();
-        setInterval(fetchMetrics, 1000);
+        renderThroughputChart();
+        async function pollMetrics() {
+            await fetchMetrics();
+            window.setTimeout(pollMetrics, 1000);
+        }
+        pollMetrics();
     </script>
 </body>
 </html>

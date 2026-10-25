@@ -61,4 +61,10 @@ add_test(
         --bin-dir "$<TARGET_FILE_DIR:proxy_tests>"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
-
+add_test(
+    NAME live_telemetry_tests
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s "${CMAKE_SOURCE_DIR}/test"
+        -p "test_live_telemetry.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)

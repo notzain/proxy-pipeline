@@ -15,6 +15,7 @@ from .config import load_chain_config, find_bin_dir, generate_handler_config
 from .coordinator import InteractiveSimulationCoordinator
 from .trace import TraceManager, TraceDiffError
 from .server import start_dashboard_server
+from .topology import project_chain_topology, publish_topology
 
 __all__ = [
     "PcapPacket",
@@ -34,5 +35,6 @@ __all__ = [
     "TraceManager",
     "TraceDiffError",
     "start_dashboard_server",
+    "project_chain_topology",
+    "publish_topology",
 ]
-

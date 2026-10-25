@@ -14,6 +14,7 @@ import argparse
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,8 +31,26 @@ from proxy_runner import (
     find_bin_dir,
     generate_handler_config,
     load_chain_config,
+    project_chain_topology,
+    publish_topology,
     start_dashboard_server,
 )
+
+
+def _signal_process_group(proc: subprocess.Popen, sig: int) -> None:
+    if proc.poll() is not None:
+        return
+
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        if proc.poll() is None:
+            try:
+                proc.send_signal(sig)
+            except ProcessLookupError:
+                pass
 
 
 def run_chain(
@@ -44,6 +63,7 @@ def run_chain(
     headless: bool = False,
     export_trace_path: str | None = None,
     assert_trace_path: str | None = None,
+    telemetry_url: str | None = None,
 ) -> int:
     chain_def = load_chain_config(config_path)
 
@@ -63,12 +83,20 @@ def run_chain(
     if work_dir_override:
         work_dir = Path(work_dir_override)
         work_dir.mkdir(parents=True, exist_ok=True)
+        owns_work_dir = False
     else:
         work_dir = Path(tempfile.mkdtemp(prefix="proxy_chain_", dir="/tmp"))
+        owns_work_dir = True
 
     print(f"[ChainRunner] Working directory for runtime configs: {work_dir}")
 
     global_config = chain_def.get("config", {})
+    telemetry_config = global_config.get("telemetry", {}) if isinstance(global_config.get("telemetry"), dict) else {}
+    collector_url = (
+        telemetry_url
+        or global_config.get("telemetry.collector_url")
+        or telemetry_config.get("collector_url")
+    )
 
     # Detect if this chain has any external ingress input channels.
     has_ingress_channel = False
@@ -98,9 +126,9 @@ def run_chain(
     coordinator: Optional[InteractiveSimulationCoordinator] = None
     http_server_instance = None
 
-    if backend == "sim" or dashboard_port or headless:
+    if backend == "sim" or headless:
         coordinator = InteractiveSimulationCoordinator(chain_def, pcap_packets)
-        if dashboard_port and not headless:
+        if backend == "sim" and dashboard_port and not headless:
             http_server_instance = start_dashboard_server(
                 dashboard_port,
                 coordinator,
@@ -113,6 +141,35 @@ def run_chain(
 
     processes: list[tuple[str, subprocess.Popen, Path]] = []
     shutting_down = False
+    topology: dict[str, Any] | None = None
+    next_topology_publish_at = 0.0
+    topology_publish_failed = False
+    topology_published = False
+
+    def publish_topology_if_due(force: bool = False) -> None:
+        nonlocal topology, next_topology_publish_at, topology_publish_failed, topology_published
+        if not collector_url:
+            return
+
+        now = time.monotonic()
+        if not force and now < next_topology_publish_at:
+            return
+        next_topology_publish_at = now + 5.0
+
+        try:
+            if topology is None:
+                topology = project_chain_topology(chain_def, config_path.stem)
+            publish_topology(str(collector_url), topology)
+        except (TypeError, ValueError, RuntimeError) as ex:
+            if not topology_publish_failed:
+                print(f"[ChainRunner] WARNING: Could not publish chain topology: {ex}", file=sys.stderr)
+            topology_publish_failed = True
+            return
+
+        if not topology_published or topology_publish_failed:
+            print("[ChainRunner] Published chain topology to telemetry collector.")
+        topology_published = True
+        topology_publish_failed = False
 
     def handle_signal(sig, frame):
         nonlocal shutting_down
@@ -123,10 +180,11 @@ def run_chain(
         for name, proc, _ in reversed(processes):
             if proc.poll() is None:
                 print(f"[ChainRunner] Stopping {name} (PID {proc.pid})...")
-                proc.send_signal(signal.SIGINT)
+                _signal_process_group(proc, signal.SIGINT)
 
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGHUP, handle_signal)
 
     exit_code = 0
     try:
@@ -154,6 +212,7 @@ def run_chain(
             proc = subprocess.Popen(
                 [str(binary_path), str(conf_file)],
                 cwd=str(root_dir),
+                start_new_session=True,
             )
             processes.append((handler_name, proc, conf_file))
 
@@ -163,6 +222,7 @@ def run_chain(
             time.sleep(0.2)
 
         print(f"\n[ChainRunner] All {len(processes)} handler(s) started and ready.")
+        publish_topology_if_due(force=True)
 
         if headless:
             if not coordinator:
@@ -194,8 +254,12 @@ def run_chain(
                     print(f"\n[ChainRunner] ❌ ASSERTION FAILURE:\n{ex}", file=sys.stderr)
                     exit_code = 1
         else:
-            print("[ChainRunner] Packets are paused and ready in memory. Click Step Forward or Play in the dashboard.")
+            if backend == "sim":
+                print("[ChainRunner] Packets are paused and ready in memory. Click Step Forward or Play in the dashboard.")
+            else:
+                print("[ChainRunner] Live chain running. Waiting for input on configured channels or generator output.")
             while not shutting_down:
+                publish_topology_if_due()
                 for name, proc, _ in processes:
                     code = proc.poll()
                     if code is not None:
@@ -217,16 +281,21 @@ def run_chain(
                 pass
 
         for name, proc, _ in reversed(processes):
+            _signal_process_group(proc, signal.SIGINT)
             if proc.poll() is None:
-                proc.send_signal(signal.SIGINT)
                 try:
                     proc.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
                     print(f"[ChainRunner] Force killing {name} (PID {proc.pid})...")
-                    proc.kill()
+                    _signal_process_group(proc, signal.SIGKILL)
                     proc.wait()
 
         print("[ChainRunner] All handlers stopped cleanly.")
+        if owns_work_dir:
+            try:
+                shutil.rmtree(work_dir)
+            except OSError as ex:
+                print(f"[ChainRunner] WARNING: Could not remove runtime config directory {work_dir}: {ex}", file=sys.stderr)
 
     return exit_code
 
@@ -295,6 +364,12 @@ def main() -> int:
         default=None,
         help="Path to expected reference execution trace JSON to assert against",
     )
+    parser.add_argument(
+        "--telemetry-url",
+        type=str,
+        default=None,
+        help="Telemetry collector URL for publishing sanitized chain topology (overrides telemetry.collector_url)",
+    )
 
     args = parser.parse_args()
 
@@ -325,6 +400,7 @@ def main() -> int:
         headless=args.headless or bool(args.export_trace or args.assert_trace),
         export_trace_path=args.export_trace,
         assert_trace_path=args.assert_trace,
+        telemetry_url=args.telemetry_url,
     )
 
 
