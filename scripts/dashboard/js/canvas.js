@@ -187,6 +187,13 @@ export class CanvasRenderer {
     return this.channelsLayout.find(c => c.from.name === handlerName && c.name === outCh) || null;
   }
 
+  getEventPacketIds(event) {
+    if (Array.isArray(event?.batchIds) && event.batchIds.length > 0) {
+      return event.batchIds.map(String).sort();
+    }
+    return event?.msgId !== undefined && event?.msgId !== null ? [String(event.msgId)] : [];
+  }
+
   triggerTransitionAnimation(event) {
     if (!event) return;
     const handlerName = event.handler || event.target;
@@ -196,7 +203,9 @@ export class CanvasRenderer {
 
     const isIngress = event.type === "ingress";
     const isForwarded = event.result === "Forwarded" && !!(event.outputChannel || event.channel);
-    const isConsumed = event.type === "egress" || event.result === "Consumed";
+    const isConsumed = event.result === "Consumed"
+      || (event.type === "egress" && event.result !== "Forwarded");
+    const isDropped = event.type === "drop" || event.result === "Dropped";
     const edge = isForwarded
       ? this.findOutgoingChannelEdge(event)
       : this.findIncomingChannelEdge(event);
@@ -223,6 +232,11 @@ export class CanvasRenderer {
       startY = edge ? edge.to.y : handlerNode.y;
       endX = handlerNode.x + handlerNode.width / 2;
       endY = handlerNode.y;
+    } else if (isDropped) {
+      startX = edge ? edge.to.x - edge.to.width / 2 : cloudCenter;
+      startY = edge ? edge.to.y : handlerNode.y;
+      endX = handlerNode.x;
+      endY = handlerNode.y;
     } else if (edge) {
       startX = edge.from.x + edge.from.width / 2;
       startY = edge.from.y;
@@ -240,7 +254,29 @@ export class CanvasRenderer {
       endY = handlerNode.y;
     }
 
-    const transitColor = isIngress ? "#38bdf8" : (isForwarded ? "#c084fc" : "#38bdf8");
+    const previousEvent = this.lastAnimationEvent;
+    const previousParticle = this.activeParticles[0];
+    const packetIds = this.getEventPacketIds(event);
+    const previousPacketIds = this.getEventPacketIds(previousEvent);
+    const followsPreviousEvent = (
+      previousEvent?.eventId !== undefined
+      && event.eventId === previousEvent.eventId + 1
+      && packetIds.length > 0
+      && packetIds.length === previousPacketIds.length
+      && packetIds.every((id, idx) => id === previousPacketIds[idx])
+      && previousParticle
+    );
+    if (followsPreviousEvent) {
+      const elapsed = performance.now() - previousParticle.startTime;
+      const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
+      const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
+      startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
+      startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+    }
+
+    const transitColor = isIngress
+      ? "#38bdf8"
+      : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
     const arrivalColor = isIngress
       ? "#38bdf8"
       : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
@@ -260,8 +296,10 @@ export class CanvasRenderer {
       arrivalColor: arrivalColor,
       dropColor: "#f87171",
       isIngress: isIngress,
+      isConsumed: isConsumed,
       isDrop: event.type === "drop"
     }];
+    this.lastAnimationEvent = event;
   }
 
   setupClickHandler() {
@@ -508,11 +546,15 @@ export class CanvasRenderer {
       const reachedNode = p.progress >= 0.85;
       const reachedDropNode = p.isDrop && reachedNode;
       const activeColor = reachedNode ? (p.arrivalColor || p.color) : p.color;
+      const consumeProgress = p.isConsumed ? Math.max(0, (p.progress - 0.72) / 0.28) : 0;
+      const particleScale = p.isConsumed ? 1 - consumeProgress * 0.85 : 1;
+      const particleAlpha = p.isConsumed ? 1 - consumeProgress : 1;
 
       if (p.progress < 1.0) {
         ctx.save();
+        ctx.globalAlpha = particleAlpha;
         ctx.strokeStyle = activeColor;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3 * particleScale;
         ctx.shadowColor = activeColor;
         ctx.shadowBlur = 12;
         ctx.beginPath();
@@ -526,28 +568,43 @@ export class CanvasRenderer {
 
       const headRadius = p.isIngress ? 8.5 : 7;
 
-      ctx.save();
-      const pulse = p.progress >= 1.0 ? Math.sin(Date.now() / 200) * 1.5 : 0;
-      ctx.shadowColor = activeColor;
-      ctx.shadowBlur = p.isIngress ? 24 : 18 + pulse * 2;
-      ctx.fillStyle = reachedDropNode ? "rgba(248, 113, 113, 0.95)" : "#ffffff";
-      ctx.beginPath();
-      ctx.arc(curX, curY, headRadius + pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = activeColor;
-      ctx.beginPath();
-      ctx.arc(curX, curY, (headRadius * 0.65) + pulse * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (p.isIngress && p.progress < 1.0) {
-        ctx.strokeStyle = activeColor;
-        ctx.lineWidth = 1.5;
+      if (!p.isConsumed || consumeProgress < 1) {
+        ctx.save();
+        ctx.globalAlpha = particleAlpha;
+        ctx.shadowColor = activeColor;
+        ctx.shadowBlur = p.isIngress ? 24 : 18;
+        ctx.fillStyle = reachedDropNode ? "rgba(248, 113, 113, 0.95)" : "#ffffff";
         ctx.beginPath();
-        ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.arc(curX, curY, headRadius * particleScale, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = activeColor;
+        ctx.beginPath();
+        ctx.arc(curX, curY, headRadius * 0.65 * particleScale, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (p.isIngress && p.progress < 1.0) {
+          ctx.strokeStyle = activeColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(curX, curY, headRadius + 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
-      ctx.restore();
+
+      if (p.isConsumed && consumeProgress > 0 && consumeProgress < 1) {
+        ctx.save();
+        ctx.globalAlpha = 1 - consumeProgress;
+        ctx.strokeStyle = "#34d399";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#34d399";
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(curX, curY, headRadius + consumeProgress * 22, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Once the particle reaches the node on a drop event, turn red and draw a clear cross-out (X) over it
       if (reachedDropNode) {

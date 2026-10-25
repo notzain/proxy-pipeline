@@ -4,7 +4,7 @@
  *   1. "realtime": Live SimBackend execution where packets are loaded from PCAP and stepped forward into handlers.
  *   2. "trace": Standalone execution trace replay (export.trace.json) supporting forward and backward stepping without a running backend.
  */
-import { CanvasRenderer } from "./canvas.js?v=9";
+import { CanvasRenderer } from "./canvas.js?v=13";
 
 export function createSimulationApp() {
   return {
