@@ -116,10 +116,11 @@ std::size_t UdsInputChannel::receiveBatch(
 
 std::optional<::Backend::IInputChannel::Buffer> UdsInputChannel::receive(Timeout timeout)
 {
-    thread_local std::array<std::byte, 65535> scratch;
+    Buffer scratch(65535);
     std::size_t bytesRead = receiveInto(scratch, timeout);
     if (bytesRead > 0) {
-        return Buffer(scratch.begin(), scratch.begin() + bytesRead);
+        scratch.resize(bytesRead);
+        return scratch;
     }
     return std::nullopt;
 }

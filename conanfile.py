@@ -24,6 +24,7 @@ class ProxyConan(ConanFile):
         "backend_uds": True,
         "backend_shm": True,
         "backend_sim": True,
+        "spdlog/*:header_only": True,
         "xerces-c/*:network": False,
         "xerces-c/*:transcoder": "iconv",
     }

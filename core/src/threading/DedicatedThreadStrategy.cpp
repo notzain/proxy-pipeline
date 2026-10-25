@@ -93,12 +93,12 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", namedChannel.name);
 
             // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
-            // alignas(64): Prevents individual slot buffers from crossing hardware cache line boundaries during burst DMA/copy.
-            // static thread_local: Avoids placing a 1 MB buffer on this channel thread's stack (risking overflow) and avoids recurring heap allocations.
-            alignas(64) static thread_local std::array<std::array<std::byte, 65535>, 16> batchBuffers;
+            // Allocated once on the heap when the thread starts to prevent thread stack overflow,
+            // while keeping the buffer resident across polling loops with zero per-message allocations.
+            auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
             std::array<std::span<std::byte>, 16> destSpans;
             for (std::size_t i = 0; i < 16; ++i) {
-                destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
+                destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
             }
             // alignas(64): Aligns the size array to a cache line so atomic/SIMD fills don't false-share with loop control state.
             alignas(64) std::array<std::size_t, 16> batchSizes { };
@@ -117,7 +117,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                     dispatchValidatedBatch(
                         handler,
                         namedChannel.name,
-                        std::span<const std::array<std::byte, 65535>>(batchBuffers.data(), batchCount),
+                        std::span<const std::array<std::byte, 65535>>(batchBuffers->data(), batchCount),
                         std::span<const std::size_t>(batchSizes.data(), batchCount),
                         batchCount,
                         invalidEnvelopeCount);

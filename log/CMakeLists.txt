@@ -20,12 +20,16 @@ target_include_directories(proxylog
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(proxylog
-    PUBLIC
-        fmt::fmt
-    PRIVATE
-        spdlog::spdlog
-)
+if(TARGET spdlog::spdlog_header_only)
+    target_link_libraries(proxylog PRIVATE spdlog::spdlog_header_only)
+else()
+    target_link_libraries(proxylog PRIVATE spdlog::spdlog)
+endif()
+target_link_libraries(proxylog PUBLIC fmt::fmt)
+
+if(APPLE)
+    target_compile_definitions(proxylog PUBLIC SPDLOG_NO_TLS)
+endif()
 
 target_compile_features(proxylog PUBLIC cxx_std_20)
 

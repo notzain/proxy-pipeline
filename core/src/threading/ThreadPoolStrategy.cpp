@@ -125,10 +125,10 @@ namespace {
     {
         if (sharedQueue) {
             constexpr std::size_t maxBatch = 16;
-            alignas(64) static thread_local std::array<std::array<std::byte, 65535>, maxBatch> batchBuffers;
+            auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
             std::array<std::span<std::byte>, maxBatch> destSpans;
             for (std::size_t i = 0; i < maxBatch; ++i) {
-                destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
+                destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
             }
             alignas(64) std::array<std::size_t, maxBatch> sizes { };
 
@@ -142,13 +142,13 @@ namespace {
                 const std::size_t msgSize = sizes[i];
                 if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
                     if (auto slice = bufferPool->acquire()) {
-                        std::memcpy(slice->data(), batchBuffers[i].data(), msgSize);
+                        std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
                         task.assignSlice(namedChannel.name, std::move(*slice), msgSize);
                     } else {
-                        task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), msgSize));
+                        task.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                     }
                 } else {
-                    task.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[i].data(), msgSize));
+                    task.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                 }
 
                 if (!sharedQueue->tryPush(std::move(task))) {
@@ -197,7 +197,7 @@ namespace {
         }
 
         if (hasOversized && targetQueue) {
-            alignas(64) static thread_local std::array<std::byte, 65535> jumboBuf;
+            std::array<std::byte, 65535> jumboBuf;
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
             std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuf, zeroTimeout);
             if (jumboBytes > 0) {
@@ -232,12 +232,12 @@ namespace {
         constexpr std::size_t maxBatch = 16;
 
         // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams for flow inspection without truncation.
-        // alignas(64): Ensures 64-byte boundary alignment so ingress socket operations and worker queues do not straddle cache lines.
-        // static thread_local: Avoids placing ~1 MB on the poller thread's stack (which could trigger a stack overflow).
-        alignas(64) static thread_local std::array<std::array<std::byte, 65535>, maxBatch> batchBuffers;
+        // Sized to maxBatch x 65,535 B to receive full datagram batches without truncation.
+        // Allocated on the heap to prevent thread stack overflow, while avoiding recurring allocations in the poll loop.
+        auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
         std::array<std::span<std::byte>, maxBatch> destSpans;
         for (std::size_t i = 0; i < maxBatch; ++i) {
-            destSpans[i] = std::span<std::byte>(batchBuffers[i].data(), batchBuffers[i].size());
+            destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
         }
         // alignas(64): Aligns the size array to a cache line so batch size updates don't false-share with loop control state.
         alignas(64) std::array<std::size_t, maxBatch> sizes { };
@@ -254,12 +254,12 @@ namespace {
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            std::span<const std::byte> firstSpan(batchBuffers[runStart].data(), sizes[runStart]);
+            std::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), sizes[runStart]);
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                std::span<const std::byte> nextSpan(batchBuffers[runEnd].data(), sizes[runEnd]);
+                std::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), sizes[runEnd]);
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }
@@ -274,12 +274,12 @@ namespace {
                     const std::size_t pktSize = sizes[pktIdx];
                     if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
                         if (auto slice = bufferPool->acquire()) {
-                            std::memcpy(slice->data(), batchBuffers[pktIdx].data(), pktSize);
+                            std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);
                             slot.assignSlice(namedChannel.name, std::move(*slice), pktSize);
                             return;
                         }
                     }
-                    slot.assign(namedChannel.name, std::span<const std::byte>(batchBuffers[pktIdx].data(), pktSize));
+                    slot.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
                 },
                 stoken);
 
