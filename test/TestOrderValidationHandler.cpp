@@ -13,6 +13,11 @@ namespace {
 
 class TestMockOutputChannel : public Backend::IOutputChannel {
 public:
+    explicit TestMockOutputChannel(std::string name)
+        : Backend::IOutputChannel(std::move(name))
+    {
+    }
+
     bool send(std::span<const std::byte> message) override
     {
         auto optView = Core::Message::MessageView::from(message);
@@ -37,8 +42,8 @@ private:
 TEST_CASE("OrderValidationHandler deserialization and domain validation", "[order_validation]")
 {
     Core::Simulation::SimulationBackend backend;
-    Proxy::Handler::OrderValidationHandler handler(backend, "validated_orders");
-    auto mockOut = std::make_unique<TestMockOutputChannel>();
+    Proxy::Handler::OrderValidationHandler handler(backend);
+    auto mockOut = std::make_unique<TestMockOutputChannel>("validated_orders");
     auto* mockOutPtr = mockOut.get();
     handler.setOutputChannel(handler.registerOutputChannel(std::move(mockOut)));
 
@@ -212,8 +217,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_validation]")
 {
     Core::Simulation::SimulationBackend backend;
-    Proxy::Handler::OrderValidationHandler handler(backend, "bench_out");
-    auto mockOut = std::make_unique<TestMockOutputChannel>();
+    Proxy::Handler::OrderValidationHandler handler(backend);
+    auto mockOut = std::make_unique<TestMockOutputChannel>("bench_out");
     handler.setOutputChannel(handler.registerOutputChannel(std::move(mockOut)));
 
     std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";

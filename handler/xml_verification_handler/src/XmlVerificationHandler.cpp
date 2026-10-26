@@ -15,11 +15,9 @@ XmlVerificationHandler::XmlVerificationHandler(::Backend::IBackend& backend)
 
 XmlVerificationHandler::XmlVerificationHandler(
     ::Backend::IBackend& backend,
-    std::filesystem::path schemaPath,
-    std::string outputChannelName)
+    std::filesystem::path schemaPath)
     : Core::Handler::IHandler(backend)
     , m_schemaPath(std::move(schemaPath))
-    , m_outputChannelName(std::move(outputChannelName))
     , m_validator(std::make_unique<XmlSchemaValidator>(m_schemaPath))
 {
 }
@@ -40,19 +38,19 @@ bool XmlVerificationHandler::onConfigure(const Core::Config::Configuration& conf
         return false;
     }
 
-    m_inputChannelName = config.getOr<std::string>("xml.input_channel", config.getOr<std::string>("channel.input", "xml_in"));
-    m_outputChannelName = config.getOr<std::string>("xml.output_channel", config.getOr<std::string>("channel.output", "xml_out"));
+    const auto inputChannelName = config.getOr<std::string>("xml.input_channel", "xml_in");
+    const auto outputChannelName = config.getOr<std::string>("xml.output_channel", "xml_out");
 
-    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(inputChannelName, config);
     if (!inChannel) {
-        Proxy::Log::error("[XmlVerificationHandler] Failed to create input channel '{}'", m_inputChannelName);
+        Proxy::Log::error("[XmlVerificationHandler] Failed to create input channel '{}'", inputChannelName);
         return false;
     }
-    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
+    registerInputChannel(std::move(inChannel));
 
-    auto outChannel = backend().createOutputChannel(m_outputChannelName, config);
+    auto outChannel = backend().createOutputChannel(outputChannelName, config);
     if (!outChannel) {
-        Proxy::Log::error("[XmlVerificationHandler] Failed to create output channel '{}'", m_outputChannelName);
+        Proxy::Log::error("[XmlVerificationHandler] Failed to create output channel '{}'", outputChannelName);
         return false;
     }
     m_outputChannel = registerOutputChannel(std::move(outChannel));
@@ -73,16 +71,20 @@ bool XmlVerificationHandler::validate(std::span<const std::byte> xmlData) const
 Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
     if (validate(message.payload())) {
-        Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes payload) verified against XSD schema. Forwarding to '{}'...",
-            channelName, message.payload().size(), m_outputChannelName);
-        if (m_outputChannel) {
-            if (!m_outputChannel->send(message.rawBuffer())) {
-                Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", m_outputChannelName);
-            }
-        } else {
-            Proxy::Log::warn("[XmlVerificationHandler] Output channel '{}' not found", m_outputChannelName);
+        if (!m_outputChannel) {
+            Proxy::Log::warn("[XmlVerificationHandler] No output channel is available for forwarding");
+            return Core::Message::Dropped {
+                .reason = "No output channel available for forwarding",
+                .errorCode = 500
+            };
         }
-        return Core::Message::Forwarded { .channel = m_outputChannelName };
+        const auto outputChannelName = m_outputChannel->name();
+        Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes payload) verified against XSD schema. Forwarding to '{}'...",
+            channelName, message.payload().size(), outputChannelName);
+        if (!m_outputChannel->send(message.rawBuffer())) {
+            Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", outputChannelName);
+        }
+        return Core::Message::Forwarded { .channel = outputChannelName };
     }
 
     Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
@@ -108,8 +110,15 @@ void XmlVerificationHandler::onBatchReceived(
     for (std::size_t i = 0; i < count; ++i) {
         const auto& msg = messages[i];
         if (validate(msg.payload())) {
-            spans[validCount++] = msg.rawBuffer();
-            outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
+            if (m_outputChannel) {
+                spans[validCount++] = msg.rawBuffer();
+                outResults[i] = Core::Message::Forwarded { .channel = m_outputChannel->name() };
+            } else {
+                outResults[i] = Core::Message::Dropped {
+                    .reason = "No output channel available for forwarding",
+                    .errorCode = 500
+                };
+            }
         } else {
             Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
                 channelName, msg.payload().size(), m_schemaPath.string());
@@ -121,11 +130,7 @@ void XmlVerificationHandler::onBatchReceived(
     }
 
     if (validCount > 0) {
-        if (m_outputChannel) {
-            m_outputChannel->sendBatch(spans.span(validCount));
-        } else {
-            Proxy::Log::warn("[XmlVerificationHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
-        }
+        m_outputChannel->sendBatch(spans.span(validCount));
     }
 }
 

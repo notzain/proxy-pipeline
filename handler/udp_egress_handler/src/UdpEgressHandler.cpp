@@ -20,11 +20,7 @@ UdpEgressHandler::~UdpEgressHandler() = default;
 
 bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    m_inputChannelName = config.getOr<std::string>(
-        "egress.input_channel",
-        config.getOr<std::string>(
-            "channel.input",
-            config.getOr<std::string>("print.channel", "egress_in")));
+    const auto inputChannelName = config.getOr<std::string>("egress.input_channel", "egress_in");
 
     std::string mode = config.getOr<std::string>("egress.mode", "reply_to_origin");
     m_replyToOrigin = (mode != "forward");
@@ -33,18 +29,18 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     m_destPort = static_cast<std::uint16_t>(config.getOr<int>("egress.dest_port", 9200));
 
     // 1. Create input channel through the chain's backend (e.g. SHM, UDS)
-    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(inputChannelName, config);
     if (!inChannel) {
-        Proxy::Log::error("[UdpEgressHandler] Failed to create input channel '{}'", m_inputChannelName);
+        Proxy::Log::error("[UdpEgressHandler] Failed to create input channel '{}'", inputChannelName);
         return false;
     }
-    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
+    registerInputChannel(std::move(inChannel));
 
     // 2. Initialize UDP output socket
     m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>("udp_network_egress", m_destHost, m_destPort);
 
     Proxy::Log::info("[UdpEgressHandler] Configured on channel '{}' (mode: {}, default target: {}:{})",
-        m_inputChannelName, m_replyToOrigin ? "reply_to_origin" : "forward", m_destHost, m_destPort);
+        inputChannelName, m_replyToOrigin ? "reply_to_origin" : "forward", m_destHost, m_destPort);
 
     return true;
 }

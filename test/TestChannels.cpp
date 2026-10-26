@@ -15,7 +15,8 @@ namespace {
 
 class MockInputChannel : public Backend::IInputChannel {
 public:
-    explicit MockInputChannel(std::vector<std::string> messages)
+    MockInputChannel(std::string name, std::vector<std::string> messages)
+        : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
             auto env = Core::Message::MessageEnvelope::packRaw(std::as_bytes(std::span(msg.data(), msg.size())));
@@ -122,6 +123,35 @@ private:
 
 } // namespace
 
+TEST_CASE("IHandler visits input channels without exposing ownership storage", "[channel][core]")
+{
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
+
+    CHECK(handler.inputChannelCount() == 0);
+
+    auto first = std::make_unique<MockInputChannel>("registered-first", std::vector<std::string> { });
+    auto second = std::make_unique<MockInputChannel>("registered-second", std::vector<std::string> { });
+    auto* firstPtr = first.get();
+    auto* secondPtr = second.get();
+    handler.registerInputChannel(std::move(first));
+    handler.registerInputChannel(std::move(second));
+
+    CHECK(handler.inputChannelCount() == 2);
+
+    std::vector<std::string> names;
+    std::vector<::Backend::IInputChannel*> channels;
+    handler.forEachInputChannel([&](::Backend::IInputChannel& channel) {
+        names.emplace_back(channel.name());
+        channels.push_back(&channel);
+    });
+
+    CHECK(names == std::vector<std::string> { "registered-first", "registered-second" });
+    REQUIRE(channels.size() == 2);
+    CHECK(channels[0] == firstPtr);
+    CHECK(channels[1] == secondPtr);
+}
+
 TEST_CASE("IHandler output channel registration and direct dispatch", "[channel][core]")
 {
     Core::Simulation::SimulationBackend backend;
@@ -150,13 +180,13 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
     runner.setExecutionModel(Core::Handler::SequentialModel { });
     handler.setRunner(&runner);
 
-    auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
-    auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
+    auto inChan1 = std::make_unique<MockInputChannel>("chan1", std::vector<std::string> { "msgA" });
+    auto inChan2 = std::make_unique<MockInputChannel>("chan2", std::vector<std::string> { "msgB" });
     auto outChan = std::make_unique<MockOutputChannel>();
     auto* rawOutChan = outChan.get();
 
-    handler.registerInputChannel("chan1", std::move(inChan1));
-    handler.registerInputChannel("chan2", std::move(inChan2));
+    handler.registerInputChannel(std::move(inChan1));
+    handler.registerInputChannel(std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     runner.start();
@@ -178,13 +208,13 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
     runner.setExecutionModel(Core::Handler::DedicatedThreadModel { });
     handler.setRunner(&runner);
 
-    auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
-    auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
+    auto inChan1 = std::make_unique<MockInputChannel>("chan1", std::vector<std::string> { "msgA" });
+    auto inChan2 = std::make_unique<MockInputChannel>("chan2", std::vector<std::string> { "msgB" });
     auto outChan = std::make_unique<MockOutputChannel>();
     auto* rawOutChan = outChan.get();
 
-    handler.registerInputChannel("chan1", std::move(inChan1));
-    handler.registerInputChannel("chan2", std::move(inChan2));
+    handler.registerInputChannel(std::move(inChan1));
+    handler.registerInputChannel(std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     runner.startAsync();
@@ -202,13 +232,13 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
     runner.setExecutionModel(Core::Handler::ThreadPoolModel { .poolSize = 2 });
     handler.setRunner(&runner);
 
-    auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
-    auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
+    auto inChan1 = std::make_unique<MockInputChannel>("chan1", std::vector<std::string> { "msgA" });
+    auto inChan2 = std::make_unique<MockInputChannel>("chan2", std::vector<std::string> { "msgB" });
     auto outChan = std::make_unique<MockOutputChannel>();
     auto* rawOutChan = outChan.get();
 
-    handler.registerInputChannel("chan1", std::move(inChan1));
-    handler.registerInputChannel("chan2", std::move(inChan2));
+    handler.registerInputChannel(std::move(inChan1));
+    handler.registerInputChannel(std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     runner.startAsync();
@@ -287,13 +317,13 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
     runner.setExecutionModel(Core::Handler::SequentialModel { });
     merge.setRunner(&runner);
 
-    auto inA = std::make_unique<MockInputChannel>(std::vector<std::string> { "input1" });
-    auto inB = std::make_unique<MockInputChannel>(std::vector<std::string> { "input2" });
+    auto inA = std::make_unique<MockInputChannel>("in_a", std::vector<std::string> { "input1" });
+    auto inB = std::make_unique<MockInputChannel>("in_b", std::vector<std::string> { "input2" });
     auto outChan = std::make_unique<MockOutputChannel>();
     auto* rawOut = outChan.get();
 
-    merge.registerInputChannel("in_a", std::move(inA));
-    merge.registerInputChannel("in_b", std::move(inB));
+    merge.registerInputChannel(std::move(inA));
+    merge.registerInputChannel(std::move(inB));
     merge.setOutChannel(merge.registerOutputChannel(std::move(outChan)));
 
     runner.start();
@@ -403,9 +433,9 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 
         // Generate a 4096-byte payload (exceeds 2048-byte default batch slot)
         std::string jumboPayload(4096, 'X');
-        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+        auto inChan = std::make_unique<MockInputChannel>("jumbo_in", std::vector<std::string> { jumboPayload });
 
-        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.registerInputChannel(std::move(inChan));
         runner.startAsync();
         runner.wait();
 
@@ -423,9 +453,9 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
         handler.setRunner(&runner);
 
         std::string jumboPayload(8192, 'Y');
-        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+        auto inChan = std::make_unique<MockInputChannel>("jumbo_in", std::vector<std::string> { jumboPayload });
 
-        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.registerInputChannel(std::move(inChan));
         runner.startAsync();
         runner.wait();
 
@@ -443,9 +473,9 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
         handler.setRunner(&runner);
 
         std::string jumboPayload(4096, 'Z');
-        auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
+        auto inChan = std::make_unique<MockInputChannel>("jumbo_in", std::vector<std::string> { jumboPayload });
 
-        handler.registerInputChannel("jumbo_in", std::move(inChan));
+        handler.registerInputChannel(std::move(inChan));
         runner.startAsync();
         runner.wait();
 
@@ -535,7 +565,7 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
     runner.setExecutionModel(Core::Handler::ThreadPoolModel { .poolSize = 4 });
     handler.setRunner(&runner);
 
-    handler.registerInputChannel("ordered_chan", std::make_unique<MockInputChannel>(expected));
+    handler.registerInputChannel(std::make_unique<MockInputChannel>("ordered_chan", expected));
 
     runner.startAsync();
     runner.wait();

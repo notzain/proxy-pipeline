@@ -13,23 +13,23 @@ RouteHandler::~RouteHandler() = default;
 
 bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    m_inputChannelName = config.getOr<std::string>("route.input_channel", config.getOr<std::string>("channel.input", "route_in"));
-    m_defaultChannelName = config.getOr<std::string>("route.default_output", "");
+    const auto inputChannelName = config.getOr<std::string>("route.input_channel", "route_in");
+    const auto defaultChannelName = config.getOr<std::string>("route.default_output", "");
 
-    auto inChan = backend().createInputChannel(m_inputChannelName, config);
+    auto inChan = backend().createInputChannel(inputChannelName, config);
     if (!inChan) {
-        Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", m_inputChannelName);
+        Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", inputChannelName);
         return false;
     }
-    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChan));
+    registerInputChannel(std::move(inChan));
 
     // Register default output if configured
-    if (!m_defaultChannelName.empty()) {
-        auto defChan = backend().createOutputChannel(m_defaultChannelName, config);
+    if (!defaultChannelName.empty()) {
+        auto defChan = backend().createOutputChannel(defaultChannelName, config);
         if (defChan) {
             m_defaultOutputChannel = registerOutputChannel(std::move(defChan));
         } else {
-            Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", m_defaultChannelName);
+            Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", defaultChannelName);
         }
     }
 
@@ -107,10 +107,9 @@ void RouteHandler::addRule(RouteRule rule)
     m_rules.push_back(std::move(rule));
 }
 
-void RouteHandler::setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel, std::string channelName) noexcept
+void RouteHandler::setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
 {
     m_defaultOutputChannel = channel;
-    m_defaultChannelName = std::move(channelName);
 }
 
 const std::vector<RouteRule>& RouteHandler::rules() const noexcept
@@ -132,7 +131,7 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
 
     if (m_defaultOutputChannel) {
         m_defaultOutputChannel->send(message.rawBuffer());
-        return Core::Message::Forwarded { .channel = m_defaultChannelName };
+        return Core::Message::Forwarded { .channel = m_defaultOutputChannel->name() };
     }
 
     Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
@@ -171,7 +170,9 @@ void RouteHandler::onBatchReceived(
 
         if (!destination) {
             destination = m_defaultOutputChannel;
-            destinationName = m_defaultChannelName;
+            if (destination) {
+                destinationName = destination->name();
+            }
         }
 
         if (destination) {

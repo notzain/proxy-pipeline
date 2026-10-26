@@ -86,10 +86,10 @@ void SequentialStrategy::start(Handler::IHandler& handler)
     m_running.store(true, std::memory_order_release);
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
-    const auto& channels = handler.getInputChannels();
-    Proxy::Log::info("[SequentialStrategy] Started loop for {} channel(s)", channels.size());
+    const auto channelCount = handler.inputChannelCount();
+    Proxy::Log::info("[SequentialStrategy] Started loop for {} channel(s)", channelCount);
 
-    m_workerThread = std::jthread([this, &handler, &channels, channelTimeout](std::stop_token stoken) {
+    m_workerThread = std::jthread([this, &handler, channelCount, channelTimeout](std::stop_token stoken) {
         // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
         // Allocated once on the heap when the thread starts to prevent thread stack overflow,
         // while keeping the buffer resident across polling loops with zero per-message allocations.
@@ -102,34 +102,32 @@ void SequentialStrategy::start(Handler::IHandler& handler)
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-            for (const auto& namedChannel : channels) {
+            handler.forEachInputChannel([&](::Backend::IInputChannel& channel) {
                 if (stoken.stop_requested() || !m_running.load(std::memory_order_acquire)) {
-                    break;
+                    return;
                 }
 
-                if (!namedChannel.channel) {
-                    continue;
-                }
-
-                std::size_t batchCount = namedChannel.channel->receiveBatch(
+                std::size_t batchCount = channel.receiveBatch(
                     std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
-                if (batchCount > 0) {
-                    for (std::size_t i = 0; i < batchCount; ++i) {
-                        batchSizes[i] = batchSlots[i].size;
-                    }
-                    dispatchValidatedBatch(
-                        handler,
-                        namedChannel.name,
-                        std::span<const std::array<std::byte, 65535>>(batchBuffers->data(), batchCount),
-                        std::span<const std::size_t>(batchSizes.data(), batchCount),
-                        batchCount,
-                        invalidEnvelopeCount);
+                if (batchCount == 0) {
+                    return;
                 }
-            }
 
-            if (channels.empty()) {
+                for (std::size_t i = 0; i < batchCount; ++i) {
+                    batchSizes[i] = batchSlots[i].size;
+                }
+                dispatchValidatedBatch(
+                    handler,
+                    channel.name(),
+                    std::span<const std::array<std::byte, 65535>>(batchBuffers->data(), batchCount),
+                    std::span<const std::size_t>(batchSizes.data(), batchCount),
+                    batchCount,
+                    invalidEnvelopeCount);
+            });
+
+            if (channelCount == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 

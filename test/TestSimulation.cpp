@@ -164,7 +164,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
         bool onConfigure(const Core::Config::Configuration& cfg) override
         {
-            registerInputChannel("ingress", backend().createInputChannel("ingress", cfg));
+            registerInputChannel(backend().createInputChannel("ingress", cfg));
             out = registerOutputChannel(backend().createOutputChannel("egress", cfg));
             return true;
         }

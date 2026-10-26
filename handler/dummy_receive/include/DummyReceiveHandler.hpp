@@ -1,8 +1,6 @@
 #pragma once
 
 #include "core/handler/IHandler.hpp"
-#include <string>
-
 namespace Proxy::Handler {
 
 /**
@@ -28,10 +26,6 @@ public:
      * @param buffer Non-owning view of the raw byte buffer received.
      */
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
-
-private:
-    std::string m_channelName;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
 };
 
 } // namespace Proxy::Handler

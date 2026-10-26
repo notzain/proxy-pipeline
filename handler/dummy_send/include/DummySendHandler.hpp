@@ -3,7 +3,6 @@
 #include "core/handler/IHandler.hpp"
 #include <chrono>
 #include <string>
-#include <utility>
 
 namespace Proxy::Handler {
 
@@ -13,14 +12,6 @@ namespace Proxy::Handler {
 class DummySendHandler : public Core::Handler::IHandler {
 public:
     using Core::Handler::IHandler::IHandler;
-    /**
-     * @brief Constructs a sender with its backend and initial message settings.
-     */
-    DummySendHandler(
-        ::Backend::IBackend& backend,
-        std::string channelName,
-        std::string messageText,
-        std::chrono::milliseconds delay);
     ~DummySendHandler() override = default;
 
     /**
@@ -40,7 +31,6 @@ public:
     void step() override;
 
 private:
-    std::string m_channelName;
     std::string m_messageText;
     std::chrono::milliseconds m_delay { 1000 };
     std::chrono::steady_clock::time_point m_lastSendTime { std::chrono::steady_clock::now() };

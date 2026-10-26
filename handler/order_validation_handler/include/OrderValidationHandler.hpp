@@ -21,14 +21,6 @@ class OrderValidationHandler : public Core::Handler::IHandler {
 public:
     using Core::Handler::IHandler::IHandler;
 
-    /**
-     * @brief Constructs an OrderValidationHandler with a backend and output channel name.
-     *
-     * @param backend Backend used to create channels and report message results.
-     * @param outputChannelName Name of the output channel to forward valid order messages to.
-     */
-    OrderValidationHandler(::Backend::IBackend& backend, std::string outputChannelName);
-
     ~OrderValidationHandler() override;
 
     void setOutputChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
@@ -187,9 +179,6 @@ public:
     void onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer);
 
 private:
-    std::string m_inputChannelName;
-    std::string m_outputChannelName;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
     Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_cachedOutputChannel;
 };
 

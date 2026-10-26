@@ -40,9 +40,9 @@ This document outlines structural refactoring, interface decoupling, and abstrac
   - **Issue**: Channels are keyed and looked up using raw `std::string` and `std::string_view` across `IHandler`, `IBackend`, and `MessageResult`. This risks mixing arbitrary strings (e.g. config keys, host names) with channel names.
   - **Action**: Create a lightweight `ChannelId` value class (with constexpr construction, transparent hashing, and string view conversion) to provide type safety and avoid accidental allocations.
 
-- [ ] **Encapsulate `NamedInputChannel` Collection**
-  - **Issue**: `IHandler::getInputChannels()` exposes `const std::vector<NamedInputChannel>&`, exposing internal ownership structures (`std::unique_ptr<IInputChannel>`).
-  - **Action**: Encapsulate input channels inside an `InputChannelSet` or expose query methods (e.g., `findInputChannel(ChannelId)`, `forEachInputChannel(Callback)`).
+- [x] **Encapsulate `IHandler` Input Channel Collection**
+  - **Issue**: `IHandler::getInputChannels()` exposed internal ownership storage (`std::unique_ptr<IInputChannel>`) and its container layout, while a separate registration-name field duplicated `IInputChannel::name()`.
+  - **Action**: Store input channels directly as `std::unique_ptr<IInputChannel>` and use `inputChannelCount()` / `forEachInputChannel(Callback)` to access the private collection. Dispatch uses the name owned by each channel.
 
 - [x] **Cohesive Batch Buffer Value Type (`BufferSlot` / `BatchSpan`)**
   - **Issue**: `IInputChannel::receiveBatch` requires two parallel spans (`std::span<const std::span<std::byte>> destinations` and `std::span<std::size_t> outSizes`) that must stay synchronized in length.

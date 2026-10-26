@@ -26,29 +26,23 @@
 
 namespace Proxy::Handler {
 
-OrderValidationHandler::OrderValidationHandler(::Backend::IBackend& backend, std::string outputChannelName)
-    : Core::Handler::IHandler(backend)
-    , m_outputChannelName(std::move(outputChannelName))
-{
-}
-
 OrderValidationHandler::~OrderValidationHandler() = default;
 
 bool OrderValidationHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    m_inputChannelName = config.getOr<std::string>("order.input_channel", config.getOr<std::string>("channel.input", "order_in"));
-    m_outputChannelName = config.getOr<std::string>("order.output_channel", config.getOr<std::string>("channel.output", "order_out"));
+    const auto inputChannelName = config.getOr<std::string>("order.input_channel", "order_in");
+    const auto outputChannelName = config.getOr<std::string>("order.output_channel", "order_out");
 
-    auto inChannel = backend().createInputChannel(m_inputChannelName, config);
+    auto inChannel = backend().createInputChannel(inputChannelName, config);
     if (!inChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", m_inputChannelName);
+        Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", inputChannelName);
         return false;
     }
-    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
+    registerInputChannel(std::move(inChannel));
 
-    auto outChannel = backend().createOutputChannel(m_outputChannelName, config);
+    auto outChannel = backend().createOutputChannel(outputChannelName, config);
     if (!outChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", m_outputChannelName);
+        Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", outputChannelName);
         return false;
     }
     m_cachedOutputChannel = registerOutputChannel(std::move(outChannel));
@@ -920,17 +914,21 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
         };
     }
 
-    Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
-        order->customer, order->item, order->quantity, m_outputChannelName);
-
-    if (m_cachedOutputChannel) {
-        if (!m_cachedOutputChannel->send(message.rawBuffer())) {
-            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
-        }
-    } else {
-        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found", m_outputChannelName);
+    if (!m_cachedOutputChannel) {
+        Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
+        return Core::Message::Dropped {
+            .reason = "No output channel available for forwarding",
+            .errorCode = 500
+        };
     }
-    return Core::Message::Forwarded { .channel = m_outputChannelName };
+
+    const auto outputChannelName = m_cachedOutputChannel->name();
+    Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
+        order->customer, order->item, order->quantity, outputChannelName);
+    if (!m_cachedOutputChannel->send(message.rawBuffer())) {
+        Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", outputChannelName);
+    }
+    return Core::Message::Forwarded { .channel = outputChannelName };
 }
 
 void OrderValidationHandler::onBatchReceived(
@@ -968,8 +966,15 @@ void OrderValidationHandler::onBatchReceived(
             continue;
         }
 
-        spans[validCount++] = msg.rawBuffer();
-        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
+        if (m_cachedOutputChannel) {
+            spans[validCount++] = msg.rawBuffer();
+            outResults[i] = Core::Message::Forwarded { .channel = m_cachedOutputChannel->name() };
+        } else {
+            outResults[i] = Core::Message::Dropped {
+                .reason = "No output channel available for forwarding",
+                .errorCode = 500
+            };
+        }
     }
 
     if (validCount == 0) {
@@ -978,8 +983,6 @@ void OrderValidationHandler::onBatchReceived(
 
     if (m_cachedOutputChannel) {
         m_cachedOutputChannel->sendBatch(spans.span(validCount));
-    } else {
-        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
     }
 }
 
@@ -1000,10 +1003,10 @@ void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName,
 
     if (m_cachedOutputChannel) {
         if (!m_cachedOutputChannel->send(buffer)) {
-            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_outputChannelName);
+            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_cachedOutputChannel->name());
         }
     } else {
-        Proxy::Log::warn("[OrderValidationHandler] Output channel '{}' not found", m_outputChannelName);
+        Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
     }
 }
 

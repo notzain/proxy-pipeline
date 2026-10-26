@@ -29,24 +29,14 @@ Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(st
         Proxy::Log::error("[IHandler] Attempted to register null input channel");
         throw std::invalid_argument("Attempted to register null input channel");
     }
-    std::string_view name = channel->name();
-    return registerInputChannel(name, std::move(channel));
-}
-
-Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
-{
-    if (!channel) {
-        Proxy::Log::error("[IHandler] Attempted to register null input channel '{}'", channelName);
-        throw std::invalid_argument("Attempted to register null input channel");
-    }
     auto* rawPtr = channel.get();
-    m_inputChannels.push_back(NamedInputChannel { std::string(channelName), std::move(channel) });
+    m_inputChannels.push_back(std::move(channel));
     return Core::Memory::Borrow<::Backend::IInputChannel>(*rawPtr);
 }
 
-const std::vector<IHandler::NamedInputChannel>& IHandler::getInputChannels() const noexcept
+std::size_t IHandler::inputChannelCount() const noexcept
 {
-    return m_inputChannels;
+    return m_inputChannels.size();
 }
 
 Message::MessageResult IHandler::onMessageReceived(std::string_view, const Message::MessageView&)

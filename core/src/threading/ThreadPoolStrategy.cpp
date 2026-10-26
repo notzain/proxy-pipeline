@@ -115,7 +115,8 @@ namespace {
      * @brief Ingests datagrams directly into worker queue slot memory (zero-copy) for maximum throughput.
      */
     void pollUnconstrained(
-        const Handler::IHandler::NamedInputChannel& namedChannel,
+        std::string_view channelName,
+        ::Backend::IInputChannel& channel,
         SharedQueueType* sharedQueue,
         std::span<const std::unique_ptr<QueueType>> queues,
         std::atomic<std::size_t>& nextWorker,
@@ -131,7 +132,7 @@ namespace {
                 batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
             }
 
-            const std::size_t received = namedChannel.channel->receiveBatch(
+            const std::size_t received = channel.receiveBatch(
                 std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
                 timeout);
 
@@ -141,12 +142,12 @@ namespace {
                 if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
                     if (auto slice = bufferPool->acquire()) {
                         std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
-                        task.assignSlice(namedChannel.name, std::move(*slice), msgSize);
+                        task.assignSlice(channelName, std::move(*slice), msgSize);
                     } else {
-                        task.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                        task.assign(channelName, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                     }
                 } else {
-                    task.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                    task.assign(channelName, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                 }
 
                 if (!sharedQueue->tryPush(std::move(task))) {
@@ -163,9 +164,9 @@ namespace {
             std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
             const std::size_t n = std::min(slots.size(), maxBatch);
             for (std::size_t i = 0; i < n; ++i) {
-                inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(namedChannel.name), 0 };
+                inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
             }
-            const std::size_t nReceived = namedChannel.channel->receiveBatch(
+            const std::size_t nReceived = channel.receiveBatch(
                 std::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
                 timeout);
             for (std::size_t i = 0; i < nReceived; ++i) {
@@ -195,7 +196,7 @@ namespace {
         if (hasOversized && targetQueue) {
             std::array<std::byte, 65535> jumboBuf;
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
-            std::size_t jumboBytes = namedChannel.channel->receiveInto(jumboBuf, zeroTimeout);
+            std::size_t jumboBytes = channel.receiveInto(jumboBuf, zeroTimeout);
             if (jumboBytes > 0) {
                 targetQueue->pushBatch(
                     1,
@@ -203,11 +204,11 @@ namespace {
                         if (jumboBytes > MessageTask::SmallBufferSize && bufferPool) {
                             if (auto slice = bufferPool->acquire()) {
                                 std::memcpy(slice->data(), jumboBuf.data(), jumboBytes);
-                                slot.assignSlice(namedChannel.name, std::move(*slice), jumboBytes);
+                                slot.assignSlice(channelName, std::move(*slice), jumboBytes);
                                 return;
                             }
                         }
-                        slot.assign(namedChannel.name, std::span<const std::byte>(jumboBuf.data(), jumboBytes));
+                        slot.assign(channelName, std::span<const std::byte>(jumboBuf.data(), jumboBytes));
                     },
                     stoken);
             }
@@ -218,7 +219,8 @@ namespace {
      * @brief Ingests datagrams and groups them by client flow / channel to guarantee strict FIFO ordering.
      */
     void pollStrictFifo(
-        const Handler::IHandler::NamedInputChannel& namedChannel,
+        std::string_view channelName,
+        ::Backend::IInputChannel& channel,
         std::size_t channelIdx,
         std::span<const std::unique_ptr<QueueType>> queues,
         const std::shared_ptr<Memory::BufferPool>& bufferPool,
@@ -236,7 +238,7 @@ namespace {
             batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
 
-        const std::size_t received = namedChannel.channel->receiveBatch(
+        const std::size_t received = channel.receiveBatch(
             std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
             timeout);
 
@@ -268,11 +270,11 @@ namespace {
                     if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
                         if (auto slice = bufferPool->acquire()) {
                             std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);
-                            slot.assignSlice(namedChannel.name, std::move(*slice), pktSize);
+                            slot.assignSlice(channelName, std::move(*slice), pktSize);
                             return;
                         }
                     }
-                    slot.assign(namedChannel.name, std::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
+                    slot.assign(channelName, std::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
                 },
                 stoken);
 
@@ -325,9 +327,9 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     m_running.store(true, std::memory_order_release);
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
-    const auto& channels = handler.getInputChannels();
+    const auto channelCount = handler.inputChannelCount();
     Proxy::Log::info("[ThreadPoolStrategy] Starting with {} pool workers and {} channel poller(s)...",
-        m_numWorkerThreads, channels.size());
+        m_numWorkerThreads, channelCount);
 
     // 1. Launch pool worker threads with partitioned queues
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
@@ -359,22 +361,20 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
 
     // 2. Launch channel poller threads to enqueue message tasks
     const bool enforceFifo = m_strictFifo;
-    for (std::size_t channelIdx = 0; channelIdx < channels.size(); ++channelIdx) {
-        const auto& namedChannel = channels[channelIdx];
-        m_channelThreads.emplace_back([this, &namedChannel, channelIdx, channelTimeout, enforceFifo](std::stop_token stoken) {
+    std::size_t channelIdx = 0;
+    handler.forEachInputChannel([this, channelTimeout, enforceFifo, &channelIdx](::Backend::IInputChannel& channel) {
+        auto* channelPtr = &channel;
+        const auto currentChannelIdx = channelIdx++;
+        m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](std::stop_token stoken) {
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-                if (!namedChannel.channel) {
-                    continue;
-                }
-
                 if (!enforceFifo) {
-                    pollUnconstrained(namedChannel, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken);
+                    pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken);
                 } else {
-                    pollStrictFifo(namedChannel, channelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken);
+                    pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken);
                 }
             }
         });
-    }
+    });
 
     // 3. Launch background periodic step() thread
     m_stepThread = std::jthread([this, &handler](std::stop_token stoken) {

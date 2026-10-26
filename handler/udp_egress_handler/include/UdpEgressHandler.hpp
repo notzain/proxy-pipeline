@@ -65,8 +65,6 @@ public:
         std::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    std::string m_inputChannelName;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
     std::unique_ptr<Core::Net::UdpOutputChannel> m_udpOut;
 
     std::string m_destHost { "127.0.0.1" };

@@ -27,16 +27,12 @@ public:
     explicit XmlVerificationHandler(::Backend::IBackend& backend);
 
     /**
-     * @brief Constructs an XmlVerificationHandler with a backend, schema file, and output channel.
+     * @brief Constructs an XmlVerificationHandler with a backend and schema file.
      *
      * @param backend Backend used to create channels and report message results.
      * @param schemaPath Path to the .xsd schema file.
-     * @param outputChannelName Name of the output channel to forward valid messages to.
      */
-    XmlVerificationHandler(
-        ::Backend::IBackend& backend,
-        std::filesystem::path schemaPath,
-        std::string outputChannelName);
+    XmlVerificationHandler(::Backend::IBackend& backend, std::filesystem::path schemaPath);
 
     ~XmlVerificationHandler() override;
 
@@ -92,10 +88,7 @@ public:
 
 private:
     std::filesystem::path m_schemaPath;
-    std::string m_inputChannelName;
-    std::string m_outputChannelName;
     std::unique_ptr<XmlSchemaValidator> m_validator;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
     Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 

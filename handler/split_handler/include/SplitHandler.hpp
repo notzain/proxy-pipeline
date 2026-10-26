@@ -44,9 +44,7 @@ public:
         std::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    std::string m_inputChannelName;
     std::string m_outputChannelsStr;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
     std::vector<Core::Memory::ObserverPtr<::Backend::IOutputChannel>> m_outputChannelsList;
 };
 

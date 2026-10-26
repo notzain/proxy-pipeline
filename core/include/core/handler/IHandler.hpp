@@ -6,7 +6,9 @@
 #include "core/memory/Borrow.hpp"
 #include "core/memory/ObserverPtr.hpp"
 #include <chrono>
+#include <concepts>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -48,14 +50,6 @@ public:
     explicit IHandler(::Backend::IBackend& backend) noexcept;
 
     /**
-     * @brief Structure representing a registered input channel with its identifying name.
-     */
-    struct NamedInputChannel {
-        std::string name;
-        std::unique_ptr<::Backend::IInputChannel> channel;
-    };
-
-    /**
      * @brief Virtual destructor for safe polymorphic deletion.
      */
     virtual ~IHandler();
@@ -81,16 +75,23 @@ public:
     Core::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
-     * @brief Registers an input channel with an explicit name override.
+     * @brief Visits registered input channels without exposing their ownership storage.
+     *
+     * @param visitor Callable receiving each input channel.
      */
-    Core::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
+    template <typename Visitor>
+        requires std::invocable<Visitor&, ::Backend::IInputChannel&>
+    void forEachInputChannel(Visitor&& visitor) const
+    {
+        for (const auto& inputChannel : m_inputChannels) {
+            std::invoke(visitor, *inputChannel);
+        }
+    }
 
     /**
-     * @brief Accessor for registered input channels.
-     *
-     * @return const std::vector<NamedInputChannel>& Reference to input channels.
+     * @brief Gets the number of registered input channels.
      */
-    [[nodiscard]] const std::vector<NamedInputChannel>& getInputChannels() const noexcept;
+    [[nodiscard]] std::size_t inputChannelCount() const noexcept;
 
     /**
      * @brief Ingress callback invoked when an enveloped message has been received on an input channel.
@@ -184,7 +185,7 @@ protected:
     }
 
 private:
-    std::vector<NamedInputChannel> m_inputChannels;
+    std::vector<std::unique_ptr<::Backend::IInputChannel>> m_inputChannels;
     std::vector<std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
     ::Backend::IBackend& m_backend;
 };

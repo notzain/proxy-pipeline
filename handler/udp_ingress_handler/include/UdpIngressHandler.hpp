@@ -58,7 +58,6 @@ public:
         std::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    std::string m_outputChannelName;
     Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 

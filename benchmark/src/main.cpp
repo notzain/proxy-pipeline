@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
     auto runDirectBenchmark = [&]() {
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running direct XML verification on {} messages...\n", numMessages);
         Proxy::Backend::Socket::SocketBackend backend;
-        Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath, "output");
+        Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath);
 
         std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
         auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
@@ -197,17 +197,17 @@ int main(int argc, char* argv[])
         // Instantiate components
         auto verifierIn = backend->createInputChannel("udp_raw", config);
         auto verifierOut = backend->createOutputChannel("udp_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "udp_verified");
+        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
-        verifier.registerInputChannel("udp_raw", std::move(verifierIn));
+        verifier.registerInputChannel(std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto receiverIn = backend->createInputChannel("udp_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, socketMessages);
         Core::Handler::HandlerRunner receiverRunner(receiver);
         receiverRunner.setExecutionModel(model);
-        receiver.registerInputChannel("udp_verified", std::move(receiverIn));
+        receiver.registerInputChannel(std::move(receiverIn));
 
         auto senderOut = backend->createOutputChannel("udp_raw", config);
 
@@ -306,14 +306,14 @@ int main(int argc, char* argv[])
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, udsMessages);
         Core::Handler::HandlerRunner receiverRunner(receiver);
         receiverRunner.setExecutionModel(model);
-        receiver.registerInputChannel("uds_verified", std::move(receiverIn));
+        receiver.registerInputChannel(std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("uds_raw", config);
         auto verifierOut = backend->createOutputChannel("uds_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "uds_verified");
+        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
-        verifier.registerInputChannel("uds_raw", std::move(verifierIn));
+        verifier.registerInputChannel(std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("uds_raw", config);
@@ -416,14 +416,14 @@ int main(int argc, char* argv[])
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, shmMessages);
         Core::Handler::HandlerRunner receiverRunner(receiver);
         receiverRunner.setExecutionModel(model);
-        receiver.registerInputChannel("shm_verified", std::move(receiverIn));
+        receiver.registerInputChannel(std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("shm_raw", config);
         auto verifierOut = backend->createOutputChannel("shm_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "shm_verified");
+        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
-        verifier.registerInputChannel("shm_raw", std::move(verifierIn));
+        verifier.registerInputChannel(std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("shm_raw", config);

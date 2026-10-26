@@ -29,13 +29,13 @@ namespace Proxy::Handler {
 
 bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    m_inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
-    auto inputChannel = backend().createInputChannel(m_inputChannelName, config);
+    const auto inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
+    auto inputChannel = backend().createInputChannel(inputChannelName, config);
     if (!inputChannel) {
-        Proxy::Log::error("[SplitHandler] Failed to create input channel '{}'", m_inputChannelName);
+        Proxy::Log::error("[SplitHandler] Failed to create input channel '{}'", inputChannelName);
         return false;
     }
-    m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inputChannel));
+    registerInputChannel(std::move(inputChannel));
 
     m_outputChannelsStr = config.getOr<std::string>("split.output_channels", "");
     std::vector<std::string> outChannelNames = splitString(m_outputChannelsStr, ',');

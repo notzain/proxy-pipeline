@@ -17,6 +17,11 @@ namespace {
 
 class MockChannel : public ::Backend::IOutputChannel {
 public:
+    explicit MockChannel(std::string name)
+        : ::Backend::IOutputChannel(std::move(name))
+    {
+    }
+
     bool send(std::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
@@ -50,9 +55,9 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     Core::Simulation::SimulationBackend backend;
     Proxy::Handler::RouteHandler router(backend);
 
-    auto vipChan = std::make_unique<MockChannel>();
-    auto stdChan = std::make_unique<MockChannel>();
-    auto defChan = std::make_unique<MockChannel>();
+    auto vipChan = std::make_unique<MockChannel>("vip_out");
+    auto stdChan = std::make_unique<MockChannel>("std_out");
+    auto defChan = std::make_unique<MockChannel>("def_out");
 
     auto* vipPtr = vipChan.get();
     auto* stdPtr = stdChan.get();
@@ -60,7 +65,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
 
     router.registerOutputChannel(std::move(vipChan));
     router.registerOutputChannel(std::move(stdChan));
-    router.setDefaultChannel(router.registerOutputChannel(std::move(defChan)), "def_out");
+    router.setDefaultChannel(router.registerOutputChannel(std::move(defChan)));
 
     // Rule 1: contains "VIP" -> vip_out
     Proxy::Handler::RouteRule ruleVip(Proxy::Handler::MatchCriteria::PayloadContains { "VIP" }, "vip_out");
@@ -150,7 +155,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     SECTION("Client port metadata routing")
     {
         Proxy::Handler::RouteHandler portRouter(backend);
-        auto portChan = std::make_unique<MockChannel>();
+        auto portChan = std::make_unique<MockChannel>("port_out");
         auto* portPtr = portChan.get();
         portRouter.registerOutputChannel(std::move(portChan));
 

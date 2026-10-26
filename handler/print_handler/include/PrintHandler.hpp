@@ -42,10 +42,6 @@ public:
         std::string_view channelName,
         std::span<const Core::Message::MessageView> messages,
         std::span<Core::Message::MessageResult> outResults) override;
-
-private:
-    std::string m_channelName;
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
 };
 
 } // namespace Proxy::Handler

@@ -85,12 +85,13 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
     m_running.store(true, std::memory_order_release);
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
-    const auto& channels = handler.getInputChannels();
-    Proxy::Log::info("[DedicatedThreadStrategy] Launching dedicated threads for {} channel(s)...", channels.size());
+    const auto channelCount = handler.inputChannelCount();
+    Proxy::Log::info("[DedicatedThreadStrategy] Launching dedicated threads for {} channel(s)...", channelCount);
 
-    for (const auto& namedChannel : channels) {
-        m_workerThreads.emplace_back([this, &handler, &namedChannel, channelTimeout](std::stop_token stoken) {
-            Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", namedChannel.name);
+    handler.forEachInputChannel([this, &handler, channelTimeout](::Backend::IInputChannel& channel) {
+        auto* channelPtr = &channel;
+        m_workerThreads.emplace_back([this, &handler, channelName = channel.name(), channelPtr, channelTimeout](std::stop_token stoken) {
+            Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", channelName);
 
             // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
             // Allocated once on the heap when the thread starts to prevent thread stack overflow,
@@ -104,10 +105,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
             std::size_t invalidEnvelopeCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-                if (!namedChannel.channel) {
-                    continue;
-                }
-                std::size_t batchCount = namedChannel.channel->receiveBatch(
+                std::size_t batchCount = channelPtr->receiveBatch(
                     std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
@@ -117,7 +115,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                     }
                     dispatchValidatedBatch(
                         handler,
-                        namedChannel.name,
+                        channelName,
                         std::span<const std::array<std::byte, 65535>>(batchBuffers->data(), batchCount),
                         std::span<const std::size_t>(batchSizes.data(), batchCount),
                         batchCount,
@@ -125,9 +123,9 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                 }
             }
 
-            Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread exited for channel '{}'", namedChannel.name);
+            Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread exited for channel '{}'", channelName);
         });
-    }
+    });
 
     m_workerThreads.emplace_back([this, &handler](std::stop_token stoken) {
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {

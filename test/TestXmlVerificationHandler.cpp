@@ -45,7 +45,7 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
 {
     TempSchemaFile schema(sampleXsd);
     Core::Simulation::SimulationBackend backend;
-    Proxy::Handler::XmlVerificationHandler handler(backend, schema.path, "valid_out");
+    Proxy::Handler::XmlVerificationHandler handler(backend, schema.path);
 
     REQUIRE(handler.isSchemaLoaded());
 

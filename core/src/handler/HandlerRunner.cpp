@@ -127,7 +127,7 @@ void HandlerRunner::startAsync()
     }
 
     Proxy::Log::info("[HandlerRunner] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...",
-        m_handler.getInputChannels().size());
+        m_handler.inputChannelCount());
     m_strategy->start(m_handler);
     m_handler.backend().onHandlerStarted();
 }
