@@ -152,17 +152,6 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-std::optional<Backend::IInputChannel::Buffer> UdpInputChannel::receive(Timeout timeout)
-{
-    Buffer buffer(65535);
-    std::size_t bytes = receiveInto(std::span<std::byte>(buffer.data(), buffer.size()), timeout);
-    if (bytes == 0) {
-        return std::nullopt;
-    }
-    buffer.resize(bytes);
-    return buffer;
-}
-
 std::size_t UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {

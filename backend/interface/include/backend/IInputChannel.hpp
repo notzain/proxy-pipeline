@@ -22,23 +22,25 @@ public:
     virtual ~IInputChannel() = default;
 
     /**
-     * @brief Polls the input channel for the next available message.
-     *
-     * @param timeout Maximum duration to wait before returning std::nullopt.
-     * @return std::optional<Buffer> Buffer containing received data, or std::nullopt on timeout.
-     */
-    virtual std::optional<Buffer> receive(Timeout timeout) = 0;
-
-    /**
      * @brief Polls the input channel and reads data directly into a provided buffer without heap allocation.
      *
-     * Default implementation falls back to receive(timeout) and copies into destination.
+     * Core zero-copy reception primitive implemented by transport channels.
      *
      * @param destination Non-owning pre-allocated memory span to receive data into.
      * @param timeout Maximum duration to wait before returning 0.
      * @return std::size_t Number of bytes written into destination, or 0 on timeout/no message.
      */
-    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout);
+    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) = 0;
+
+    /**
+     * @brief Polls the input channel for the next available message, returning an allocated buffer.
+     *
+     * Non-virtual convenience wrapper that delegates to receiveInto().
+     *
+     * @param timeout Maximum duration to wait before returning std::nullopt.
+     * @return std::optional<Buffer> Buffer containing received data, or std::nullopt on timeout.
+     */
+    std::optional<Buffer> receive(Timeout timeout);
 
     /**
      * @brief Drains a batch of incoming messages into pre-allocated destination buffer slices.

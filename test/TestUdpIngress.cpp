@@ -91,23 +91,15 @@ public:
     {
     }
 
-    std::optional<Buffer> receive(Timeout) override
+    std::size_t receiveInto(std::span<std::byte> destination, Timeout) override
     {
         if (m_index < m_messages.size()) {
-            return m_messages[m_index++];
+            const auto& msg = m_messages[m_index++];
+            std::size_t count = std::min(destination.size(), msg.size());
+            std::memcpy(destination.data(), msg.data(), count);
+            return count;
         }
-        return std::nullopt;
-    }
-
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override
-    {
-        auto opt = receive(timeout);
-        if (!opt || opt->empty()) {
-            return 0;
-        }
-        std::size_t count = std::min(destination.size(), opt->size());
-        std::memcpy(destination.data(), opt->data(), count);
-        return count;
+        return 0;
     }
 
     std::size_t receiveBatch(

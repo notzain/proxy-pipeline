@@ -22,18 +22,6 @@ public:
         }
     }
 
-    std::optional<Buffer> receive(Timeout) override
-    {
-        std::lock_guard lock(m_mutex);
-        if (m_index < m_messages.size()) {
-            const auto& msg = m_messages[m_index++];
-            Buffer buf(msg.size());
-            std::memcpy(buf.data(), msg.data(), msg.size());
-            return buf;
-        }
-        return std::nullopt;
-    }
-
     std::size_t receiveInto(std::span<std::byte> destination, Timeout) override
     {
         std::lock_guard lock(m_mutex);

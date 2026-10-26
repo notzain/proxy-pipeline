@@ -22,7 +22,6 @@ public:
     explicit ShmInputChannel(std::string path, std::size_t capacity = 1024);
     ~ShmInputChannel() override;
 
-    std::optional<Buffer> receive(Timeout timeout) override;
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
     std::size_t receiveBatch(
         std::span<const std::span<std::byte>> destinations,

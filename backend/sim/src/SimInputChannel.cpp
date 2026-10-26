@@ -130,16 +130,6 @@ void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_
     ::sendto(m_eventFd, json.data(), json.size(), 0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
-std::optional<SimInputChannel::Buffer> SimInputChannel::receive(Timeout timeout)
-{
-    std::array<std::byte, 65535> buf;
-    std::size_t n = receiveInto(buf, timeout);
-    if (n > 0) {
-        return Buffer(buf.begin(), buf.begin() + n);
-    }
-    return std::nullopt;
-}
-
 std::size_t SimInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     std::array<std::span<std::byte>, 1> dests { destination };

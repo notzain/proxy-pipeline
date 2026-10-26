@@ -104,15 +104,4 @@ std::size_t SocketInputChannel::receiveBatch(
     return 0;
 }
 
-std::optional<::Backend::IInputChannel::Buffer> SocketInputChannel::receive(Timeout timeout)
-{
-    Buffer scratch(65535);
-    std::size_t bytesRead = receiveInto(scratch, timeout);
-    if (bytesRead > 0) {
-        scratch.resize(bytesRead);
-        return scratch;
-    }
-    return std::nullopt;
-}
-
 } // namespace Proxy::Backend::Socket

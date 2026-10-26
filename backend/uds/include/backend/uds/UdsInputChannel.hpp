@@ -16,7 +16,6 @@ public:
     explicit UdsInputChannel(std::string socketPath);
     ~UdsInputChannel() override;
 
-    std::optional<Buffer> receive(Timeout timeout) override;
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
     std::size_t receiveBatch(
         std::span<const std::span<std::byte>> destinations,

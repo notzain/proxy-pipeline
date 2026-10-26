@@ -4,15 +4,15 @@
 
 namespace Backend {
 
-std::size_t IInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+std::optional<IInputChannel::Buffer> IInputChannel::receive(Timeout timeout)
 {
-    auto msg = receive(timeout);
-    if (!msg.has_value() || msg->empty()) {
-        return 0;
+    Buffer buffer(65535);
+    std::size_t bytes = receiveInto(std::span<std::byte>(buffer.data(), buffer.size()), timeout);
+    if (bytes == 0) {
+        return std::nullopt;
     }
-    const std::size_t bytesToCopy = std::min(destination.size(), msg->size());
-    std::memcpy(destination.data(), msg->data(), bytesToCopy);
-    return bytesToCopy;
+    buffer.resize(bytes);
+    return buffer;
 }
 
 std::size_t IInputChannel::receiveBatch(

@@ -48,11 +48,6 @@ public:
     UdpInputChannel& operator=(UdpInputChannel&&) noexcept;
 
     /**
-     * @brief Polls the UDP socket for the next available datagram and returns an enveloped buffer.
-     */
-    std::optional<Buffer> receive(Timeout timeout) override;
-
-    /**
      * @brief Reads a datagram and serializes an in-place envelope directly into destination.
      */
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;

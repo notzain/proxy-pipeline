@@ -44,16 +44,6 @@ void ShmInputChannel::reset()
     }
 }
 
-std::optional<::Backend::IInputChannel::Buffer> ShmInputChannel::receive(Timeout timeout)
-{
-    std::array<std::byte, ShmRingBuffer::MaxPayloadBytes> tempBuffer;
-    std::size_t bytes = receiveInto(tempBuffer, timeout);
-    if (bytes == 0) {
-        return std::nullopt;
-    }
-    return Buffer(tempBuffer.begin(), tempBuffer.begin() + bytes);
-}
-
 std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (!isValid()) {

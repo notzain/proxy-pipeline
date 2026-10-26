@@ -114,15 +114,4 @@ std::size_t UdsInputChannel::receiveBatch(
     return 0;
 }
 
-std::optional<::Backend::IInputChannel::Buffer> UdsInputChannel::receive(Timeout timeout)
-{
-    Buffer scratch(65535);
-    std::size_t bytesRead = receiveInto(scratch, timeout);
-    if (bytesRead > 0) {
-        scratch.resize(bytesRead);
-        return scratch;
-    }
-    return std::nullopt;
-}
-
 } // namespace Proxy::Backend::Uds
