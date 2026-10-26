@@ -1,6 +1,7 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "log/Log.hpp"
 #include <chrono>
 #include <filesystem>
@@ -23,12 +24,13 @@ int main(int argc, char* argv[])
     backend->configure(config);
 
     Proxy::Handler::DummySendHandler handler(*backend);
-    if (!handler.configure(config)) {
+    Core::Handler::HandlerRunner runner(handler);
+    if (!runner.configure(config)) {
         return 1;
     }
 
     Proxy::Log::info("DummySend initialized successfully. Starting event loop...");
-    handler.start();
+    runner.start();
 
     Proxy::Log::info("DummySend exiting cleanly.");
     return 0;

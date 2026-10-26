@@ -73,7 +73,7 @@ std::vector<RecordedMessageResult> SimulationBackend::getRecordedResults() const
     return m_recordedResults;
 }
 
-MockOutputChannel* SimulationBackend::getOutputChannel(std::string_view name) const
+Core::Memory::ObserverPtr<MockOutputChannel> SimulationBackend::getOutputChannel(std::string_view name) const
 {
     auto it = m_outputMap.find(std::string(name));
     if (it != m_outputMap.end()) {
@@ -82,7 +82,7 @@ MockOutputChannel* SimulationBackend::getOutputChannel(std::string_view name) co
     return nullptr;
 }
 
-MockInputChannel* SimulationBackend::getInputChannel(std::string_view name) const
+Core::Memory::ObserverPtr<MockInputChannel> SimulationBackend::getInputChannel(std::string_view name) const
 {
     auto it = m_inputMap.find(std::string(name));
     if (it != m_inputMap.end()) {

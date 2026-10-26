@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include "core/memory/ObserverPtr.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/message/ProtocolId.hpp"
 #include <cstdint>
@@ -66,15 +67,15 @@ public:
 
     [[nodiscard]] bool matches(const Core::Message::MessageView& message) const noexcept;
     [[nodiscard]] const std::string& targetChannelName() const noexcept;
-    [[nodiscard]] ::Backend::IOutputChannel* targetChannel() const noexcept;
-    void bindTargetChannel(::Backend::IOutputChannel* channel) noexcept;
+    [[nodiscard]] Core::Memory::ObserverPtr<::Backend::IOutputChannel> targetChannel() const noexcept;
+    void bindTargetChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept;
 
     [[nodiscard]] const RoutePattern& pattern() const noexcept;
 
 private:
     RoutePattern m_pattern;
     std::string m_targetChannelName;
-    ::Backend::IOutputChannel* m_targetChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_targetChannel;
 };
 
 } // namespace Proxy::Handler

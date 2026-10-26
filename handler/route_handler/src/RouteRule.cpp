@@ -79,12 +79,12 @@ const std::string& RouteRule::targetChannelName() const noexcept
     return m_targetChannelName;
 }
 
-::Backend::IOutputChannel* RouteRule::targetChannel() const noexcept
+Core::Memory::ObserverPtr<::Backend::IOutputChannel> RouteRule::targetChannel() const noexcept
 {
     return m_targetChannel;
 }
 
-void RouteRule::bindTargetChannel(::Backend::IOutputChannel* channel) noexcept
+void RouteRule::bindTargetChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
 {
     m_targetChannel = channel;
 }

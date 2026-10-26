@@ -46,8 +46,8 @@ public:
 private:
     std::string m_inputChannelName;
     std::string m_outputChannelsStr;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
-    std::vector<::Backend::IOutputChannel*> m_outputChannelsList;
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
+    std::vector<Core::Memory::ObserverPtr<::Backend::IOutputChannel>> m_outputChannelsList;
 };
 
 } // namespace Proxy::Handler

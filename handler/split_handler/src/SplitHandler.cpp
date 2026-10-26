@@ -46,7 +46,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
             Proxy::Log::error("[SplitHandler] Failed to create output channel '{}'", outName);
             return false;
         }
-        auto* ptr = registerOutputChannel(std::move(outChannel));
+        auto ptr = registerOutputChannel(std::move(outChannel));
         m_outputChannelsList.push_back(ptr);
     }
 
@@ -58,7 +58,7 @@ Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view ch
     Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
         channelName, message.payload().size());
     std::size_t forwarded = 0;
-    for (auto* outChan : m_outputChannelsList) {
+    for (auto outChan : m_outputChannelsList) {
         if (outChan && outChan->send(message.rawBuffer())) {
             forwarded++;
         }
@@ -86,7 +86,7 @@ void SplitHandler::onBatchReceived(
 
     Proxy::Log::debug("[SplitHandler] Channel '{}' received batch of {} messages, splitting...", channelName, messages.size());
 
-    for (auto* outChan : m_outputChannelsList) {
+    for (auto outChan : m_outputChannelsList) {
         if (outChan) {
             outChan->sendBatch(spans.span(messages.size()));
         }

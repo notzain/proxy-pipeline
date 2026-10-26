@@ -46,7 +46,7 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
             Proxy::Log::error("[MergeHandler] Failed to create input channel '{}'", inName);
             return false;
         }
-        auto* ptr = registerInputChannel(std::move(inChannel));
+        auto ptr = registerInputChannel(std::move(inChannel));
         m_inputChannelsList.push_back(ptr);
     }
 

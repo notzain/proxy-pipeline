@@ -1,4 +1,5 @@
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
@@ -159,7 +160,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
         {
         }
 
-        ::Backend::IOutputChannel* out { nullptr };
+        Core::Memory::ObserverPtr<::Backend::IOutputChannel> out;
 
         bool onConfigure(const Core::Config::Configuration& cfg) override
         {
@@ -179,11 +180,12 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
     };
 
     SimEchoHandler handler(simBackend);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
-    REQUIRE(handler.configure(config));
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::SequentialModel { });
+    REQUIRE(runner.configure(config));
 
-    auto* inCh = simBackend.getInputChannel("ingress");
-    auto* outCh = simBackend.getOutputChannel("egress");
+    auto inCh = simBackend.getInputChannel("ingress");
+    auto outCh = simBackend.getOutputChannel("egress");
     REQUIRE(inCh != nullptr);
     REQUIRE(outCh != nullptr);
 
@@ -194,10 +196,10 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
     inCh->pushMessage(env, 100'000ULL);
 
     // Run handler asynchronously to process message
-    handler.startAsync();
+    runner.startAsync();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    handler.stop();
-    handler.wait();
+    runner.stop();
+    runner.wait();
 
     // Verify message forwarded to mock egress with exact virtual timing
     REQUIRE(outCh->messageCount() == 1);

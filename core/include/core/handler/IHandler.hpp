@@ -3,16 +3,13 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/telemetry/StatsDExporter.hpp"
-#include "core/threading/IExecutionStrategy.hpp"
+#include "core/memory/ObserverPtr.hpp"
 #include <chrono>
 #include <cstddef>
 #include <memory>
-#include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include "core/handler/HandlerTraits.hpp"
@@ -30,33 +27,13 @@ class MessageView;
 namespace Core::Handler {
 
 /**
- * @brief Concurrency and execution model for the handler event loop.
- */
-enum class ExecutionModel {
-    Sequential, ///< Single-threaded round-robin polling.
-    Dedicated, ///< Dedicated thread per registered input channel.
-    ThreadPool ///< Dedicated input polling with worker thread pool for message dispatch.
-};
-
-/**
- * @brief Parses an execution model enum from a string name.
- *
- * @param name Model name (e.g. "sequential", "dedicated", "thread_pool").
- * @return ExecutionModel Corresponding enum value, defaulting to Dedicated if unknown.
- */
-ExecutionModel parseExecutionModel(std::string_view name);
-
-/**
- * @brief Universal base handler managing input and output channels, message dispatch,
- * and the execution lifecycle loop.
+ * @brief Universal base handler managing input and output channels and message dispatch.
  *
  * IHandler provides:
  * - Configuration & Channel Binding: configure() creates and binds backend channels.
  * - Ingress: Registers IInputChannel instances, dispatches received messages via onMessageReceived().
  * - Egress: Thread-safe registration of IOutputChannel instances returning non-owning pointers for direct sending.
  * - Background work: Periodic step() hook.
- * - Runtime Execution Models: Configurable via setExecutionModel() (Sequential, Dedicated, ThreadPool).
- * - Async lifecycle: start(), startAsync(), wait(), stop(), isRunning().
  */
 class IHandler {
 public:
@@ -85,23 +62,12 @@ public:
     /**
      * @brief Configures the handler from a Configuration store and initializes channels.
      *
-     * Non-virtual template method that automatically initializes common base class concerns
-     * (such as live Telemetry StatsD exporter via configureTelemetry()) and then delegates
-     * to the protected onConfigure() hook for subclass-specific setup.
+     * Delegates to the protected onConfigure() hook for subclass-specific setup.
      *
      * @param config Strongly-typed key-value configuration.
      * @return true If configuration and channel initialization succeeded, false otherwise.
      */
     bool configure(const Config::Configuration& config);
-
-    /**
-     * @brief Configures live Telemetry StatsD exporter from the provided Configuration.
-     *
-     * Automatically invoked by configure(), but can also be invoked standalone if needed.
-     *
-     * @param config Configuration containing telemetry.statsd.host / telemetry.host settings.
-     */
-    void configureTelemetry(const Config::Configuration& config);
 
     // --- Input Channel Management (Ingress) ---
 
@@ -109,14 +75,14 @@ public:
      * @brief Registers an input channel to be polled by the handler event loop.
      *
      * @param channel The input channel instance (which owns its name).
-     * @return ::Backend::IInputChannel* Non-owning pointer to the registered channel.
+     * @return Core::Memory::ObserverPtr<::Backend::IInputChannel> Non-owning observer pointer to the registered channel.
      */
-    ::Backend::IInputChannel* registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Registers an input channel with an explicit name override.
      */
-    ::Backend::IInputChannel* registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Accessor for registered input channels.
@@ -169,9 +135,9 @@ public:
      * @brief Registers an output channel to be managed by the handler.
      *
      * @param channel The output channel instance.
-     * @return ::Backend::IOutputChannel* Non-owning pointer to the registered channel.
+     * @return Core::Memory::ObserverPtr<::Backend::IOutputChannel> Non-owning observer pointer to the registered channel.
      */
-    ::Backend::IOutputChannel* registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
 
     // --- Operational Metadata & Classification ---
 
@@ -198,61 +164,9 @@ public:
      */
     virtual void step();
 
-    // --- Execution Strategy & Concurrency Configuration ---
-
-    /**
-     * @brief Sets the execution model using standard strategies.
-     *
-     * @param model Desired execution model (Sequential, Dedicated, or ThreadPool).
-     * @param poolSize Worker thread count (only used when model is ThreadPool, 0 for hardware concurrency).
-     * @param strictFifo Enforces strict per-flow FIFO order in ThreadPoolStrategy (default: true).
-     */
-    void setExecutionModel(ExecutionModel model, std::size_t poolSize = 0, bool strictFifo = true);
-
-    /**
-     * @brief Injects a custom execution strategy.
-     *
-     * @param strategy Custom implementation of IExecutionStrategy.
-     */
-    void setExecutionStrategy(std::unique_ptr<Threading::IExecutionStrategy> strategy);
-
-    // --- Lifecycle Execution Control ---
-
-    /**
-     * @brief Starts the message polling loop synchronously.
-     *
-     * Blocks the calling thread until stop() is invoked or a shutdown signal (SIGINT/SIGTERM) is received.
-     */
-    virtual void start();
-
-    /**
-     * @brief Starts the message polling loop asynchronously without blocking.
-     *
-     * Launches the configured strategy in background thread(s) and returns immediately.
-     */
-    virtual void startAsync();
-
-    /**
-     * @brief Blocks until the handler and its execution strategy finish running.
-     */
-    virtual void wait();
-
-    /**
-     * @brief Signals the handler loop and its execution strategy to terminate.
-     */
-    virtual void stop();
-
-    /**
-     * @brief Checks whether the handler event loop is currently active.
-     *
-     * @return true If the loop is running.
-     * @return false If the loop has stopped or has not started.
-     */
-    [[nodiscard]] bool isRunning() const noexcept;
-
-protected:
     [[nodiscard]] ::Backend::IBackend& backend() noexcept;
 
+protected:
     /**
      * @brief Subclass configuration hook invoked by configure().
      *
@@ -271,13 +185,7 @@ protected:
 private:
     std::vector<NamedInputChannel> m_inputChannels;
     std::vector<std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
-    std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
-    std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
     ::Backend::IBackend& m_backend;
-
-    void registerSignalHandler();
-    void unregisterSignalHandler();
-    void ensureStrategy();
 };
 
 } // namespace Core::Handler

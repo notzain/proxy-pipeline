@@ -6,7 +6,9 @@
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>

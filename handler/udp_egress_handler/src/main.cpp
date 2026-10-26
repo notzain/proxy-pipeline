@@ -1,6 +1,7 @@
 #include "UdpEgressHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "log/Log.hpp"
 #include <filesystem>
 #include <memory>
@@ -21,12 +22,13 @@ int main(int argc, char* argv[])
     backend->configure(config);
 
     Proxy::Handler::UdpEgressHandler handler(*backend);
-    if (!handler.configure(config)) {
+    Core::Handler::HandlerRunner runner(handler);
+    if (!runner.configure(config)) {
         return 1;
     }
 
     Proxy::Log::info("UdpEgressHandler initialized successfully. Starting event loop...");
-    handler.start();
+    runner.start();
 
     Proxy::Log::info("UdpEgressHandler exiting cleanly.");
     return 0;

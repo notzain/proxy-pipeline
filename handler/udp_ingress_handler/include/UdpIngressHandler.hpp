@@ -59,7 +59,7 @@ public:
 
 private:
     std::string m_outputChannelName;
-    ::Backend::IOutputChannel* m_outputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 
 } // namespace Proxy::Handler

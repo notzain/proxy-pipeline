@@ -1,4 +1,5 @@
 #include "BenchmarkRunner.hpp"
+#include <mutex>
 
 namespace Proxy::Benchmark {
 
@@ -19,7 +20,6 @@ Core::Message::MessageResult BenchmarkReceiver::onMessageReceived(std::string_vi
 
     if (m_receiveTimestamps.size() >= m_expectedCount) {
         m_cv.notify_all();
-        stop();
     }
     return Core::Message::Consumed { };
 }

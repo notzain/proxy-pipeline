@@ -31,7 +31,7 @@ public:
 
 private:
     std::string m_channelName;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
 };
 
 } // namespace Proxy::Handler

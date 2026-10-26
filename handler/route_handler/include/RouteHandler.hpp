@@ -38,7 +38,7 @@ public:
     /**
      * @brief Sets an explicit default fallback channel.
      */
-    void setDefaultChannel(::Backend::IOutputChannel* channel, std::string channelName = { }) noexcept;
+    void setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel, std::string channelName = { }) noexcept;
 
     /**
      * @brief Accessor for configured rules.
@@ -48,8 +48,8 @@ public:
 private:
     std::string m_inputChannelName;
     std::string m_defaultChannelName;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
-    ::Backend::IOutputChannel* m_defaultOutputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_defaultOutputChannel;
     std::vector<RouteRule> m_rules;
 };
 

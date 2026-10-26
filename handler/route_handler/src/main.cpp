@@ -1,6 +1,7 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "log/Log.hpp"
 #include <iostream>
 
@@ -21,12 +22,13 @@ int main(int argc, char* argv[])
     backend->configure(config);
 
     Proxy::Handler::RouteHandler handler(*backend);
-    if (!handler.configure(config)) {
+    Core::Handler::HandlerRunner runner(handler);
+    if (!runner.configure(config)) {
         std::cerr << "Failed to configure RouteHandler\n";
         return 1;
     }
 
     Proxy::Log::info("[Main] Starting RouteHandler loop...");
-    handler.start();
+    runner.start();
     return 0;
 }

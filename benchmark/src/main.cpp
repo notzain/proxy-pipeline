@@ -5,6 +5,7 @@
 #include "backend/socket/SocketBackend.hpp"
 #include "backend/uds/UdsBackend.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "log/Log.hpp"
 
@@ -169,7 +170,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run Socket (UDP) benchmark with a specific execution strategy
-    auto runSocketBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runSocketBenchmark = [&](const Core::Handler::ExecutionModel& model, std::string_view strategyName) {
         std::size_t socketMessages = numMessages;
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running Socket (UDP) chain ({}) with {} messages...\n", strategyName, socketMessages);
 
@@ -197,20 +198,22 @@ int main(int argc, char* argv[])
         auto verifierIn = backend->createInputChannel("udp_raw", config);
         auto verifierOut = backend->createOutputChannel("udp_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "udp_verified");
-        verifier.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner verifierRunner(verifier);
+        verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel("udp_raw", std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto receiverIn = backend->createInputChannel("udp_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, socketMessages);
-        receiver.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner receiverRunner(receiver);
+        receiverRunner.setExecutionModel(model);
         receiver.registerInputChannel("udp_verified", std::move(receiverIn));
 
         auto senderOut = backend->createOutputChannel("udp_raw", config);
 
         // Start verifier and receiver concurrently
-        verifier.startAsync();
-        receiver.startAsync();
+        verifierRunner.startAsync();
+        receiverRunner.startAsync();
 
         // Brief delay to allow UDP socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -233,12 +236,12 @@ int main(int argc, char* argv[])
 
         // Wait for messages to arrive (dynamically scaled with message count)
         receiver.waitForCompletion(std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))));
-        receiver.stop();
-        receiver.wait();
+        receiverRunner.stop();
+        receiverRunner.wait();
 
         auto endAll = std::chrono::steady_clock::now();
-        verifier.stop();
-        verifier.wait();
+        verifierRunner.stop();
+        verifierRunner.wait();
 
         const auto& recvTimestamps = receiver.getReceiveTimestamps();
         auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
@@ -280,7 +283,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run IPC (UDS) benchmark with a specific execution strategy
-    auto runUdsBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runUdsBenchmark = [&](const Core::Handler::ExecutionModel& model, std::string_view strategyName) {
         std::size_t udsMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running IPC (UDS) chain ({}) with {} messages...\n", strategyName, udsMessages);
 
@@ -301,21 +304,23 @@ int main(int argc, char* argv[])
         // Instantiate components: create receiver's input channel first so its socket path is bound
         auto receiverIn = backend->createInputChannel("uds_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, udsMessages);
-        receiver.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner receiverRunner(receiver);
+        receiverRunner.setExecutionModel(model);
         receiver.registerInputChannel("uds_verified", std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("uds_raw", config);
         auto verifierOut = backend->createOutputChannel("uds_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "uds_verified");
-        verifier.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner verifierRunner(verifier);
+        verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel("uds_raw", std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("uds_raw", config);
 
         // Start verifier and receiver concurrently
-        verifier.startAsync();
-        receiver.startAsync();
+        verifierRunner.startAsync();
+        receiverRunner.startAsync();
 
         // Brief delay to allow UDS socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -338,12 +343,12 @@ int main(int argc, char* argv[])
 
         // Wait for messages to arrive (dynamically scaled with message count)
         receiver.waitForCompletion(std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))));
-        receiver.stop();
-        receiver.wait();
+        receiverRunner.stop();
+        receiverRunner.wait();
 
         auto endAll = std::chrono::steady_clock::now();
-        verifier.stop();
-        verifier.wait();
+        verifierRunner.stop();
+        verifierRunner.wait();
 
         const auto& recvTimestamps = receiver.getReceiveTimestamps();
         auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
@@ -384,7 +389,7 @@ int main(int argc, char* argv[])
     };
 
     // Helper lambda to run Kernel Bypass IPC (SHM) benchmark with a specific execution strategy
-    auto runShmBenchmark = [&](Core::Handler::ExecutionModel model, std::string_view strategyName, std::size_t poolSize = 0) {
+    auto runShmBenchmark = [&](const Core::Handler::ExecutionModel& model, std::string_view strategyName) {
         std::size_t shmMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running Kernel Bypass IPC (SHM) chain ({}) with {} messages...\n", strategyName, shmMessages);
 
@@ -409,20 +414,22 @@ int main(int argc, char* argv[])
 
         auto receiverIn = backend->createInputChannel("shm_verified", config);
         Proxy::Benchmark::BenchmarkReceiver receiver(*backend, shmMessages);
-        receiver.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner receiverRunner(receiver);
+        receiverRunner.setExecutionModel(model);
         receiver.registerInputChannel("shm_verified", std::move(receiverIn));
 
         auto verifierIn = backend->createInputChannel("shm_raw", config);
         auto verifierOut = backend->createOutputChannel("shm_verified", config);
         Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath, "shm_verified");
-        verifier.setExecutionModel(model, poolSize, strictFifo);
+        Core::Handler::HandlerRunner verifierRunner(verifier);
+        verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel("shm_raw", std::move(verifierIn));
         verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
 
         auto senderOut = backend->createOutputChannel("shm_raw", config);
 
-        verifier.startAsync();
-        receiver.startAsync();
+        verifierRunner.startAsync();
+        receiverRunner.startAsync();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
@@ -451,12 +458,12 @@ int main(int argc, char* argv[])
         receiver.waitForCompletion(
             std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))),
             std::chrono::milliseconds(2000));
-        receiver.stop();
-        receiver.wait();
+        receiverRunner.stop();
+        receiverRunner.wait();
 
         auto endAll = std::chrono::steady_clock::now();
-        verifier.stop();
-        verifier.wait();
+        verifierRunner.stop();
+        verifierRunner.wait();
 
         const auto& recvTimestamps = receiver.getReceiveTimestamps();
         auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
@@ -503,40 +510,40 @@ int main(int argc, char* argv[])
             runDirectBenchmark();
         }
         if (strategy == "all" || strategy == "udp-dedicated" || strategy == "dedicated") {
-            runSocketBenchmark(Core::Handler::ExecutionModel::Dedicated, "UDP (Dedicated)");
+            runSocketBenchmark(Core::Handler::DedicatedThreadModel { }, "UDP (Dedicated)");
         }
         if (strategy == "all" || strategy == "uds-dedicated") {
-            runUdsBenchmark(Core::Handler::ExecutionModel::Dedicated, "UDS (Dedicated)");
+            runUdsBenchmark(Core::Handler::DedicatedThreadModel { }, "UDS (Dedicated)");
         }
         if (strategy == "all" || strategy == "shm-dedicated" || strategy == "shm") {
-            runShmBenchmark(Core::Handler::ExecutionModel::Dedicated, "SHM (Dedicated)");
+            runShmBenchmark(Core::Handler::DedicatedThreadModel { }, "SHM (Dedicated)");
         }
         if (strategy == "all" || strategy == "udp-sequential" || strategy == "sequential") {
-            runSocketBenchmark(Core::Handler::ExecutionModel::Sequential, "UDP (Sequential)");
+            runSocketBenchmark(Core::Handler::SequentialModel { }, "UDP (Sequential)");
         }
         if (strategy == "all" || strategy == "uds-sequential") {
-            runUdsBenchmark(Core::Handler::ExecutionModel::Sequential, "UDS (Sequential)");
+            runUdsBenchmark(Core::Handler::SequentialModel { }, "UDS (Sequential)");
         }
         if (strategy == "all" || strategy == "shm-sequential" || strategy == "shm") {
-            runShmBenchmark(Core::Handler::ExecutionModel::Sequential, "SHM (Sequential)");
+            runShmBenchmark(Core::Handler::SequentialModel { }, "SHM (Sequential)");
         }
         if (strategy == "all" || strategy == "udp-threadpool4" || strategy == "threadpool4") {
-            runSocketBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDP (ThreadPool 4)", 4);
+            runSocketBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 4, .strictFifo = strictFifo }, "UDP (ThreadPool 4)");
         }
         if (strategy == "all" || strategy == "uds-threadpool4") {
-            runUdsBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDS (ThreadPool 4)", 4);
+            runUdsBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 4, .strictFifo = strictFifo }, "UDS (ThreadPool 4)");
         }
         if (strategy == "all" || strategy == "shm-threadpool4" || strategy == "shm") {
-            runShmBenchmark(Core::Handler::ExecutionModel::ThreadPool, "SHM (ThreadPool 4)", 4);
+            runShmBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 4, .strictFifo = strictFifo }, "SHM (ThreadPool 4)");
         }
         if (strategy == "all" || strategy == "udp-threadpool8" || strategy == "threadpool8") {
-            runSocketBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDP (ThreadPool 8)", 8);
+            runSocketBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 8, .strictFifo = strictFifo }, "UDP (ThreadPool 8)");
         }
         if (strategy == "all" || strategy == "uds-threadpool8") {
-            runUdsBenchmark(Core::Handler::ExecutionModel::ThreadPool, "UDS (ThreadPool 8)", 8);
+            runUdsBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 8, .strictFifo = strictFifo }, "UDS (ThreadPool 8)");
         }
         if (strategy == "all" || strategy == "shm-threadpool8" || strategy == "shm") {
-            runShmBenchmark(Core::Handler::ExecutionModel::ThreadPool, "SHM (ThreadPool 8)", 8);
+            runShmBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 8, .strictFifo = strictFifo }, "SHM (ThreadPool 8)");
         }
     };
 

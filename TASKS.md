@@ -26,13 +26,11 @@ This document outlines structural refactoring, interface decoupling, and abstrac
 - [x] **Extract Output Channel Routing & Registration (`ChannelRegistry`)**
   - **Action**: Made `IInputChannel` and `IOutputChannel` self-identifying via base `name()`. Simplified `IHandler` to use direct `registerOutputChannel(std::unique_ptr<IOutputChannel>)` storing a flat vector of owned output channels. Removed dead string maps, locks, and redundant `channelName` member variables across handlers (e.g. `MergeHandler`).
 
-- [ ] **Decouple Event Loop Lifecycle from `IHandler` (`HandlerRunner` / `HandlerRuntime`)**
-  - **Issue**: Lifecycle management (`start`, `startAsync`, `wait`, `stop`, signal handling for SIGINT/SIGTERM, execution strategy configuration) is tightly coupled with message processing logic inside `IHandler`.
-  - **Action**: Separate execution lifecycle orchestration into a runner/supervisor component (`HandlerRunner`). `IHandler` focuses strictly on message processing callbacks (`onMessageReceived`, `onBatchReceived`, `step`). Simplifies unit testing by removing background strategy/signal dependencies from test suites.
+- [x] **Decouple Event Loop Lifecycle from `IHandler` (`HandlerRunner` / `HandlerRuntime`)**
+  - **Action**: Separated execution lifecycle orchestration, thread strategies, and POSIX signal handling into `HandlerRunner`. Modeled `ExecutionModel` as a strongly-typed `std::variant<SequentialModel, DedicatedThreadModel, ThreadPoolModel>` encapsulating model-specific properties (such as pool size and strict FIFO ordering). `IHandler` now focuses strictly on message processing callbacks (`onMessageReceived`, `onBatchReceived`, `step`).
 
-- [ ] **Decouple Telemetry Configuration from `IHandler::configure`**
-  - **Issue**: `IHandler::configureTelemetry` and the owned `std::unique_ptr<Telemetry::StatsDExporter>` sit inside the base handler class, mixing telemetry transport with application routing.
-  - **Action**: Move telemetry exporter instantiation and lifecycle to the runner/pipeline composition layer, passing telemetry sinks to handlers as needed.
+- [x] **Decouple Telemetry Configuration from `IHandler::configure`**
+  - **Action**: Moved telemetry StatsD exporter instantiation and lifecycle configuration into `HandlerRunner::configure` and `HandlerRunner::configureTelemetry`. All handler main executables, unit tests, and benchmarks now configure and run via `HandlerRunner`.
 
 ---
 

@@ -31,7 +31,7 @@ public:
 
     ~OrderValidationHandler() override;
 
-    void setOutputChannel(::Backend::IOutputChannel* outChannel) noexcept
+    void setOutputChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
     {
         m_cachedOutputChannel = outChannel;
     }
@@ -189,8 +189,8 @@ public:
 private:
     std::string m_inputChannelName;
     std::string m_outputChannelName;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
-    ::Backend::IOutputChannel* m_cachedOutputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_cachedOutputChannel;
 };
 
 } // namespace Proxy::Handler

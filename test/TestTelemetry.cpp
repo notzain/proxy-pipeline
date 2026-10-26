@@ -154,7 +154,6 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
 
     Core::Simulation::SimulationBackend backend;
     TelemetryTestHandler handler(backend);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
 
     // Create a mock envelope with ingress timestamp
     std::string payload = "Hello Telemetry";

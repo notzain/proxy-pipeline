@@ -43,7 +43,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
     if (!ruleNames.empty()) {
         std::string_view namesView(ruleNames);
         std::size_t start = 0;
-        std::unordered_map<std::string, ::Backend::IOutputChannel*> createdChannels;
+        std::unordered_map<std::string, Core::Memory::ObserverPtr<::Backend::IOutputChannel>> createdChannels;
 
         while (start < namesView.size()) {
             auto pos = namesView.find(',', start);
@@ -80,7 +80,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 
             // Create target channel if not yet created
             auto it = createdChannels.find(target);
-            ::Backend::IOutputChannel* outPtr = nullptr;
+            Core::Memory::ObserverPtr<::Backend::IOutputChannel> outPtr;
             if (it == createdChannels.end()) {
                 auto outChan = backend().createOutputChannel(target, config);
                 if (outChan) {
@@ -107,7 +107,7 @@ void RouteHandler::addRule(RouteRule rule)
     m_rules.push_back(std::move(rule));
 }
 
-void RouteHandler::setDefaultChannel(::Backend::IOutputChannel* channel, std::string channelName) noexcept
+void RouteHandler::setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel, std::string channelName) noexcept
 {
     m_defaultOutputChannel = channel;
     m_defaultChannelName = std::move(channelName);
@@ -122,7 +122,7 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
 {
     for (const auto& rule : m_rules) {
         if (rule.matches(message)) {
-            auto* target = rule.targetChannel();
+            auto target = rule.targetChannel();
             if (target) {
                 target->send(message.rawBuffer());
                 return Core::Message::Forwarded { .channel = rule.targetChannelName() };
@@ -152,12 +152,12 @@ void RouteHandler::onBatchReceived(
 
     // Fast path: if there is only 1 rule or all match default, optimize.
     // Otherwise bucket messages by target channel.
-    std::unordered_map<::Backend::IOutputChannel*, std::vector<std::span<const std::byte>>> buckets;
+    std::unordered_map<Core::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<std::span<const std::byte>>> buckets;
     const auto count = std::min(messages.size(), outResults.size());
 
     for (std::size_t i = 0; i < count; ++i) {
         const auto& msg = messages[i];
-        ::Backend::IOutputChannel* destination = nullptr;
+        Core::Memory::ObserverPtr<::Backend::IOutputChannel> destination;
         std::string_view destinationName;
         for (const auto& rule : m_rules) {
             if (rule.matches(msg)) {

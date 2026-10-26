@@ -46,8 +46,8 @@ public:
         std::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    ::Backend::IOutputChannel* m_outputChannel { nullptr };
-    std::vector<::Backend::IInputChannel*> m_inputChannelsList;
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
+    std::vector<Core::Memory::ObserverPtr<::Backend::IInputChannel>> m_inputChannelsList;
 };
 
 } // namespace Proxy::Handler

@@ -66,7 +66,7 @@ public:
 
 private:
     std::string m_inputChannelName;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
     std::unique_ptr<Core::Net::UdpOutputChannel> m_udpOut;
 
     std::string m_destHost { "127.0.0.1" };

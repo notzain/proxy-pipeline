@@ -1,3 +1,4 @@
+#include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
@@ -84,7 +85,12 @@ public:
     {
     }
 
-    void setOutChannel(::Backend::IOutputChannel* out)
+    void setRunner(Core::Handler::HandlerRunner* runner)
+    {
+        m_runner = runner;
+    }
+
+    void setOutChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> out)
     {
         m_outChannel = out;
     }
@@ -100,8 +106,8 @@ public:
         }
 
         m_count++;
-        if (m_count >= 2) {
-            stop();
+        if (m_count >= 2 && m_runner) {
+            m_runner->stop();
         }
         return Core::Message::Forwarded { };
     }
@@ -110,7 +116,8 @@ public:
     std::vector<std::string> receivedMessages;
 
 private:
-    ::Backend::IOutputChannel* m_outChannel { nullptr };
+    Core::Handler::HandlerRunner* m_runner { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
     int m_count { 0 };
 };
 
@@ -123,7 +130,7 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
     auto mockChan = std::make_unique<MockOutputChannel>();
     auto* rawChan = mockChan.get();
 
-    auto* registered = handler.registerOutputChannel(std::move(mockChan));
+    auto registered = handler.registerOutputChannel(std::move(mockChan));
     CHECK(registered == rawChan);
     CHECK(handler.registerOutputChannel(nullptr) == nullptr);
 
@@ -140,7 +147,9 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 {
     Core::Simulation::SimulationBackend backend;
     TestChainedHandler handler(backend);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::SequentialModel { });
+    handler.setRunner(&runner);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -151,7 +160,7 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
     handler.registerInputChannel("chan2", std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
-    handler.start();
+    runner.start();
 
     REQUIRE(handler.receivedMessages.size() == 2);
     CHECK(handler.receivedMessages[0] == "chan1:msgA");
@@ -166,7 +175,9 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
 {
     Core::Simulation::SimulationBackend backend;
     TestChainedHandler handler(backend);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::DedicatedThreadModel { });
+    handler.setRunner(&runner);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -177,8 +188,8 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
     handler.registerInputChannel("chan2", std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
-    handler.startAsync();
-    handler.wait();
+    runner.startAsync();
+    runner.wait();
 
     REQUIRE(handler.receivedMessages.size() == 2);
     REQUIRE(rawOutChan->sentMessages.size() == 2);
@@ -188,7 +199,9 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 {
     Core::Simulation::SimulationBackend backend;
     TestChainedHandler handler(backend);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::ThreadPoolModel { .poolSize = 2 });
+    handler.setRunner(&runner);
 
     auto inChan1 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgA" });
     auto inChan2 = std::make_unique<MockInputChannel>(std::vector<std::string> { "msgB" });
@@ -199,8 +212,8 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
     handler.registerInputChannel("chan2", std::move(inChan2));
     handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
-    handler.startAsync();
-    handler.wait();
+    runner.startAsync();
+    runner.wait();
 
     REQUIRE(handler.receivedMessages.size() == 2);
     REQUIRE(rawOutChan->sentMessages.size() == 2);
@@ -241,7 +254,12 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
         {
         }
 
-        void setOutChannel(::Backend::IOutputChannel* out)
+        void setRunner(Core::Handler::HandlerRunner* runner)
+        {
+            m_runner = runner;
+        }
+
+        void setOutChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> out)
         {
             m_outChannel = out;
         }
@@ -252,19 +270,24 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
                 m_outChannel->send(message.rawBuffer());
             }
             m_count++;
-            if (m_count >= 2) {
-                stop();
+            if (m_count >= 2 && m_runner) {
+                m_runner->stop();
             }
             return Core::Message::Forwarded { };
         }
 
     private:
-        ::Backend::IOutputChannel* m_outChannel { nullptr };
+        Core::Handler::HandlerRunner* m_runner { nullptr };
+        Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
         std::atomic<int> m_count { 0 };
     };
 
     Core::Simulation::SimulationBackend backend;
     MockMergeHandler merge(backend);
+    Core::Handler::HandlerRunner runner(merge);
+    runner.setExecutionModel(Core::Handler::SequentialModel { });
+    merge.setRunner(&runner);
+
     auto inA = std::make_unique<MockInputChannel>(std::vector<std::string> { "input1" });
     auto inB = std::make_unique<MockInputChannel>(std::vector<std::string> { "input2" });
     auto outChan = std::make_unique<MockOutputChannel>();
@@ -274,7 +297,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
     merge.registerInputChannel("in_b", std::move(inB));
     merge.setOutChannel(merge.registerOutputChannel(std::move(outChan)));
 
-    merge.start();
+    runner.start();
 
     REQUIRE(rawOut->sentMessages.size() == 2);
 }
@@ -345,6 +368,11 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
         {
         }
 
+        void setRunner(Core::Handler::HandlerRunner* runner)
+        {
+            m_runner = runner;
+        }
+
         Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
@@ -352,8 +380,8 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
             lastReceivedSize = message.payload().size();
             lastReceivedPayload = std::string(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
             m_count++;
-            if (message.payload().size() > 2048) {
-                stop();
+            if (message.payload().size() > 2048 && m_runner) {
+                m_runner->stop();
             }
             return Core::Message::Consumed { };
         }
@@ -364,6 +392,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
         std::string lastReceivedPayload;
 
     private:
+        Core::Handler::HandlerRunner* m_runner { nullptr };
         int m_count { 0 };
     };
 
@@ -371,15 +400,17 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     {
         Core::Simulation::SimulationBackend backend;
         JumboVerifyHandler handler(backend);
-        handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 2);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(Core::Handler::ThreadPoolModel { .poolSize = 2 });
+        handler.setRunner(&runner);
 
         // Generate a 4096-byte payload (exceeds 2048-byte default batch slot)
         std::string jumboPayload(4096, 'X');
         auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
 
         handler.registerInputChannel("jumbo_in", std::move(inChan));
-        handler.startAsync();
-        handler.wait();
+        runner.startAsync();
+        runner.wait();
 
         REQUIRE(handler.lastReceivedChannel == "jumbo_in");
         REQUIRE(handler.lastReceivedSize == 4096);
@@ -390,14 +421,16 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     {
         Core::Simulation::SimulationBackend backend;
         JumboVerifyHandler handler(backend);
-        handler.setExecutionModel(Core::Handler::ExecutionModel::Dedicated);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(Core::Handler::DedicatedThreadModel { });
+        handler.setRunner(&runner);
 
         std::string jumboPayload(8192, 'Y');
         auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
 
         handler.registerInputChannel("jumbo_in", std::move(inChan));
-        handler.startAsync();
-        handler.wait();
+        runner.startAsync();
+        runner.wait();
 
         REQUIRE(handler.lastReceivedChannel == "jumbo_in");
         REQUIRE(handler.lastReceivedSize == 8192);
@@ -408,14 +441,16 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
     {
         Core::Simulation::SimulationBackend backend;
         JumboVerifyHandler handler(backend);
-        handler.setExecutionModel(Core::Handler::ExecutionModel::Sequential);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(Core::Handler::SequentialModel { });
+        handler.setRunner(&runner);
 
         std::string jumboPayload(4096, 'Z');
         auto inChan = std::make_unique<MockInputChannel>(std::vector<std::string> { jumboPayload });
 
         handler.registerInputChannel("jumbo_in", std::move(inChan));
-        handler.startAsync();
-        handler.wait();
+        runner.startAsync();
+        runner.wait();
 
         REQUIRE(handler.lastReceivedChannel == "jumbo_in");
         REQUIRE(handler.lastReceivedSize == 4096);
@@ -469,12 +504,17 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
         {
         }
 
+        void setRunner(Core::Handler::HandlerRunner* runner)
+        {
+            m_runner = runner;
+        }
+
         Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             received.emplace_back(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
-            if (received.size() >= m_expectedCount) {
-                stop();
+            if (received.size() >= m_expectedCount && m_runner) {
+                m_runner->stop();
             }
             return Core::Message::Consumed { };
         }
@@ -483,6 +523,7 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
         std::vector<std::string> received;
 
     private:
+        Core::Handler::HandlerRunner* m_runner { nullptr };
         std::size_t m_expectedCount;
     };
 
@@ -495,11 +536,14 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
 
     Core::Simulation::SimulationBackend backend;
     OrderVerifyHandler handler(backend, kTotalMessages);
-    handler.setExecutionModel(Core::Handler::ExecutionModel::ThreadPool, 4);
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::ThreadPoolModel { .poolSize = 4 });
+    handler.setRunner(&runner);
+
     handler.registerInputChannel("ordered_chan", std::make_unique<MockInputChannel>(expected));
 
-    handler.startAsync();
-    handler.wait();
+    runner.startAsync();
+    runner.wait();
 
     REQUIRE(handler.received.size() == kTotalMessages);
     CHECK(handler.received == expected);

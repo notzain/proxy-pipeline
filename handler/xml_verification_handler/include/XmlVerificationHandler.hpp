@@ -85,7 +85,7 @@ public:
      */
     [[nodiscard]] bool isSchemaLoaded() const noexcept;
 
-    void setOutputChannel(::Backend::IOutputChannel* outChannel) noexcept
+    void setOutputChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
     {
         m_outputChannel = outChannel;
     }
@@ -95,8 +95,8 @@ private:
     std::string m_inputChannelName;
     std::string m_outputChannelName;
     std::unique_ptr<XmlSchemaValidator> m_validator;
-    ::Backend::IInputChannel* m_inputChannel { nullptr };
-    ::Backend::IOutputChannel* m_outputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IInputChannel> m_inputChannel;
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 
 } // namespace Proxy::Handler

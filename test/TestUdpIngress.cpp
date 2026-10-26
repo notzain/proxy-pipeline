@@ -4,6 +4,7 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/handler/HandlerRunner.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
@@ -14,6 +15,7 @@
 #include <cstddef>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <netinet/in.h>
 #include <span>
 #include <string>
@@ -267,8 +269,9 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
 
     DummyTestBackend backend;
     Proxy::Handler::UdpIngressHandler handler(backend);
+    Core::Handler::HandlerRunner runner(handler);
 
-    REQUIRE(handler.configure(config));
+    REQUIRE(runner.configure(config));
     REQUIRE(backend.m_lastCreatedOutput != nullptr);
 
     SECTION("Single datagram received and forwarded as valid envelope")
@@ -276,10 +279,10 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
         std::string testOrder = "<order><customer>Alice</customer><item>Widget</item><quantity>42</quantity></order>";
         sendTestUdpDatagram("127.0.0.1", testPort, testOrder);
 
-        handler.startAsync();
+        runner.startAsync();
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        handler.stop();
-        handler.wait();
+        runner.stop();
+        runner.wait();
 
         const auto& sentMessages = backend.m_lastCreatedOutput->getSentMessages();
         REQUIRE(sentMessages.size() >= 1);
@@ -333,13 +336,14 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     config.set("egress.input_channel", "pipeline_out");
 
     Proxy::Handler::UdpEgressHandler egressHandler(backend);
-    REQUIRE(egressHandler.configure(config));
+    Core::Handler::HandlerRunner runner(egressHandler);
+    REQUIRE(runner.configure(config));
 
     // Run Egress handler to process message
-    egressHandler.startAsync();
+    runner.startAsync();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    egressHandler.stop();
-    egressHandler.wait();
+    runner.stop();
+    runner.wait();
 
     // Verify the client socket received the payload directly from Egress
     char recvBuf[256] { };
@@ -392,12 +396,13 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     config.set("egress.input_channel", "pipeline_out");
 
     Proxy::Handler::UdpEgressHandler egressHandler(backend);
-    REQUIRE(egressHandler.configure(config));
+    Core::Handler::HandlerRunner runner(egressHandler);
+    REQUIRE(runner.configure(config));
 
-    egressHandler.startAsync();
+    runner.startAsync();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    egressHandler.stop();
-    egressHandler.wait();
+    runner.stop();
+    runner.wait();
 
     char recvBuf[256] { };
     timeval tv { .tv_sec = 1, .tv_usec = 0 };

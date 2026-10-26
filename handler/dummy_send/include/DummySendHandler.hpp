@@ -44,7 +44,7 @@ private:
     std::string m_messageText;
     std::chrono::milliseconds m_delay { 1000 };
     std::chrono::steady_clock::time_point m_lastSendTime { std::chrono::steady_clock::now() };
-    ::Backend::IOutputChannel* m_outputChannel { nullptr };
+    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 
 } // namespace Proxy::Handler
