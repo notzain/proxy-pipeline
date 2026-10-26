@@ -14,7 +14,7 @@ namespace Proxy::Backend::Socket {
  */
 class SocketOutputChannel : public ::Backend::IOutputChannel {
 public:
-    SocketOutputChannel(std::string destHost, std::uint16_t destPort);
+    SocketOutputChannel(std::string name, std::string destHost, std::uint16_t destPort);
     ~SocketOutputChannel() override;
 
     bool send(std::span<const std::byte> message) override;

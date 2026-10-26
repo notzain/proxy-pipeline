@@ -6,8 +6,14 @@
 
 namespace Core::Simulation {
 
+MockInputChannel::MockInputChannel(std::string name, const SimulationClock* clock)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_clock(clock)
+{
+}
+
 MockInputChannel::MockInputChannel(const SimulationClock* clock)
-    : m_clock(clock)
+    : MockInputChannel("", clock)
 {
 }
 

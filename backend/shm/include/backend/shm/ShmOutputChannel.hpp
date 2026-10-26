@@ -17,10 +17,11 @@ public:
     /**
      * @brief Constructs a shared memory output channel.
      *
+     * @param name Logical channel identifier.
      * @param destPath Shared memory destination file path.
      * @param capacity Number of ring buffer slots.
      */
-    explicit ShmOutputChannel(std::string destPath, std::size_t capacity = 1024);
+    ShmOutputChannel(std::string name, std::string destPath, std::size_t capacity = 1024);
     ~ShmOutputChannel() override;
 
     bool send(std::span<const std::byte> message) override;

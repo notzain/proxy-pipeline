@@ -19,7 +19,7 @@ std::unique_ptr<::Backend::IInputChannel> SimulationBackend::createInputChannel(
     std::string_view name,
     const ::Backend::IConfig&)
 {
-    auto ch = std::make_unique<MockInputChannel>(m_clock);
+    auto ch = std::make_unique<MockInputChannel>(std::string(name), m_clock);
     m_inputMap[std::string(name)] = ch.get();
     return ch;
 }
@@ -28,7 +28,7 @@ std::unique_ptr<::Backend::IOutputChannel> SimulationBackend::createOutputChanne
     std::string_view name,
     const ::Backend::IConfig&)
 {
-    auto ch = std::make_unique<MockOutputChannel>(m_clock);
+    auto ch = std::make_unique<MockOutputChannel>(std::string(name), m_clock);
     m_outputMap[std::string(name)] = ch.get();
     return ch;
 }

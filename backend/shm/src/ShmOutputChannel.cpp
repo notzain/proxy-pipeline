@@ -23,8 +23,9 @@ namespace {
 
 } // namespace
 
-ShmOutputChannel::ShmOutputChannel(std::string destPath, std::size_t capacity)
-    : m_destPath(std::move(destPath))
+ShmOutputChannel::ShmOutputChannel(std::string name, std::string destPath, std::size_t capacity)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_destPath(std::move(destPath))
     , m_ring(std::make_unique<ShmRingBuffer>(m_destPath, capacity))
 {
 }

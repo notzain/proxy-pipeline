@@ -1,4 +1,4 @@
-# AGENTS.md
+#AGENTS.md
 
 Guidelines and conventions for AI agents and developers working on this project.
 
@@ -44,7 +44,7 @@ Guidelines and conventions for AI agents and developers working on this project.
       version = "0.1.0"
       package_type = "application"
       settings = "os", "compiler", "build_type", "arch"
-      # ...
+#...
   ```
 - **CMakeLists.txt Agnosticism**: Never add Conan-specific logic inside target `CMakeLists.txt`. Standard modern CMake `find_package(<pkg> REQUIRED)` and `target_link_libraries(<target> PRIVATE <pkg>::<pkg>)` must be used. `conan_provider.cmake` intercepts `find_package` calls and invokes `conan install` automatically.
 - **Conan Packaging of Subprojects**:
@@ -98,7 +98,7 @@ Guidelines and conventions for AI agents and developers working on this project.
 - Build:
   ```bash
   cmake --build --preset debug
-  # or
+# or
   cmake --build --preset release
   ```
 
@@ -122,45 +122,44 @@ cmake --build build
   - Each significant class must have its own dedicated pair of files (`<ClassName>.hpp` and `<ClassName>.cpp`). Internal or implementation-detail classes belong in `src/` (or private subdirectories) if not intended for public consumption.
 - **Header Include Policy (Interface vs. Concrete Implementation)**:
   - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::Handler::IHandler`, `Core::Threading::IExecutionStrategy`).
-  - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files; they must be included in source files (`.cpp`) only.
-- **Naming Conventions**:
-  - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g., `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
-  - **Namespaces**: Namespaces must always be **PascalCase** (e.g., `Backend`, `Core`, `Proxy`, `Proxy::Log`, `Proxy::Backend::File`). Note: formatting/layout is maintained by `clang-format`, while identifier casing is enforced via `.clang-tidy` (`readability-identifier-naming.NamespaceCase: CamelCase`).
+  - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files;
+they must be included in source files(`.cpp`) only.
+    - **Naming Conventions** : -**Interfaces** : Interface class names must start with a capital `I` prefix(e.g., `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
+    - **Namespaces** : Namespaces must always be* * PascalCase * *(e.g., `Backend`, `Core`, `Proxy`, `Proxy::Log`, `Proxy::Backend::File`).Note : formatting / layout is maintained by `clang - format`,
+    while identifier casing is enforced via `.clang - tidy` (`readability - identifier - naming.NamespaceCase : CamelCase`).
+    - **Alpha Development& No Backwards Compatibility** : -The project is in active alpha development.Do not maintain backwards compatibility shims,
+    forwarding headers, deprecated type aliases, or transitional wrappers when refactoring or moving interfaces and types.Cleanly update call sites and references directly to the authoritative types and paths.
 
----
+                                                                                              -- -
 
-## 7. Documentation (Doxygen)
+                                                                                              ##7. Documentation(Doxygen)
 
-- **Location Convention**: Doxygen documentation comments (`/** ... */`) must be placed in the **header file** (`.hpp`) alongside declarations.
-- **Source File Exception**: Place Doxygen comments in the source file (`.cpp`) only if the entity/function is strictly defined and used within that source file (e.g., file-static helpers or internal anonymous-namespace functions).
+        - **Location Convention** : Doxygen documentation comments(`/** ... */`) must be placed in the** header file**(`.hpp`)alongside declarations.- **Source File Exception** : Place Doxygen comments in the source file(`.cpp`) only if the entity / function is strictly defined and used within that source file(e.g., file - static helpers or internal anonymous - namespace functions).
 
----
+                                                                                                                                                                                                                                                          -- -
 
-## 8. Architectural Layering & Abstraction
+                                                                                                                                                                                                                                                          ##8. Architectural Layering& Abstraction
 
-- **Layer Responsibilities**:
-  - `log` (`proxylog` target, `Proxy::Log` / `proxylog::proxylog`):
-    - Abstract universal logging library encapsulating the underlying logging engine (`spdlog`).
-    - Exposes the abstract interface `ILogSink`:
+        - **Layer Responsibilities** : - `log` (`proxylog` target, `Proxy::Log` / `proxylog::proxylog`)
+    : -Abstract universal logging library encapsulating the underlying logging engine(`spdlog`).
+        - Exposes the abstract interface `ILogSink`:
+      ```cpp class ILogSink {
+public:
+    virtual ~ILogSink() = default;
+    virtual void log(Level level, std::string_view message) = 0;
+    virtual void flush() = 0;
+    virtual void setLevel(Level level) = 0;
+    [[nodiscard]] virtual Level getLevel() const = 0;
+};
+```
+    - Pre - built sink implementations encapsulating `spdlog`: - `ConsoleLogSink`: Formatted output to stdout / stderr.
+    - `FileLogSink`: File logging via `spdlog::sinks::basic_file_sink_mt` (with optional console mirroring).
+    - `SocketLogSink`: UDP datagram output via `spdlog::sinks::udp_sink_mt` (with optional console mirroring).
+    - Single initialization interface method :
       ```cpp
-      class ILogSink {
-      public:
-          virtual ~ILogSink() = default;
-          virtual void log(Level level, std::string_view message) = 0;
-          virtual void flush() = 0;
-          virtual void setLevel(Level level) = 0;
-          [[nodiscard]] virtual Level getLevel() const = 0;
-      };
-      ```
-    - Pre-built sink implementations encapsulating `spdlog`:
-      - `ConsoleLogSink`: Formatted output to stdout / stderr.
-      - `FileLogSink`: File logging via `spdlog::sinks::basic_file_sink_mt` (with optional console mirroring).
-      - `SocketLogSink`: UDP datagram output via `spdlog::sinks::udp_sink_mt` (with optional console mirroring).
-    - Single initialization interface method:
-      ```cpp
-      void Proxy::Log::init(std::unique_ptr<Proxy::Log::ILogSink> sink);
-      ```
-    - Consumers include `"log/Log.hpp"` and call `Proxy::Log::{trace, debug, info, warn, error, critical}` using string views or `fmt`-compatible formatting expressions.
+    void Proxy::Log::init(std::unique_ptr<Proxy::Log::ILogSink> sink);
+```
+    - Consumers include `"log/Log.hpp"` and call `Proxy::Log:: { trace, debug, info, warn, error, critical }` using string views or `fmt`-compatible formatting expressions.
   - `backend/interface` (`backend-interface` target):
     - `IConfig`: Abstract configuration interface providing strongly-typed templated getters (`get<T>(key)`, `getOr<T>(key, default)`).
     - `IInputChannel`: Abstract interface for receiving messages (`receive(timeout)`).

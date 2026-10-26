@@ -8,8 +8,9 @@
 
 namespace Proxy::Backend::File {
 
-FileOutputChannel::FileOutputChannel(std::filesystem::path outputDir)
-    : m_outputDir(std::move(outputDir))
+FileOutputChannel::FileOutputChannel(std::string name, std::filesystem::path outputDir)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_outputDir(std::move(outputDir))
 {
     std::error_code ec;
     std::filesystem::create_directories(m_outputDir, ec);

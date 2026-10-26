@@ -5,8 +5,14 @@
 
 namespace Core::Simulation {
 
+MockOutputChannel::MockOutputChannel(std::string name, const SimulationClock* clock)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_clock(clock)
+{
+}
+
 MockOutputChannel::MockOutputChannel(const SimulationClock* clock)
-    : m_clock(clock)
+    : MockOutputChannel("", clock)
 {
 }
 

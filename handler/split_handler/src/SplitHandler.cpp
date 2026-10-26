@@ -46,7 +46,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
             Proxy::Log::error("[SplitHandler] Failed to create output channel '{}'", outName);
             return false;
         }
-        auto* ptr = registerOutputChannel(outName, std::move(outChannel));
+        auto* ptr = registerOutputChannel(std::move(outChannel));
         m_outputChannelsList.push_back(ptr);
     }
 

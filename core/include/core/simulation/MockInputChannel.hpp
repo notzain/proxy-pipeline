@@ -32,7 +32,8 @@ struct TimedMessage {
  */
 class MockInputChannel : public ::Backend::IInputChannel {
 public:
-    explicit MockInputChannel(const SimulationClock* clock = nullptr);
+    explicit MockInputChannel(std::string name = "", const SimulationClock* clock = nullptr);
+    explicit MockInputChannel(const SimulationClock* clock);
     ~MockInputChannel() override;
 
     /**

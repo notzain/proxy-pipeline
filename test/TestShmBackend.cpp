@@ -139,8 +139,8 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
     std::filesystem::remove(testPath);
 
     {
-        ShmOutputChannel out(testPath, 32);
-        ShmInputChannel in(testPath, 32);
+        ShmOutputChannel out("shm_out", testPath, 32);
+        ShmInputChannel in("shm_in", testPath, 32);
 
         REQUIRE(out.isValid());
         REQUIRE(in.isValid());

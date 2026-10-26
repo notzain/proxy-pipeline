@@ -19,7 +19,8 @@ SimInputChannel::SimInputChannel(
     std::string eventHost,
     int eventPort,
     std::string handlerName)
-    : m_channelName(std::move(channelName))
+    : ::Backend::IInputChannel(channelName)
+    , m_channelName(std::move(channelName))
     , m_socketPath(std::move(socketPath))
     , m_eventHost(std::move(eventHost))
     , m_eventPort(eventPort)

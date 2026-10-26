@@ -108,9 +108,13 @@ public:
     /**
      * @brief Registers an input channel to be polled by the handler event loop.
      *
-     * @param channelName Name of the channel.
-     * @param channel The input channel instance.
+     * @param channel The input channel instance (which owns its name).
      * @return ::Backend::IInputChannel* Non-owning pointer to the registered channel.
+     */
+    ::Backend::IInputChannel* registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
+
+    /**
+     * @brief Registers an input channel with an explicit name override.
      */
     ::Backend::IInputChannel* registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
 
@@ -162,13 +166,12 @@ public:
     // --- Output Channel Management (Egress) ---
 
     /**
-     * @brief Registers an output channel under a specific channel name in a thread-safe manner.
+     * @brief Registers an output channel to be managed by the handler.
      *
-     * @param channelName Name identifying the output channel.
      * @param channel The output channel instance.
      * @return ::Backend::IOutputChannel* Non-owning pointer to the registered channel.
      */
-    ::Backend::IOutputChannel* registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel);
+    ::Backend::IOutputChannel* registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
 
     // --- Operational Metadata & Classification ---
 
@@ -266,25 +269,8 @@ protected:
     }
 
 private:
-    /**
-     * @brief Transparent hasher enabling C++20 heterogeneous lookup in `m_outputChannels`.
-     *
-     * By providing `using is_transparent = void;`, `std::unordered_map::find` can look up
-     * channels directly using `std::string_view` without allocating temporary `std::string`
-     * objects on the heap.
-     */
-    struct TransparentStringHash {
-        using is_transparent = void;
-
-        [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept
-        {
-            return std::hash<std::string_view> { }(sv);
-        }
-    };
-
     std::vector<NamedInputChannel> m_inputChannels;
-    mutable std::shared_mutex m_outputMutex;
-    std::unordered_map<std::string, std::unique_ptr<::Backend::IOutputChannel>, TransparentStringHash, std::equal_to<>> m_outputChannels;
+    std::vector<std::unique_ptr<::Backend::IOutputChannel>> m_outputChannels;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
     std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
     ::Backend::IBackend& m_backend;

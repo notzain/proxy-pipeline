@@ -14,7 +14,6 @@ namespace Proxy::Handler {
 class MergeHandler : public Core::Handler::IHandler {
 public:
     using Core::Handler::IHandler::IHandler;
-    MergeHandler(::Backend::IBackend& backend, std::string outputChannelName);
     ~MergeHandler() override = default;
 
     /**
@@ -47,7 +46,6 @@ public:
         std::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    std::string m_outputChannelName;
     ::Backend::IOutputChannel* m_outputChannel { nullptr };
     std::vector<::Backend::IInputChannel*> m_inputChannelsList;
 };

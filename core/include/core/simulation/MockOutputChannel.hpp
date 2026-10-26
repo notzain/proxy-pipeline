@@ -28,7 +28,8 @@ struct RecordedMessage {
  */
 class MockOutputChannel : public ::Backend::IOutputChannel {
 public:
-    explicit MockOutputChannel(const SimulationClock* clock = nullptr);
+    explicit MockOutputChannel(std::string name = "", const SimulationClock* clock = nullptr);
+    explicit MockOutputChannel(const SimulationClock* clock);
     ~MockOutputChannel() override;
 
     /**

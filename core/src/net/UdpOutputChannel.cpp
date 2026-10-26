@@ -9,8 +9,9 @@
 
 namespace Core::Net {
 
-UdpOutputChannel::UdpOutputChannel(std::string defaultHost, std::uint16_t defaultPort, std::size_t sendBufferSize)
-    : m_defaultHost(std::move(defaultHost))
+UdpOutputChannel::UdpOutputChannel(std::string name, std::string defaultHost, std::uint16_t defaultPort, std::size_t sendBufferSize)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_defaultHost(std::move(defaultHost))
     , m_defaultPort(defaultPort)
     , m_sendBufferSize(sendBufferSize)
 {

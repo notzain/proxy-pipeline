@@ -7,8 +7,9 @@
 
 namespace Proxy::Backend::File {
 
-FileInputChannel::FileInputChannel(std::filesystem::path watchDir)
-    : m_watchDir(std::move(watchDir))
+FileInputChannel::FileInputChannel(std::string name, std::filesystem::path watchDir)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_watchDir(std::move(watchDir))
 {
     std::error_code ec;
     std::filesystem::create_directories(m_watchDir, ec);

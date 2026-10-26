@@ -11,8 +11,9 @@
 
 namespace Proxy::Backend::Uds {
 
-UdsOutputChannel::UdsOutputChannel(std::string destPath)
-    : m_destPath(std::move(destPath))
+UdsOutputChannel::UdsOutputChannel(std::string name, std::string destPath)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_destPath(std::move(destPath))
 {
     openSocket();
 }

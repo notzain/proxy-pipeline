@@ -13,8 +13,9 @@
 
 namespace Proxy::Backend::Socket {
 
-SocketInputChannel::SocketInputChannel(std::string host, std::uint16_t port)
-    : m_host(std::move(host))
+SocketInputChannel::SocketInputChannel(std::string name, std::string host, std::uint16_t port)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_host(std::move(host))
     , m_port(port)
     , m_poller(::Backend::createSocketPoller())
 {

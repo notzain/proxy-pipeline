@@ -11,7 +11,7 @@ namespace Proxy::Backend::File {
  */
 class FileOutputChannel : public ::Backend::IOutputChannel {
 public:
-    explicit FileOutputChannel(std::filesystem::path outputDir);
+    FileOutputChannel(std::string name, std::filesystem::path outputDir);
     ~FileOutputChannel() override = default;
 
     bool send(std::span<const std::byte> message) override;

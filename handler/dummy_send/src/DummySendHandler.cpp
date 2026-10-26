@@ -34,7 +34,7 @@ bool DummySendHandler::onConfigure(const Core::Config::Configuration& config)
         return false;
     }
 
-    m_outputChannel = registerOutputChannel(m_channelName, std::move(outChannel));
+    m_outputChannel = registerOutputChannel(std::move(outChannel));
     return true;
 }
 

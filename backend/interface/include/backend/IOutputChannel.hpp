@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <span>
+#include <string>
+#include <string_view>
 
 namespace Backend {
 
@@ -13,7 +15,13 @@ namespace Backend {
  */
 class IOutputChannel {
 public:
+    explicit IOutputChannel(std::string name = "");
     virtual ~IOutputChannel() = default;
+
+    /**
+     * @brief Gets the logical identifier or configuration name of this channel.
+     */
+    [[nodiscard]] std::string_view name() const noexcept;
 
     /**
      * @brief Transmits a message through this output channel.
@@ -34,6 +42,9 @@ public:
      * @return std::size_t Number of messages successfully dispatched.
      */
     virtual std::size_t sendBatch(std::span<const std::span<const std::byte>> messages);
+
+private:
+    std::string m_name;
 };
 
 } // namespace Backend

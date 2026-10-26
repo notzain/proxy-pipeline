@@ -11,8 +11,9 @@
 
 namespace Proxy::Backend::Socket {
 
-SocketOutputChannel::SocketOutputChannel(std::string destHost, std::uint16_t destPort)
-    : m_destHost(std::move(destHost))
+SocketOutputChannel::SocketOutputChannel(std::string name, std::string destHost, std::uint16_t destPort)
+    : ::Backend::IOutputChannel(std::move(name))
+    , m_destHost(std::move(destHost))
     , m_destPort(destPort)
 {
     openSocket();

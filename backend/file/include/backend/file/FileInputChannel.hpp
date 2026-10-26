@@ -11,7 +11,7 @@ namespace Proxy::Backend::File {
  */
 class FileInputChannel : public ::Backend::IInputChannel {
 public:
-    explicit FileInputChannel(std::filesystem::path watchDir);
+    FileInputChannel(std::string name, std::filesystem::path watchDir);
     ~FileInputChannel() override = default;
 
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;

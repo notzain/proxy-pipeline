@@ -55,7 +55,7 @@ bool XmlVerificationHandler::onConfigure(const Core::Config::Configuration& conf
         Proxy::Log::error("[XmlVerificationHandler] Failed to create output channel '{}'", m_outputChannelName);
         return false;
     }
-    m_outputChannel = registerOutputChannel(m_outputChannelName, std::move(outChannel));
+    m_outputChannel = registerOutputChannel(std::move(outChannel));
 
     return true;
 }

@@ -123,9 +123,9 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
     auto mockChan = std::make_unique<MockOutputChannel>();
     auto* rawChan = mockChan.get();
 
-    auto* registered = handler.registerOutputChannel("out_1", std::move(mockChan));
+    auto* registered = handler.registerOutputChannel(std::move(mockChan));
     CHECK(registered == rawChan);
-    CHECK(handler.registerOutputChannel("out_null", nullptr) == nullptr);
+    CHECK(handler.registerOutputChannel(nullptr) == nullptr);
 
     std::string msg = "Hello Sender";
     std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
@@ -149,7 +149,7 @@ TEST_CASE("IHandler Sequential execution model", "[channel][core]")
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
+    handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     handler.start();
 
@@ -175,7 +175,7 @@ TEST_CASE("IHandler Dedicated thread execution model with async start", "[channe
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
+    handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     handler.startAsync();
     handler.wait();
@@ -197,7 +197,7 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 
     handler.registerInputChannel("chan1", std::move(inChan1));
     handler.registerInputChannel("chan2", std::move(inChan2));
-    handler.setOutChannel(handler.registerOutputChannel("out", std::move(outChan)));
+    handler.setOutChannel(handler.registerOutputChannel(std::move(outChan)));
 
     handler.startAsync();
     handler.wait();
@@ -272,7 +272,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 
     merge.registerInputChannel("in_a", std::move(inA));
     merge.registerInputChannel("in_b", std::move(inB));
-    merge.setOutChannel(merge.registerOutputChannel("merged_out", std::move(outChan)));
+    merge.setOutChannel(merge.registerOutputChannel(std::move(outChan)));
 
     merge.start();
 
@@ -285,8 +285,8 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][uds]")
 {
     const std::string sockPath = "/tmp/test_proxy_channel.sock";
-    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
-    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+    Proxy::Backend::Uds::UdsInputChannel inChannel("uds_in", sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     std::string testMsg = "Hello UDS IPC!";
     std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
@@ -304,8 +304,8 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
 TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channel][uds][batch]")
 {
     const std::string sockPath = "/tmp/test_proxy_uds_batch.sock";
-    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
-    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+    Proxy::Backend::Uds::UdsInputChannel inChannel("uds_in", sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     constexpr std::size_t numMessages = 5;
     std::vector<std::string> sentMessages;
@@ -426,8 +426,8 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
 TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[channel][egress][batch]")
 {
     const std::string sockPath = "/tmp/test_proxy_uds_egress_batch.sock";
-    Proxy::Backend::Uds::UdsInputChannel inChannel(sockPath);
-    Proxy::Backend::Uds::UdsOutputChannel outChannel(sockPath);
+    Proxy::Backend::Uds::UdsInputChannel inChannel("uds_in", sockPath);
+    Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     std::vector<std::string> messages = { "Batch1", "Batch2", "Batch3", "Batch4" };
     std::vector<std::span<const std::byte>> messageSpans;

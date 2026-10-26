@@ -1,4 +1,4 @@
-# Tasks & Architectural Refactoring Roadmap
+#Tasks& Architectural Refactoring Roadmap
 
 This document outlines structural refactoring, interface decoupling, and abstraction improvements across `backend/` and `core/`, organized by design principles and prioritized for incremental implementation in dedicated feature branches.
 
@@ -6,13 +6,14 @@ This document outlines structural refactoring, interface decoupling, and abstrac
 
 ## 1. Domain Decoupling & Interface Cleanliness
 
-- [ ] **Relocate `MessageResult` out of `backend/interface` into `core/message/`**
-  - **Issue**: `backend/interface/include/backend/MessageResult.hpp` defines application-level handler outcomes (`Forwarded`, `Consumed`, `Dropped`). Transport channels (`IInputChannel`, `IOutputChannel`) transmit raw byte spans (`std::span<std::byte>`) and should have no dependency on handler execution outcomes.
-  - **Action**: Move `Forwarded`, `Consumed`, `Dropped`, and `MessageResult` entirely into `core/include/core/message/MessageResult.hpp` (namespace `Core::Message`). Remove `backend/interface/include/backend/MessageResult.hpp`. Update consuming handlers and backends.
+- [~] **Relocate `MessageResult` out of `backend/interface` into `core/message/` (Skipped / Retained in `backend/interface`)**
+  - **Decision**: Keep `MessageResult` in `backend/interface` because `backend-sim` links `backend-interface` and must remain independent of `core`. Keeps transport-level tracing cohesive without circular dependencies.
 
-- [ ] **Extract Message Tracing & Observer Hooks from `IBackend` into `IMessageObserver`**
-  - **Issue**: `Backend::IBackend` mixes transport channel factory methods (`createInputChannel`, `createOutputChannel`, `configure`) with simulation/tracing hooks (`tracksMessageResults`, `onMessageResult`, `onHandlerStarted`). Network and IPC backends (`SocketBackend`, `ShmBackend`, `UdsBackend`, `FileBackend`) are forced to implement no-op stubs.
-  - **Action**: Define an abstract `IMessageObserver` / `ITraceListener` interface in `core/` (or `backend/interface/` if transport-neutral). `SimulationBackend` implements `IMessageObserver`. Inject `IMessageObserver*` into `IHandler` or the execution strategy rather than polling through `IBackend`.
+- [x] **Invert `IInputChannel` Hierarchy to Prioritize Zero-Copy `receiveInto`**
+  - **Action**: Made `receiveInto(destination, timeout)` the pure virtual primitive. Implemented `receive(timeout)` as non-virtual default wrapper. Removed duplicate overrides across all backends. (Completed in `f29dc3c`).
+
+- [~] **Retain `MessageResult` & Direct Simulation Lifecycle on `IBackend` (Skipped / Working as Intended)**
+  - **Decision**: Keep `MessageResult` in `backend/interface` and simulation tracing methods directly on `Backend::IBackend`. Pragmatically keeps `backend-sim`, all 10 handler executables, and the Python test coordinator aligned without circular dependencies or extra wiring layers.
 
 - [ ] **Consolidate Duplicate UDP Channels (`core/net/` vs `backend/socket/`)**
   - **Issue**: `core/include/core/net/UdpInputChannel.hpp` & `UdpOutputChannel.hpp` duplicate functionality found in `backend/socket/src/SocketInputChannel.cpp` & `SocketOutputChannel.cpp`.
@@ -22,9 +23,8 @@ This document outlines structural refactoring, interface decoupling, and abstrac
 
 ## 2. Handler Single Responsibility & Decomposition
 
-- [ ] **Extract Output Channel Routing & Registration (`ChannelRegistry`)**
-  - **Issue**: `Core::Handler::IHandler` currently manages input channels, output channels (`m_outputChannels`, `m_outputMutex`, `TransparentStringHash`), telemetry exporting, and thread execution strategies.
-  - **Action**: Extract channel storage, thread-safe registration, and lookup into a dedicated `ChannelRegistry` or `ChannelRouter` class. `IHandler` consumes the registry or exposes clean delegation methods.
+- [x] **Extract Output Channel Routing & Registration (`ChannelRegistry`)**
+  - **Action**: Made `IInputChannel` and `IOutputChannel` self-identifying via base `name()`. Simplified `IHandler` to use direct `registerOutputChannel(std::unique_ptr<IOutputChannel>)` storing a flat vector of owned output channels. Removed dead string maps, locks, and redundant `channelName` member variables across handlers (e.g. `MergeHandler`).
 
 - [ ] **Decouple Event Loop Lifecycle from `IHandler` (`HandlerRunner` / `HandlerRuntime`)**
   - **Issue**: Lifecycle management (`start`, `startAsync`, `wait`, `stop`, signal handling for SIGINT/SIGTERM, execution strategy configuration) is tightly coupled with message processing logic inside `IHandler`.
@@ -51,17 +51,18 @@ This document outlines structural refactoring, interface decoupling, and abstrac
   - **Action**: Bundle target buffer spans with transferred byte counts into a single struct:
     ```cpp
     struct BufferSlot {
-        std::span<std::byte> buffer;
-        std::size_t bytesTransferred { 0 };
-    };
-    ```
-    Pass a single `std::span<BufferSlot>` to `receiveBatch`.
+    std::span<std::byte> buffer;
+    std::size_t bytesTransferred { 0 };
+};
+``` Pass a single `std::span<BufferSlot>` to `receiveBatch`.
 
----
+    -- -
 
-## 4. Interface Segregation (ISP) & Ingress Ergonomics
+    ##4. Interface
+    Segregation(ISP)
+    & Ingress Ergonomics
 
-- [x] **Invert `IInputChannel` Ingress Hierarchy (Zero-Copy as First-Class)**
-  - **Issue**: `receive(Timeout)` returning `std::optional<std::vector<std::byte>>` requires heap allocation and was a pure virtual method, whereas `receiveInto` was a fallback virtual method.
-  - **Action**: Made in-place `receiveInto(std::span<std::byte>, Timeout)` the core pure virtual primitive. Provided `receive(Timeout)` as a non-virtual convenience wrapper method on `IInputChannel` delegating to `receiveInto`. Removed duplicated `receive` overrides across all transport backends (`file`, `socket`, `uds`, `shm`, `sim`, `net`, `simulation`).
-
+        - [x] * *Invert `IInputChannel` Ingress Hierarchy(Zero - Copy as First - Class) * *-**Issue** : `receive(Timeout)` returning `std::optional<std::vector<std::byte>>`
+        requires heap
+    allocation and was a pure virtual method,
+    whereas `receiveInto` was a fallback virtual method.- **Action** : Made in - place `receiveInto(std::span<std::byte>, Timeout)` the core pure virtual primitive.Provided `receive(Timeout)` as a non - virtual convenience wrapper method on `IInputChannel` delegating to `receiveInto`.Removed duplicated `receive` overrides across all transport backends(`file`, `socket`, `uds`, `shm`, `sim`, `net`, `simulation`).

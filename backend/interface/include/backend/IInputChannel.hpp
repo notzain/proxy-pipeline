@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Backend {
@@ -19,7 +21,13 @@ public:
     using Buffer = std::vector<std::byte>;
     using Timeout = std::chrono::milliseconds;
 
+    explicit IInputChannel(std::string name = "");
     virtual ~IInputChannel() = default;
+
+    /**
+     * @brief Gets the logical identifier or configuration name of this channel.
+     */
+    [[nodiscard]] std::string_view name() const noexcept;
 
     /**
      * @brief Polls the input channel and reads data directly into a provided buffer without heap allocation.
@@ -56,6 +64,9 @@ public:
         std::span<const std::span<std::byte>> destinations,
         std::span<std::size_t> outSizes,
         Timeout timeout);
+
+private:
+    std::string m_name;
 };
 
 } // namespace Backend

@@ -35,6 +35,7 @@ public:
      * @param port UDP port to listen on.
      * @param receiveBufferSize Socket receive buffer size (SO_RCVBUF) in bytes. Defaults to 8MB.
      */
+    UdpInputChannel(std::string name, std::string host, std::uint16_t port, std::size_t receiveBufferSize = 8 * 1024 * 1024);
     explicit UdpInputChannel(std::string host, std::uint16_t port, std::size_t receiveBufferSize = 8 * 1024 * 1024);
 
     /**

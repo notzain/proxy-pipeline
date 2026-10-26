@@ -51,7 +51,7 @@ bool OrderValidationHandler::onConfigure(const Core::Config::Configuration& conf
         Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", m_outputChannelName);
         return false;
     }
-    m_cachedOutputChannel = registerOutputChannel(m_outputChannelName, std::move(outChannel));
+    m_cachedOutputChannel = registerOutputChannel(std::move(outChannel));
 
     return true;
 }

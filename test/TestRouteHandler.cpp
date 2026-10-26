@@ -58,9 +58,9 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     auto* stdPtr = stdChan.get();
     auto* defPtr = defChan.get();
 
-    router.registerOutputChannel("vip_out", std::move(vipChan));
-    router.registerOutputChannel("std_out", std::move(stdChan));
-    router.setDefaultChannel(router.registerOutputChannel("def_out", std::move(defChan)), "def_out");
+    router.registerOutputChannel(std::move(vipChan));
+    router.registerOutputChannel(std::move(stdChan));
+    router.setDefaultChannel(router.registerOutputChannel(std::move(defChan)), "def_out");
 
     // Rule 1: contains "VIP" -> vip_out
     Proxy::Handler::RouteRule ruleVip(Proxy::Handler::MatchCriteria::PayloadContains { "VIP" }, "vip_out");
@@ -152,7 +152,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         Proxy::Handler::RouteHandler portRouter(backend);
         auto portChan = std::make_unique<MockChannel>();
         auto* portPtr = portChan.get();
-        portRouter.registerOutputChannel("port_out", std::move(portChan));
+        portRouter.registerOutputChannel(std::move(portChan));
 
         Proxy::Handler::RouteRule portRule(Proxy::Handler::MatchCriteria::ClientPort { 9050 }, "port_out");
         portRule.bindTargetChannel(portPtr);

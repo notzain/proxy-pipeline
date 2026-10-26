@@ -24,8 +24,9 @@ namespace {
 
 } // namespace
 
-ShmInputChannel::ShmInputChannel(std::string path, std::size_t capacity)
-    : m_path(std::move(path))
+ShmInputChannel::ShmInputChannel(std::string name, std::string path, std::size_t capacity)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_path(std::move(path))
     , m_ring(std::make_unique<ShmRingBuffer>(m_path, capacity))
 {
 }

@@ -16,10 +16,11 @@ public:
     /**
      * @brief Constructs a shared memory input channel.
      *
+     * @param name Logical channel identifier.
      * @param path Shared memory file path.
      * @param capacity Number of ring buffer slots.
      */
-    explicit ShmInputChannel(std::string path, std::size_t capacity = 1024);
+    ShmInputChannel(std::string name, std::string path, std::size_t capacity = 1024);
     ~ShmInputChannel() override;
 
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;

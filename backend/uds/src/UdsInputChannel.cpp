@@ -13,8 +13,9 @@
 
 namespace Proxy::Backend::Uds {
 
-UdsInputChannel::UdsInputChannel(std::string socketPath)
-    : m_socketPath(std::move(socketPath))
+UdsInputChannel::UdsInputChannel(std::string name, std::string socketPath)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_socketPath(std::move(socketPath))
     , m_poller(::Backend::createSocketPoller())
 {
     openAndBindSocket();

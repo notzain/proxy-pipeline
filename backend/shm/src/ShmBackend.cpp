@@ -27,7 +27,7 @@ std::unique_ptr<::Backend::IInputChannel> ShmBackend::createInputChannel(std::st
     std::string path = config.getOr<std::string>(key, config.getOr<std::string>("shm.path", defaultPath));
     std::size_t capacity = static_cast<std::size_t>(config.getOr<int>(fmt::format("channel.{}.capacity", name), static_cast<int>(m_capacity)));
 
-    return std::make_unique<ShmInputChannel>(std::move(path), capacity);
+    return std::make_unique<ShmInputChannel>(std::string(name), std::move(path), capacity);
 }
 
 std::unique_ptr<::Backend::IOutputChannel> ShmBackend::createOutputChannel(std::string_view name, const ::Backend::IConfig& config)
@@ -43,7 +43,7 @@ std::unique_ptr<::Backend::IOutputChannel> ShmBackend::createOutputChannel(std::
             config.getOr<std::string>("shm.dest_path", config.getOr<std::string>("shm.path", defaultPath))));
     std::size_t capacity = static_cast<std::size_t>(config.getOr<int>(fmt::format("channel.{}.capacity", name), static_cast<int>(m_capacity)));
 
-    return std::make_unique<ShmOutputChannel>(std::move(path), capacity);
+    return std::make_unique<ShmOutputChannel>(std::string(name), std::move(path), capacity);
 }
 
 } // namespace Proxy::Backend::Shm

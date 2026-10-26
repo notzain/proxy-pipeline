@@ -25,7 +25,7 @@ std::unique_ptr<::Backend::IInputChannel> UdsBackend::createInputChannel(std::st
     std::string defaultPath = fmt::format("/tmp/proxy_uds_{}.sock", name);
     std::string path = config.getOr<std::string>(key, config.getOr<std::string>("uds.path", defaultPath));
 
-    return std::make_unique<UdsInputChannel>(std::move(path));
+    return std::make_unique<UdsInputChannel>(std::string(name), std::move(path));
 }
 
 std::unique_ptr<::Backend::IOutputChannel> UdsBackend::createOutputChannel(std::string_view name, const ::Backend::IConfig& config)
@@ -40,7 +40,7 @@ std::unique_ptr<::Backend::IOutputChannel> UdsBackend::createOutputChannel(std::
             fallbackKey,
             config.getOr<std::string>("uds.dest_path", config.getOr<std::string>("uds.path", defaultPath))));
 
-    return std::make_unique<UdsOutputChannel>(std::move(path));
+    return std::make_unique<UdsOutputChannel>(std::string(name), std::move(path));
 }
 
 } // namespace Proxy::Backend::Uds

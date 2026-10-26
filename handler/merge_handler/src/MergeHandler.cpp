@@ -27,21 +27,15 @@ std::vector<std::string> splitString(std::string_view str, char delimiter)
 
 namespace Proxy::Handler {
 
-MergeHandler::MergeHandler(::Backend::IBackend& backend, std::string outputChannelName)
-    : Core::Handler::IHandler(backend)
-    , m_outputChannelName(std::move(outputChannelName))
-{
-}
-
 bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    m_outputChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
-    auto outputChannel = backend().createOutputChannel(m_outputChannelName, config);
+    std::string outChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
+    auto outputChannel = backend().createOutputChannel(outChannelName, config);
     if (!outputChannel) {
-        Proxy::Log::error("[MergeHandler] Failed to create output channel '{}'", m_outputChannelName);
+        Proxy::Log::error("[MergeHandler] Failed to create output channel '{}'", outChannelName);
         return false;
     }
-    m_outputChannel = registerOutputChannel(m_outputChannelName, std::move(outputChannel));
+    m_outputChannel = registerOutputChannel(std::move(outputChannel));
 
     std::string inChannelsStr = config.getOr<std::string>("merge.input_channels", "");
     std::vector<std::string> inChannelNames = splitString(inChannelsStr, ',');
@@ -52,7 +46,7 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
             Proxy::Log::error("[MergeHandler] Failed to create input channel '{}'", inName);
             return false;
         }
-        auto* ptr = registerInputChannel(inName, std::move(inChannel));
+        auto* ptr = registerInputChannel(std::move(inChannel));
         m_inputChannelsList.push_back(ptr);
     }
 
@@ -61,17 +55,18 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
 
 Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
 {
+    std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
     Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
-        channelName, message.payload().size(), m_outputChannelName);
+        channelName, message.payload().size(), outName);
 
     if (m_outputChannel) {
         if (!m_outputChannel->send(message.rawBuffer())) {
-            Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", m_outputChannelName);
+            Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", outName);
         }
     } else {
-        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", m_outputChannelName);
+        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", outName);
     }
-    return Core::Message::Forwarded { .channel = m_outputChannelName };
+    return Core::Message::Forwarded { .channel = outName };
 }
 
 void MergeHandler::onBatchReceived(
@@ -79,9 +74,10 @@ void MergeHandler::onBatchReceived(
     std::span<const Core::Message::MessageView> messages,
     std::span<Core::Message::MessageResult> outResults)
 {
+    std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
-        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelName };
+        outResults[i] = Core::Message::Forwarded { .channel = outName };
     }
     if (messages.empty())
         return;
@@ -92,16 +88,16 @@ void MergeHandler::onBatchReceived(
     }
 
     Proxy::Log::debug("[MergeHandler] Input channel '{}' received batch of {} messages, redirecting to '{}'...",
-        channelName, messages.size(), m_outputChannelName);
+        channelName, messages.size(), outName);
 
     if (m_outputChannel) {
         std::size_t sent = m_outputChannel->sendBatch(spans.span(messages.size()));
         if (sent < messages.size()) {
             Proxy::Log::warn("[MergeHandler] Only {}/{} messages redirected to output channel '{}'",
-                sent, messages.size(), m_outputChannelName);
+                sent, messages.size(), outName);
         }
     } else {
-        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found for sendBatch", m_outputChannelName);
+        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found for sendBatch", outName);
     }
 }
 

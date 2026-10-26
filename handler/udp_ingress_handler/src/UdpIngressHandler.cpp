@@ -29,7 +29,7 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
         Proxy::Log::error("[UdpIngressHandler] Failed to create pipeline output channel '{}'", m_outputChannelName);
         return false;
     }
-    m_outputChannel = registerOutputChannel(m_outputChannelName, std::move(outChannel));
+    m_outputChannel = registerOutputChannel(std::move(outChannel));
 
     // 2. Input channel encapsulates external UDP network socket listening
     std::string host = config.getOr<std::string>("ingress.host", "0.0.0.0");
@@ -39,6 +39,7 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
     Proxy::Log::info("[UdpIngressHandler] Binding UDP network ingress on {}:{} (egress channel: '{}')...", host, port, m_outputChannelName);
 
     auto udpChannel = std::make_unique<Core::Net::UdpInputChannel>(
+        "udp_network_ingress",
         std::move(host),
         static_cast<std::uint16_t>(port),
         static_cast<std::size_t>(bufferSize));

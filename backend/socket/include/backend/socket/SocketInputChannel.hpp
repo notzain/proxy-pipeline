@@ -14,7 +14,7 @@ namespace Proxy::Backend::Socket {
  */
 class SocketInputChannel : public ::Backend::IInputChannel {
 public:
-    SocketInputChannel(std::string host, std::uint16_t port);
+    SocketInputChannel(std::string name, std::string host, std::uint16_t port);
     ~SocketInputChannel() override;
 
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;

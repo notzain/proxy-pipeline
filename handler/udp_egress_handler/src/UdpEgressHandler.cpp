@@ -41,7 +41,7 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     m_inputChannel = registerInputChannel(m_inputChannelName, std::move(inChannel));
 
     // 2. Initialize UDP output socket
-    m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>(m_destHost, m_destPort);
+    m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>("udp_network_egress", m_destHost, m_destPort);
 
     Proxy::Log::info("[UdpEgressHandler] Configured on channel '{}' (mode: {}, default target: {}:{})",
         m_inputChannelName, m_replyToOrigin ? "reply_to_origin" : "forward", m_destHost, m_destPort);

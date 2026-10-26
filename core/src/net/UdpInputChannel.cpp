@@ -64,13 +64,19 @@ namespace {
 
 } // namespace
 
-UdpInputChannel::UdpInputChannel(std::string host, std::uint16_t port, std::size_t receiveBufferSize)
-    : m_host(std::move(host))
+UdpInputChannel::UdpInputChannel(std::string name, std::string host, std::uint16_t port, std::size_t receiveBufferSize)
+    : ::Backend::IInputChannel(std::move(name))
+    , m_host(std::move(host))
     , m_port(port)
     , m_receiveBufferSize(receiveBufferSize)
     , m_poller(::Backend::createSocketPoller())
 {
     openAndBindSocket();
+}
+
+UdpInputChannel::UdpInputChannel(std::string host, std::uint16_t port, std::size_t receiveBufferSize)
+    : UdpInputChannel("udp_ingress", std::move(host), port, receiveBufferSize)
+{
 }
 
 UdpInputChannel::~UdpInputChannel()

@@ -1,8 +1,19 @@
 #include "backend/IInputChannel.hpp"
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace Backend {
+
+IInputChannel::IInputChannel(std::string name)
+    : m_name(std::move(name))
+{
+}
+
+std::string_view IInputChannel::name() const noexcept
+{
+    return m_name;
+}
 
 std::optional<IInputChannel::Buffer> IInputChannel::receive(Timeout timeout)
 {

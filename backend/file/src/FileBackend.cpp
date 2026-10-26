@@ -27,7 +27,7 @@ std::unique_ptr<::Backend::IInputChannel> FileBackend::createInputChannel(std::s
     std::string defaultPath = fmt::format("/tmp/watch/{}", name);
 
     std::string dirPath = config.getOr<std::string>(configKey, config.getOr<std::string>("file.path", defaultPath));
-    return std::make_unique<FileInputChannel>(std::filesystem::path(dirPath));
+    return std::make_unique<FileInputChannel>(std::string(name), std::filesystem::path(dirPath));
 }
 
 std::unique_ptr<::Backend::IOutputChannel> FileBackend::createOutputChannel(std::string_view name, const ::Backend::IConfig& config)
@@ -36,7 +36,7 @@ std::unique_ptr<::Backend::IOutputChannel> FileBackend::createOutputChannel(std:
     std::string defaultPath = fmt::format("/tmp/watch/{}", name);
 
     std::string dirPath = config.getOr<std::string>(configKey, config.getOr<std::string>("file.path", defaultPath));
-    return std::make_unique<FileOutputChannel>(std::filesystem::path(dirPath));
+    return std::make_unique<FileOutputChannel>(std::string(name), std::filesystem::path(dirPath));
 }
 
 } // namespace Proxy::Backend::File

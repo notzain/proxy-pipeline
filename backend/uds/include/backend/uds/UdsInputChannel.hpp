@@ -13,7 +13,7 @@ namespace Proxy::Backend::Uds {
  */
 class UdsInputChannel : public ::Backend::IInputChannel {
 public:
-    explicit UdsInputChannel(std::string socketPath);
+    UdsInputChannel(std::string name, std::string socketPath);
     ~UdsInputChannel() override;
 
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;

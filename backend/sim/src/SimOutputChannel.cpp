@@ -16,7 +16,8 @@ SimOutputChannel::SimOutputChannel(
     std::string eventHost,
     int eventPort,
     std::string handlerName)
-    : m_channelName(std::move(channelName))
+    : ::Backend::IOutputChannel(channelName)
+    , m_channelName(std::move(channelName))
     , m_destSocketPath(std::move(destSocketPath))
     , m_eventHost(std::move(eventHost))
     , m_eventPort(eventPort)

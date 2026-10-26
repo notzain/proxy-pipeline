@@ -27,7 +27,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
     if (!m_defaultChannelName.empty()) {
         auto defChan = backend().createOutputChannel(m_defaultChannelName, config);
         if (defChan) {
-            m_defaultOutputChannel = registerOutputChannel(m_defaultChannelName, std::move(defChan));
+            m_defaultOutputChannel = registerOutputChannel(std::move(defChan));
         } else {
             Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", m_defaultChannelName);
         }
@@ -84,7 +84,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
             if (it == createdChannels.end()) {
                 auto outChan = backend().createOutputChannel(target, config);
                 if (outChan) {
-                    outPtr = registerOutputChannel(target, std::move(outChan));
+                    outPtr = registerOutputChannel(std::move(outChan));
                     createdChannels[target] = outPtr;
                 } else {
                     Proxy::Log::error("[RouteHandler] Failed to create target output channel '{}' for rule '{}'", target, name);

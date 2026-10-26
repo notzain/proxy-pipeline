@@ -76,6 +76,16 @@ void IHandler::configureTelemetry(const Config::Configuration& config)
     }
 }
 
+::Backend::IInputChannel* IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
+{
+    if (!channel) {
+        Proxy::Log::warn("[IHandler] Attempted to register null input channel");
+        return nullptr;
+    }
+    std::string_view name = channel->name();
+    return registerInputChannel(name, std::move(channel));
+}
+
 ::Backend::IInputChannel* IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
 {
     if (!channel) {
@@ -138,15 +148,14 @@ void IHandler::processBatch(std::string_view channelName, std::span<const Messag
     return m_backend;
 }
 
-::Backend::IOutputChannel* IHandler::registerOutputChannel(std::string_view channelName, std::unique_ptr<::Backend::IOutputChannel> channel)
+::Backend::IOutputChannel* IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::warn("[IHandler] Attempted to register null output channel '{}'", channelName);
+        Proxy::Log::warn("[IHandler] Attempted to register null output channel");
         return nullptr;
     }
-    std::unique_lock lock(m_outputMutex);
     auto* rawPtr = channel.get();
-    m_outputChannels[std::string(channelName)] = std::move(channel);
+    m_outputChannels.push_back(std::move(channel));
     return rawPtr;
 }
 

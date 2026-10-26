@@ -32,7 +32,7 @@ std::unique_ptr<::Backend::IInputChannel> SocketBackend::createInputChannel(std:
     std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.host", "0.0.0.0"));
     std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.port", 8080));
 
-    return std::make_unique<SocketInputChannel>(std::move(host), port);
+    return std::make_unique<SocketInputChannel>(std::string(name), std::move(host), port);
 }
 
 std::unique_ptr<::Backend::IOutputChannel> SocketBackend::createOutputChannel(std::string_view name, const ::Backend::IConfig& config)
@@ -43,7 +43,7 @@ std::unique_ptr<::Backend::IOutputChannel> SocketBackend::createOutputChannel(st
     std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.dest_host", "127.0.0.1"));
     std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.dest_port", 8080));
 
-    return std::make_unique<SocketOutputChannel>(std::move(host), port);
+    return std::make_unique<SocketOutputChannel>(std::string(name), std::move(host), port);
 }
 
 } // namespace Proxy::Backend::Socket

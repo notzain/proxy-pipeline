@@ -14,7 +14,7 @@ namespace Proxy::Backend::Uds {
  */
 class UdsOutputChannel : public ::Backend::IOutputChannel {
 public:
-    explicit UdsOutputChannel(std::string destPath);
+    UdsOutputChannel(std::string name, std::string destPath);
     ~UdsOutputChannel() override;
 
     bool send(std::span<const std::byte> message) override;

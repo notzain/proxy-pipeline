@@ -26,6 +26,7 @@ public:
      * @param sendBufferSize Socket send buffer size (SO_SNDBUF) in bytes. Defaults to 8MB.
      */
     explicit UdpOutputChannel(
+        std::string name = "",
         std::string defaultHost = "",
         std::uint16_t defaultPort = 0,
         std::size_t sendBufferSize = 8 * 1024 * 1024);
