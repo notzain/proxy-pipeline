@@ -2,6 +2,7 @@
 
 #include "backend/IInputChannel.hpp"
 #include "backend/SocketAddress.hpp"
+#include "core/io/UniqueFd.hpp"
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -83,7 +84,7 @@ private:
     std::string m_host;
     std::uint16_t m_port { 0 };
     std::size_t m_receiveBufferSize { 8 * 1024 * 1024 };
-    int m_socketFd { -1 };
+    Core::Io::UniqueFd m_socketFd;
     ::Backend::SocketAddress m_boundAddr;
     std::unique_ptr<::Backend::ISocketPoller> m_poller;
 };

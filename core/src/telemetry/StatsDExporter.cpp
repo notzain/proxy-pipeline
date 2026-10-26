@@ -25,16 +25,12 @@ StatsDExporter::StatsDExporter(
 StatsDExporter::~StatsDExporter()
 {
     stop();
-    if (m_socketFd >= 0) {
-        ::close(m_socketFd);
-        m_socketFd = -1;
-    }
 }
 
 void StatsDExporter::initSocket()
 {
-    m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_socketFd < 0) {
+    m_socketFd.reset(::socket(AF_INET, SOCK_DGRAM, 0));
+    if (!m_socketFd) {
         Proxy::Log::error("[StatsDExporter] Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
@@ -44,15 +40,13 @@ void StatsDExporter::initSocket()
     addr.sin_port = htons(m_port);
     if (::inet_pton(AF_INET, m_host.c_str(), &addr.sin_addr) <= 0) {
         Proxy::Log::error("[StatsDExporter] Invalid host address '{}'", m_host);
-        ::close(m_socketFd);
-        m_socketFd = -1;
+        m_socketFd.reset();
         return;
     }
 
-    if (::connect(m_socketFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+    if (::connect(m_socketFd.get(), reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         Proxy::Log::error("[StatsDExporter] Failed to connect UDP socket to {}:{}: {}", m_host, m_port, std::strerror(errno));
-        ::close(m_socketFd);
-        m_socketFd = -1;
+        m_socketFd.reset();
     }
 }
 
@@ -84,10 +78,10 @@ void StatsDExporter::stop()
 
 void StatsDExporter::sendRaw(std::string_view payload)
 {
-    if (m_socketFd < 0 || payload.empty()) {
+    if (!m_socketFd || payload.empty()) {
         return;
     }
-    ::send(m_socketFd, payload.data(), payload.size(), 0);
+    ::send(m_socketFd.get(), payload.data(), payload.size(), 0);
 }
 
 void StatsDExporter::sendCount(std::string_view metric, int64_t count)
@@ -125,7 +119,7 @@ void StatsDExporter::sendTiming(std::string_view metric, double milliseconds)
 
 void StatsDExporter::flushNow()
 {
-    if (m_socketFd < 0) {
+    if (!m_socketFd) {
         return;
     }
 

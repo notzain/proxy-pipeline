@@ -79,43 +79,34 @@ UdpInputChannel::UdpInputChannel(std::string host, std::uint16_t port, std::size
 {
 }
 
-UdpInputChannel::~UdpInputChannel()
-{
-    closeSocket();
-}
+UdpInputChannel::~UdpInputChannel() = default;
 
 UdpInputChannel::UdpInputChannel(UdpInputChannel&& other) noexcept
     : m_host(std::move(other.m_host))
     , m_port(other.m_port)
     , m_receiveBufferSize(other.m_receiveBufferSize)
-    , m_socketFd(other.m_socketFd)
+    , m_socketFd(std::move(other.m_socketFd))
     , m_boundAddr(other.m_boundAddr)
     , m_poller(std::move(other.m_poller))
 {
-    other.m_socketFd = -1;
 }
 
 UdpInputChannel& UdpInputChannel::operator=(UdpInputChannel&& other) noexcept
 {
     if (this != &other) {
-        closeSocket();
         m_host = std::move(other.m_host);
         m_port = other.m_port;
         m_receiveBufferSize = other.m_receiveBufferSize;
-        m_socketFd = other.m_socketFd;
+        m_socketFd = std::move(other.m_socketFd);
         m_boundAddr = other.m_boundAddr;
         m_poller = std::move(other.m_poller);
-        other.m_socketFd = -1;
     }
     return *this;
 }
 
 void UdpInputChannel::closeSocket()
 {
-    if (m_socketFd >= 0) {
-        ::close(m_socketFd);
-        m_socketFd = -1;
-    }
+    m_socketFd.reset();
 }
 
 void UdpInputChannel::openAndBindSocket()
@@ -132,24 +123,24 @@ void UdpInputChannel::openAndBindSocket()
     }
 
     const int domain = (m_boundAddr.family() == Backend::AddressFamily::Ipv6) ? AF_INET6 : AF_INET;
-    m_socketFd = ::socket(domain, SOCK_DGRAM, 0);
-    if (m_socketFd < 0) {
+    m_socketFd.reset(::socket(domain, SOCK_DGRAM, 0));
+    if (!m_socketFd) {
         Proxy::Log::error("[UdpInputChannel] Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
 
     int reuse = 1;
-    ::setsockopt(m_socketFd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    ::setsockopt(m_socketFd.get(), SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 #ifdef SO_REUSEPORT
-    ::setsockopt(m_socketFd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+    ::setsockopt(m_socketFd.get(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 #endif
 
     int rcvbuf = static_cast<int>(m_receiveBufferSize);
-    ::setsockopt(m_socketFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+    ::setsockopt(m_socketFd.get(), SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
     sockaddr_storage ss { };
     std::size_t nativeLen = m_boundAddr.toNative(&ss, sizeof(ss));
-    if (nativeLen == 0 || ::bind(m_socketFd, reinterpret_cast<sockaddr*>(&ss), static_cast<socklen_t>(nativeLen)) < 0) {
+    if (nativeLen == 0 || ::bind(m_socketFd.get(), reinterpret_cast<sockaddr*>(&ss), static_cast<socklen_t>(nativeLen)) < 0) {
         Proxy::Log::error("[UdpInputChannel] Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
         closeSocket();
         return;
@@ -160,9 +151,9 @@ void UdpInputChannel::openAndBindSocket()
 
 std::size_t UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
-    if (m_socketFd < 0) {
+    if (!m_socketFd) {
         openAndBindSocket();
-        if (m_socketFd < 0) {
+        if (!m_socketFd) {
             return 0;
         }
     }
@@ -173,7 +164,7 @@ std::size_t UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 
     Backend::SocketAddress clientAddr;
     std::size_t payloadBytes = m_poller->receive(
-        m_socketFd,
+        m_socketFd.get(),
         destination.subspan(EnvelopePreambleSize),
         timeout,
         &clientAddr);
@@ -191,9 +182,9 @@ std::size_t UdpInputChannel::receiveBatch(
     std::span<std::size_t> outSizes,
     Timeout timeout)
 {
-    if (m_socketFd < 0) {
+    if (!m_socketFd) {
         openAndBindSocket();
-        if (m_socketFd < 0) {
+        if (!m_socketFd) {
             return 0;
         }
     }
@@ -217,7 +208,7 @@ std::size_t UdpInputChannel::receiveBatch(
     }
 
     std::size_t count = m_poller->receiveBatch(
-        m_socketFd,
+        m_socketFd.get(),
         std::span<const std::span<std::byte>>(payloadDests.data(), batchSize),
         std::span<std::size_t>(payloadSizes.data(), batchSize),
         timeout,
@@ -233,7 +224,7 @@ std::size_t UdpInputChannel::receiveBatch(
 
 int UdpInputChannel::getNativeSocket() const noexcept
 {
-    return m_socketFd;
+    return m_socketFd.get();
 }
 
 const std::string& UdpInputChannel::getHost() const noexcept

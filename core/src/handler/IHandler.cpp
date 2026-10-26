@@ -1,11 +1,13 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "core/memory/Borrow.hpp"
 #include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <chrono>
+#include <stdexcept>
 
 namespace Core::Handler {
 
@@ -21,25 +23,25 @@ bool IHandler::configure(const Config::Configuration& config)
     return onConfigure(config);
 }
 
-Core::Memory::ObserverPtr<::Backend::IInputChannel> IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
+Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::warn("[IHandler] Attempted to register null input channel");
-        return nullptr;
+        Proxy::Log::error("[IHandler] Attempted to register null input channel");
+        throw std::invalid_argument("Attempted to register null input channel");
     }
     std::string_view name = channel->name();
     return registerInputChannel(name, std::move(channel));
 }
 
-Core::Memory::ObserverPtr<::Backend::IInputChannel> IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
+Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::warn("[IHandler] Attempted to register null input channel '{}'", channelName);
-        return nullptr;
+        Proxy::Log::error("[IHandler] Attempted to register null input channel '{}'", channelName);
+        throw std::invalid_argument("Attempted to register null input channel");
     }
     auto* rawPtr = channel.get();
     m_inputChannels.push_back(NamedInputChannel { std::string(channelName), std::move(channel) });
-    return rawPtr;
+    return Core::Memory::Borrow<::Backend::IInputChannel>(*rawPtr);
 }
 
 const std::vector<IHandler::NamedInputChannel>& IHandler::getInputChannels() const noexcept
@@ -93,15 +95,15 @@ void IHandler::processBatch(std::string_view channelName, std::span<const Messag
     return m_backend;
 }
 
-Core::Memory::ObserverPtr<::Backend::IOutputChannel> IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
+Core::Memory::Borrow<::Backend::IOutputChannel> IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::warn("[IHandler] Attempted to register null output channel");
-        return nullptr;
+        Proxy::Log::error("[IHandler] Attempted to register null output channel");
+        throw std::invalid_argument("Attempted to register null output channel");
     }
     auto* rawPtr = channel.get();
     m_outputChannels.push_back(std::move(channel));
-    return rawPtr;
+    return Core::Memory::Borrow<::Backend::IOutputChannel>(*rawPtr);
 }
 
 void IHandler::step()

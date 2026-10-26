@@ -2,6 +2,7 @@
 
 #include "backend/IOutputChannel.hpp"
 #include "backend/SocketAddress.hpp"
+#include "core/io/UniqueFd.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -81,8 +82,8 @@ private:
     std::string m_defaultHost;
     std::uint16_t m_defaultPort { 0 };
     std::size_t m_sendBufferSize { 8 * 1024 * 1024 };
-    int m_socketFd { -1 };
-    int m_socketFdV6 { -1 };
+    Core::Io::UniqueFd m_socketFd;
+    Core::Io::UniqueFd m_socketFdV6;
     ::Backend::SocketAddress m_defaultAddr { };
     bool m_hasDefaultAddr { false };
 };

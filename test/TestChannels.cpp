@@ -132,7 +132,7 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
 
     auto registered = handler.registerOutputChannel(std::move(mockChan));
     CHECK(registered == rawChan);
-    CHECK(handler.registerOutputChannel(nullptr) == nullptr);
+    CHECK_THROWS_AS(handler.registerOutputChannel(nullptr), std::invalid_argument);
 
     std::string msg = "Hello Sender";
     std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());

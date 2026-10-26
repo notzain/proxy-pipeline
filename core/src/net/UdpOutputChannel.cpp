@@ -18,78 +18,64 @@ UdpOutputChannel::UdpOutputChannel(std::string name, std::string defaultHost, st
     openSocket();
 }
 
-UdpOutputChannel::~UdpOutputChannel()
-{
-    closeSocket();
-}
+UdpOutputChannel::~UdpOutputChannel() = default;
 
 UdpOutputChannel::UdpOutputChannel(UdpOutputChannel&& other) noexcept
     : m_defaultHost(std::move(other.m_defaultHost))
     , m_defaultPort(other.m_defaultPort)
     , m_sendBufferSize(other.m_sendBufferSize)
-    , m_socketFd(other.m_socketFd)
-    , m_socketFdV6(other.m_socketFdV6)
+    , m_socketFd(std::move(other.m_socketFd))
+    , m_socketFdV6(std::move(other.m_socketFdV6))
     , m_defaultAddr(other.m_defaultAddr)
     , m_hasDefaultAddr(other.m_hasDefaultAddr)
 {
-    other.m_socketFd = -1;
-    other.m_socketFdV6 = -1;
 }
 
 UdpOutputChannel& UdpOutputChannel::operator=(UdpOutputChannel&& other) noexcept
 {
     if (this != &other) {
-        closeSocket();
         m_defaultHost = std::move(other.m_defaultHost);
         m_defaultPort = other.m_defaultPort;
         m_sendBufferSize = other.m_sendBufferSize;
-        m_socketFd = other.m_socketFd;
-        m_socketFdV6 = other.m_socketFdV6;
+        m_socketFd = std::move(other.m_socketFd);
+        m_socketFdV6 = std::move(other.m_socketFdV6);
         m_defaultAddr = other.m_defaultAddr;
         m_hasDefaultAddr = other.m_hasDefaultAddr;
-        other.m_socketFd = -1;
-        other.m_socketFdV6 = -1;
     }
     return *this;
 }
 
 void UdpOutputChannel::closeSocket()
 {
-    if (m_socketFd >= 0) {
-        ::close(m_socketFd);
-        m_socketFd = -1;
-    }
-    if (m_socketFdV6 >= 0) {
-        ::close(m_socketFdV6);
-        m_socketFdV6 = -1;
-    }
+    m_socketFd.reset();
+    m_socketFdV6.reset();
 }
 
 int UdpOutputChannel::ensureSocketForFamily(::Backend::AddressFamily family)
 {
     if (family == ::Backend::AddressFamily::Ipv6) {
-        if (m_socketFdV6 < 0) {
-            m_socketFdV6 = ::socket(AF_INET6, SOCK_DGRAM, 0);
-            if (m_socketFdV6 < 0) {
+        if (!m_socketFdV6) {
+            m_socketFdV6.reset(::socket(AF_INET6, SOCK_DGRAM, 0));
+            if (!m_socketFdV6) {
                 Proxy::Log::error("[UdpOutputChannel] Failed to create IPv6 UDP socket: {}", std::strerror(errno));
                 return -1;
             }
             int sndbuf = static_cast<int>(m_sendBufferSize);
-            ::setsockopt(m_socketFdV6, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+            ::setsockopt(m_socketFdV6.get(), SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
         }
-        return m_socketFdV6;
+        return m_socketFdV6.get();
     }
 
-    if (m_socketFd < 0) {
-        m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
-        if (m_socketFd < 0) {
+    if (!m_socketFd) {
+        m_socketFd.reset(::socket(AF_INET, SOCK_DGRAM, 0));
+        if (!m_socketFd) {
             Proxy::Log::error("[UdpOutputChannel] Failed to create IPv4 UDP socket: {}", std::strerror(errno));
             return -1;
         }
         int sndbuf = static_cast<int>(m_sendBufferSize);
-        ::setsockopt(m_socketFd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+        ::setsockopt(m_socketFd.get(), SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
     }
-    return m_socketFd;
+    return m_socketFd.get();
 }
 
 void UdpOutputChannel::openSocket()
@@ -178,7 +164,7 @@ bool UdpOutputChannel::sendTo(std::span<const std::byte> message, const std::str
 
 int UdpOutputChannel::getNativeSocket() const noexcept
 {
-    return m_socketFd;
+    return m_socketFd.get();
 }
 
 } // namespace Core::Net

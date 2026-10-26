@@ -3,6 +3,7 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/memory/Borrow.hpp"
 #include "core/memory/ObserverPtr.hpp"
 #include <chrono>
 #include <cstddef>
@@ -75,14 +76,14 @@ public:
      * @brief Registers an input channel to be polled by the handler event loop.
      *
      * @param channel The input channel instance (which owns its name).
-     * @return Core::Memory::ObserverPtr<::Backend::IInputChannel> Non-owning observer pointer to the registered channel.
+     * @return Core::Memory::Borrow<::Backend::IInputChannel> Rebindable, non-null borrow of the registered channel.
      */
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
+    Core::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Registers an input channel with an explicit name override.
      */
-    Core::Memory::ObserverPtr<::Backend::IInputChannel> registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
+    Core::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::string_view channelName, std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Accessor for registered input channels.
@@ -135,9 +136,9 @@ public:
      * @brief Registers an output channel to be managed by the handler.
      *
      * @param channel The output channel instance.
-     * @return Core::Memory::ObserverPtr<::Backend::IOutputChannel> Non-owning observer pointer to the registered channel.
+     * @return Core::Memory::Borrow<::Backend::IOutputChannel> Rebindable, non-null borrow of the registered channel.
      */
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
+    Core::Memory::Borrow<::Backend::IOutputChannel> registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
 
     // --- Operational Metadata & Classification ---
 
