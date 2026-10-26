@@ -16,6 +16,8 @@ namespace Backend {
 class IOutputChannel {
 public:
     explicit IOutputChannel(std::string name = "");
+    IOutputChannel(const IOutputChannel&) = default;
+    IOutputChannel& operator=(const IOutputChannel&) = default;
     virtual ~IOutputChannel() = default;
 
     /**
@@ -42,6 +44,10 @@ public:
      * @return std::size_t Number of messages successfully dispatched.
      */
     virtual std::size_t sendBatch(std::span<const std::span<const std::byte>> messages);
+
+protected:
+    IOutputChannel(IOutputChannel&&) noexcept = default;
+    IOutputChannel& operator=(IOutputChannel&&) noexcept = default;
 
 private:
     std::string m_name;

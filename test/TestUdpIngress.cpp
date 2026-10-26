@@ -23,6 +23,7 @@
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -255,6 +256,31 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
 
         std::string_view receivedView(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
         CHECK(receivedView == expectedPayload);
+    }
+}
+
+TEST_CASE("UDP channel moves preserve their names", "[net][udp][move]")
+{
+    SECTION("input channel move construction and assignment")
+    {
+        Core::Net::UdpInputChannel source("input_source", "127.0.0.1", 0);
+        Core::Net::UdpInputChannel moved(std::move(source));
+        CHECK(moved.name() == "input_source");
+
+        Core::Net::UdpInputChannel destination("input_destination", "127.0.0.1", 0);
+        destination = std::move(moved);
+        CHECK(destination.name() == "input_source");
+    }
+
+    SECTION("output channel move construction and assignment")
+    {
+        Core::Net::UdpOutputChannel source("output_source");
+        Core::Net::UdpOutputChannel moved(std::move(source));
+        CHECK(moved.name() == "output_source");
+
+        Core::Net::UdpOutputChannel destination("output_destination");
+        destination = std::move(moved);
+        CHECK(destination.name() == "output_source");
     }
 }
 

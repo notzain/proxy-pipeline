@@ -21,7 +21,8 @@ UdpOutputChannel::UdpOutputChannel(std::string name, std::string defaultHost, st
 UdpOutputChannel::~UdpOutputChannel() = default;
 
 UdpOutputChannel::UdpOutputChannel(UdpOutputChannel&& other) noexcept
-    : m_defaultHost(std::move(other.m_defaultHost))
+    : ::Backend::IOutputChannel(std::move(other))
+    , m_defaultHost(std::move(other.m_defaultHost))
     , m_defaultPort(other.m_defaultPort)
     , m_sendBufferSize(other.m_sendBufferSize)
     , m_socketFd(std::move(other.m_socketFd))
@@ -34,6 +35,7 @@ UdpOutputChannel::UdpOutputChannel(UdpOutputChannel&& other) noexcept
 UdpOutputChannel& UdpOutputChannel::operator=(UdpOutputChannel&& other) noexcept
 {
     if (this != &other) {
+        ::Backend::IOutputChannel::operator=(std::move(other));
         m_defaultHost = std::move(other.m_defaultHost);
         m_defaultPort = other.m_defaultPort;
         m_sendBufferSize = other.m_sendBufferSize;

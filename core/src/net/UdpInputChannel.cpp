@@ -82,7 +82,8 @@ UdpInputChannel::UdpInputChannel(std::string host, std::uint16_t port, std::size
 UdpInputChannel::~UdpInputChannel() = default;
 
 UdpInputChannel::UdpInputChannel(UdpInputChannel&& other) noexcept
-    : m_host(std::move(other.m_host))
+    : ::Backend::IInputChannel(std::move(other))
+    , m_host(std::move(other.m_host))
     , m_port(other.m_port)
     , m_receiveBufferSize(other.m_receiveBufferSize)
     , m_socketFd(std::move(other.m_socketFd))
@@ -94,6 +95,7 @@ UdpInputChannel::UdpInputChannel(UdpInputChannel&& other) noexcept
 UdpInputChannel& UdpInputChannel::operator=(UdpInputChannel&& other) noexcept
 {
     if (this != &other) {
+        ::Backend::IInputChannel::operator=(std::move(other));
         m_host = std::move(other.m_host);
         m_port = other.m_port;
         m_receiveBufferSize = other.m_receiveBufferSize;

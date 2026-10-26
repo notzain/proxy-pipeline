@@ -23,6 +23,8 @@ public:
     using Timeout = std::chrono::milliseconds;
 
     explicit IInputChannel(std::string name = "");
+    IInputChannel(const IInputChannel&) = default;
+    IInputChannel& operator=(const IInputChannel&) = default;
     virtual ~IInputChannel() = default;
 
     /**
@@ -63,6 +65,10 @@ public:
     virtual std::size_t receiveBatch(
         std::span<BufferSlot> slots,
         Timeout timeout);
+
+protected:
+    IInputChannel(IInputChannel&&) noexcept = default;
+    IInputChannel& operator=(IInputChannel&&) noexcept = default;
 
 private:
     std::string m_name;
