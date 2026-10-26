@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/BufferSlot.hpp"
 #include <chrono>
 #include <cstddef>
 #include <optional>
@@ -51,18 +52,16 @@ public:
     std::optional<Buffer> receive(Timeout timeout);
 
     /**
-     * @brief Drains a batch of incoming messages into pre-allocated destination buffer slices.
+     * @brief Drains a batch of incoming messages into pre-allocated destination buffer slots.
      *
      * Enables vectorized multi-datagram draining (`recvmmsg` on Linux, speculative non-blocking drain on POSIX/macOS).
      *
-     * @param destinations Spans of pre-allocated target buffers.
-     * @param outSizes Span of size_t where the received byte counts are stored. Must be at least destinations.size().
+     * @param slots Target buffer slots to populate. Each slot contains a target buffer and tracks received byte count.
      * @param timeout Timeout for the initial message wait if no data is currently ready.
-     * @return std::size_t Number of datagrams read into destinations (0 to destinations.size()).
+     * @return std::size_t Number of datagrams read into slots (0 to slots.size()).
      */
     virtual std::size_t receiveBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<BufferSlot> slots,
         Timeout timeout);
 
 private:

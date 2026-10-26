@@ -229,11 +229,10 @@ std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination, bool* wasFu
 }
 
 std::size_t ShmRingBuffer::popBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     bool* wasFull)
 {
-    if (!isValid() || destinations.empty() || outSizes.empty()) {
+    if (!isValid() || slots.empty()) {
         return 0;
     }
 
@@ -249,15 +248,15 @@ std::size_t ShmRingBuffer::popBatch(
     }
 
     uint64_t ready = w - r;
-    std::size_t toRead = std::min({ destinations.size(), outSizes.size(), static_cast<std::size_t>(ready) });
+    std::size_t toRead = std::min(slots.size(), static_cast<std::size_t>(ready));
 
     uint32_t mask = m_header->capacity - 1;
     for (std::size_t i = 0; i < toRead; ++i) {
         uint32_t slotIdx = static_cast<uint32_t>((r + i) & mask);
         const ShmSlot& slot = m_slots[slotIdx];
-        std::size_t bytesToCopy = std::min<std::size_t>(slot.length, destinations[i].size());
-        std::memcpy(destinations[i].data(), slot.payload, bytesToCopy);
-        outSizes[i] = bytesToCopy;
+        std::size_t bytesToCopy = std::min<std::size_t>(slot.length, slots[i].buffer.size());
+        std::memcpy(slots[i].buffer.data(), slot.payload, bytesToCopy);
+        slots[i].size = bytesToCopy;
     }
 
     m_header->readIndex.store(r + toRead, std::memory_order_release);

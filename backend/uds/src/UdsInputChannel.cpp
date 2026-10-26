@@ -97,8 +97,7 @@ std::size_t UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 std::size_t UdsInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {
@@ -109,7 +108,7 @@ std::size_t UdsInputChannel::receiveBatch(
     }
 
     if (m_poller) {
-        return m_poller->receiveBatch(m_socketFd, destinations, outSizes, timeout);
+        return m_poller->receiveBatch(m_socketFd, slots, timeout);
     }
 
     return 0;

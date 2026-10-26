@@ -58,8 +58,7 @@ public:
      * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.
      */
     std::size_t receiveBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
     /**

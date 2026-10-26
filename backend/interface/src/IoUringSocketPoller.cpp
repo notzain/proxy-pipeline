@@ -162,17 +162,16 @@ std::size_t IoUringSocketPoller::receive(
 
 std::size_t IoUringSocketPoller::receiveBatch(
     int socketFd,
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
-    if (socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
+    if (socketFd < 0 || slots.empty()) {
         return 0;
     }
 
     std::size_t count = 0;
-    const std::size_t maxBatch = destinations.size();
+    const std::size_t maxBatch = slots.size();
 
     // Speculative non-blocking drain
     while (count < maxBatch) {
@@ -183,8 +182,8 @@ std::size_t IoUringSocketPoller::receiveBatch(
 
         ssize_t bytes = ::recvfrom(
             socketFd,
-            reinterpret_cast<char*>(destinations[count].data()),
-            destinations[count].size(),
+            reinterpret_cast<char*>(slots[count].buffer.data()),
+            slots[count].buffer.size(),
             MSG_DONTWAIT,
             saPtr,
             saLenPtr);
@@ -193,7 +192,7 @@ std::size_t IoUringSocketPoller::receiveBatch(
             if (count < outSourceAddresses.size()) {
                 outSourceAddresses[count].setFromNative(&ss, addrLen);
             }
-            outSizes[count++] = static_cast<std::size_t>(bytes);
+            slots[count++].size = static_cast<std::size_t>(bytes);
         } else {
             break;
         }
@@ -205,11 +204,12 @@ std::size_t IoUringSocketPoller::receiveBatch(
 
     // Wait for the first packet via io_uring
     SocketAddress* firstAddr = (!outSourceAddresses.empty()) ? &outSourceAddresses[0] : nullptr;
-    std::size_t firstBytes = receive(socketFd, destinations[0], timeout, firstAddr);
+    std::size_t firstBytes = receive(socketFd, slots[0].buffer, timeout, firstAddr);
     if (firstBytes == 0) {
+        slots[0].size = 0;
         return 0;
     }
-    outSizes[0] = firstBytes;
+    slots[0].size = firstBytes;
     count = 1;
 
     // Drain remaining ready datagrams
@@ -221,8 +221,8 @@ std::size_t IoUringSocketPoller::receiveBatch(
 
         ssize_t bytes = ::recvfrom(
             socketFd,
-            reinterpret_cast<char*>(destinations[count].data()),
-            destinations[count].size(),
+            reinterpret_cast<char*>(slots[count].buffer.data()),
+            slots[count].buffer.size(),
             MSG_DONTWAIT,
             saPtr,
             saLenPtr);
@@ -231,7 +231,7 @@ std::size_t IoUringSocketPoller::receiveBatch(
             if (count < outSourceAddresses.size()) {
                 outSourceAddresses[count].setFromNative(&ss, addrLen);
             }
-            outSizes[count++] = static_cast<std::size_t>(bytes);
+            slots[count++].size = static_cast<std::size_t>(bytes);
         } else {
             break;
         }

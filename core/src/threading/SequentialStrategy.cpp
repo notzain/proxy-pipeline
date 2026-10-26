@@ -94,11 +94,10 @@ void SequentialStrategy::start(Handler::IHandler& handler)
         // Allocated once on the heap when the thread starts to prevent thread stack overflow,
         // while keeping the buffer resident across polling loops with zero per-message allocations.
         auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
-        std::array<std::span<std::byte>, 16> destSpans;
+        std::array<::Backend::BufferSlot, 16> batchSlots;
         for (std::size_t i = 0; i < 16; ++i) {
-            destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
+            batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
-        // alignas(64): Aligns the size array to a cache line so atomic/SIMD fills don't false-share with loop control state.
         alignas(64) std::array<std::size_t, 16> batchSizes { };
         std::size_t invalidEnvelopeCount = 0;
 
@@ -113,11 +112,13 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                 }
 
                 std::size_t batchCount = namedChannel.channel->receiveBatch(
-                    std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
-                    batchSizes,
+                    std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
                 if (batchCount > 0) {
+                    for (std::size_t i = 0; i < batchCount; ++i) {
+                        batchSizes[i] = batchSlots[i].size;
+                    }
                     dispatchValidatedBatch(
                         handler,
                         namedChannel.name,

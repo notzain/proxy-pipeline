@@ -107,17 +107,16 @@ std::size_t KqueueSocketPoller::receive(
 
 std::size_t KqueueSocketPoller::receiveBatch(
     int socketFd,
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
-    if (m_kqueueFd < 0 || socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
+    if (m_kqueueFd < 0 || socketFd < 0 || slots.empty()) {
         return 0;
     }
 
     std::size_t count = 0;
-    const std::size_t maxBatch = destinations.size();
+    const std::size_t maxBatch = slots.size();
 
     // Speculatively drain ready datagrams non-blocking without kevent syscall
     while (count < maxBatch) {
@@ -128,8 +127,8 @@ std::size_t KqueueSocketPoller::receiveBatch(
 
         ssize_t bytes = ::recvfrom(
             socketFd,
-            reinterpret_cast<char*>(destinations[count].data()),
-            destinations[count].size(),
+            reinterpret_cast<char*>(slots[count].buffer.data()),
+            slots[count].buffer.size(),
             MSG_DONTWAIT,
             saPtr,
             saLenPtr);
@@ -138,7 +137,7 @@ std::size_t KqueueSocketPoller::receiveBatch(
             if (count < outSourceAddresses.size()) {
                 outSourceAddresses[count].setFromNative(&ss, addrLen);
             }
-            outSizes[count++] = static_cast<std::size_t>(bytes);
+            slots[count++].size = static_cast<std::size_t>(bytes);
         } else {
             break;
         }
@@ -172,8 +171,8 @@ std::size_t KqueueSocketPoller::receiveBatch(
 
         ssize_t bytes = ::recvfrom(
             socketFd,
-            reinterpret_cast<char*>(destinations[count].data()),
-            destinations[count].size(),
+            reinterpret_cast<char*>(slots[count].buffer.data()),
+            slots[count].buffer.size(),
             MSG_DONTWAIT,
             saPtr,
             saLenPtr);
@@ -182,7 +181,7 @@ std::size_t KqueueSocketPoller::receiveBatch(
             if (count < outSourceAddresses.size()) {
                 outSourceAddresses[count].setFromNative(&ss, addrLen);
             }
-            outSizes[count++] = static_cast<std::size_t>(bytes);
+            slots[count++].size = static_cast<std::size_t>(bytes);
         } else {
             break;
         }

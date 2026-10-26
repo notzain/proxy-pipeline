@@ -44,15 +44,16 @@ This document outlines structural refactoring, interface decoupling, and abstrac
   - **Issue**: `IHandler::getInputChannels()` exposes `const std::vector<NamedInputChannel>&`, exposing internal ownership structures (`std::unique_ptr<IInputChannel>`).
   - **Action**: Encapsulate input channels inside an `InputChannelSet` or expose query methods (e.g., `findInputChannel(ChannelId)`, `forEachInputChannel(Callback)`).
 
-- [ ] **Cohesive Batch Buffer Value Type (`BufferSlot` / `BatchSpan`)**
+- [x] **Cohesive Batch Buffer Value Type (`BufferSlot` / `BatchSpan`)**
   - **Issue**: `IInputChannel::receiveBatch` requires two parallel spans (`std::span<const std::span<std::byte>> destinations` and `std::span<std::size_t> outSizes`) that must stay synchronized in length.
-  - **Action**: Bundle target buffer spans with transferred byte counts into a single struct:
+  - **Action**: Created `Backend::BufferSlot` uniting destination memory span with transferred byte count:
     ```cpp
     struct BufferSlot {
-    std::span<std::byte> buffer;
-    std::size_t bytesTransferred { 0 };
-};
-``` Pass a single `std::span<BufferSlot>` to `receiveBatch`.
+        std::span<std::byte> buffer;
+        std::size_t size { 0 };
+    };
+    ```
+    Replaced parallel spans with `std::span<BufferSlot>` across `IInputChannel`, `ISocketPoller`, all backend channels (`socket`, `uds`, `shm`, `sim`, `net`, `simulation`), pollers, and execution strategies.
 
     -- -
 

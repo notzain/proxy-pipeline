@@ -105,15 +105,15 @@ public:
     }
 
     std::size_t receiveBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override
     {
         std::size_t count = 0;
-        while (count < destinations.size()) {
-            std::size_t bytes = receiveInto(destinations[count], timeout);
+        while (count < slots.size()) {
+            std::size_t bytes = receiveInto(slots[count].buffer, timeout);
             if (bytes > 0) {
-                outSizes[count++] = bytes;
+                slots[count].size = bytes;
+                count++;
             } else {
                 break;
             }

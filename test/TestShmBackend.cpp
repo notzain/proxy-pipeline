@@ -114,17 +114,16 @@ TEST_CASE("ShmRingBuffer: Vectorized Batch Operations", "[shm]")
         REQUIRE(ring.size() == messages.size());
 
         std::array<std::array<std::byte, 64>, 8> rxBuffers;
-        std::array<std::span<std::byte>, 8> destSpans;
+        std::array<::Backend::BufferSlot, 8> slots;
         for (std::size_t i = 0; i < 8; ++i) {
-            destSpans[i] = rxBuffers[i];
+            slots[i] = ::Backend::BufferSlot { rxBuffers[i], 0 };
         }
-        std::array<std::size_t, 8> outSizes { };
 
-        std::size_t popped = ring.popBatch(destSpans, outSizes);
+        std::size_t popped = ring.popBatch(slots);
         REQUIRE(popped == messages.size());
 
         for (std::size_t i = 0; i < popped; ++i) {
-            std::string rec(reinterpret_cast<char*>(rxBuffers[i].data()), outSizes[i]);
+            std::string rec(reinterpret_cast<char*>(rxBuffers[i].data()), slots[i].size);
             REQUIRE(rec == messages[i]);
         }
         REQUIRE(ring.empty());
@@ -167,16 +166,15 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         REQUIRE(sentCount == batchMsgs.size());
 
         std::array<std::array<std::byte, 32>, 4> batchDestBufs;
-        std::array<std::span<std::byte>, 4> batchDests;
+        std::array<::Backend::BufferSlot, 4> slots;
         for (std::size_t i = 0; i < 4; ++i) {
-            batchDests[i] = batchDestBufs[i];
+            slots[i] = ::Backend::BufferSlot { batchDestBufs[i], 0 };
         }
-        std::array<std::size_t, 4> rxSizes { };
 
-        std::size_t rxCount = in.receiveBatch(batchDests, rxSizes, std::chrono::milliseconds(50));
+        std::size_t rxCount = in.receiveBatch(slots, std::chrono::milliseconds(50));
         REQUIRE(rxCount == batchMsgs.size());
         for (std::size_t i = 0; i < rxCount; ++i) {
-            std::string rec(reinterpret_cast<char*>(batchDestBufs[i].data()), rxSizes[i]);
+            std::string rec(reinterpret_cast<char*>(batchDestBufs[i].data()), slots[i].size);
             REQUIRE(rec == batchMsgs[i]);
         }
     }

@@ -133,36 +133,34 @@ void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_
 
 std::size_t SimInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
-    std::array<std::span<std::byte>, 1> dests { destination };
-    std::array<std::size_t, 1> sizes { 0 };
-    std::size_t drained = receiveBatch(dests, sizes, timeout);
-    return drained > 0 ? sizes[0] : 0;
+    std::array<::Backend::BufferSlot, 1> slots { ::Backend::BufferSlot { destination, 0 } };
+    std::size_t drained = receiveBatch(slots, timeout);
+    return drained > 0 ? slots[0].size : 0;
 }
 
 std::size_t SimInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
-    if (destinations.empty() || outSizes.size() < destinations.size() || m_serverFd < 0) {
+    if (slots.empty() || m_serverFd < 0) {
         return 0;
     }
 
     std::size_t count = 0;
     auto start = std::chrono::steady_clock::now();
 
-    while (count < destinations.size()) {
+    while (count < slots.size()) {
         ssize_t n = ::recvfrom(
             m_serverFd,
-            destinations[count].data(),
-            destinations[count].size(),
+            slots[count].buffer.data(),
+            slots[count].buffer.size(),
             0,
             nullptr,
             nullptr);
 
         if (n > 0) {
-            outSizes[count] = static_cast<std::size_t>(n);
-            emitEvent(destinations[count].subspan(0, n), "channel_received");
+            slots[count].size = static_cast<std::size_t>(n);
+            emitEvent(slots[count].filledSpan(), "channel_received");
             count++;
             continue;
         }

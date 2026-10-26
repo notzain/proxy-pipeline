@@ -27,28 +27,29 @@ std::optional<IInputChannel::Buffer> IInputChannel::receive(Timeout timeout)
 }
 
 std::size_t IInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<BufferSlot> slots,
     Timeout timeout)
 {
-    if (destinations.empty() || outSizes.size() < destinations.size()) {
+    if (slots.empty()) {
         return 0;
     }
 
-    std::size_t firstBytes = receiveInto(destinations[0], timeout);
+    std::size_t firstBytes = receiveInto(slots[0].buffer, timeout);
     if (firstBytes == 0) {
+        slots[0].size = 0;
         return 0;
     }
-    outSizes[0] = firstBytes;
+    slots[0].size = firstBytes;
     std::size_t count = 1;
 
     constexpr Timeout zeroTimeout { 0 };
-    while (count < destinations.size()) {
-        std::size_t nextBytes = receiveInto(destinations[count], zeroTimeout);
+    while (count < slots.size()) {
+        std::size_t nextBytes = receiveInto(slots[count].buffer, zeroTimeout);
         if (nextBytes == 0) {
+            slots[count].size = 0;
             break;
         }
-        outSizes[count] = nextBytes;
+        slots[count].size = nextBytes;
         ++count;
     }
     return count;

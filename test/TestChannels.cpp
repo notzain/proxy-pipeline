@@ -36,20 +36,19 @@ public:
     }
 
     std::size_t receiveBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<::Backend::BufferSlot> slots,
         Timeout) override
     {
         std::lock_guard lock(m_mutex);
-        if (destinations.empty() || outSizes.size() < destinations.size()) {
+        if (slots.empty()) {
             return 0;
         }
         std::size_t count = 0;
-        while (count < destinations.size() && m_index < m_messages.size()) {
+        while (count < slots.size() && m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
-            const auto bytesToCopy = std::min(destinations[count].size(), msg.size());
-            std::memcpy(destinations[count].data(), msg.data(), bytesToCopy);
-            outSizes[count] = bytesToCopy;
+            const auto bytesToCopy = std::min(slots[count].buffer.size(), msg.size());
+            std::memcpy(slots[count].buffer.data(), msg.data(), bytesToCopy);
+            slots[count].size = bytesToCopy;
             ++count;
         }
         return count;
@@ -340,21 +339,19 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
     }
 
     std::array<std::array<std::byte, 256>, numMessages> buffers;
-    std::array<std::span<std::byte>, numMessages> destSpans;
+    std::array<::Backend::BufferSlot, numMessages> slots;
     for (std::size_t i = 0; i < numMessages; ++i) {
-        destSpans[i] = std::span<std::byte>(buffers[i].data(), buffers[i].size());
+        slots[i] = ::Backend::BufferSlot { std::span<std::byte>(buffers[i].data(), buffers[i].size()), 0 };
     }
-    std::array<std::size_t, numMessages> outSizes { };
 
     std::size_t drained = inChannel.receiveBatch(
-        std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
-        outSizes,
+        slots,
         std::chrono::milliseconds(500));
 
     REQUIRE(drained == numMessages);
     for (std::size_t i = 0; i < numMessages; ++i) {
-        REQUIRE(outSizes[i] == sentMessages[i].size());
-        std::string receivedStr(reinterpret_cast<const char*>(buffers[i].data()), outSizes[i]);
+        REQUIRE(slots[i].size == sentMessages[i].size());
+        std::string receivedStr(reinterpret_cast<const char*>(buffers[i].data()), slots[i].size);
         CHECK(receivedStr == sentMessages[i]);
     }
 }
@@ -476,20 +473,18 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
     REQUIRE(sent == messages.size());
 
     std::array<std::array<std::byte, 64>, 4> recvBuffers;
-    std::array<std::span<std::byte>, 4> destSpans;
+    std::array<::Backend::BufferSlot, 4> slots;
     for (std::size_t i = 0; i < 4; ++i) {
-        destSpans[i] = std::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size());
+        slots[i] = ::Backend::BufferSlot { std::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size()), 0 };
     }
-    std::array<std::size_t, 4> outSizes { };
 
     std::size_t received = inChannel.receiveBatch(
-        std::span<const std::span<std::byte>>(destSpans.data(), destSpans.size()),
-        outSizes,
+        slots,
         std::chrono::milliseconds(500));
 
     REQUIRE(received == messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
-        std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), outSizes[i]);
+        std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), slots[i].size);
         CHECK(recStr == messages[i]);
     }
 }

@@ -98,17 +98,16 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 std::size_t ShmInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
-    if (!isValid() || destinations.empty() || outSizes.empty()) {
+    if (!isValid() || slots.empty()) {
         return 0;
     }
 
     // Fast-path: speculative burst dequeue
     bool wasFull = false;
-    std::size_t count = m_ring->popBatch(destinations, outSizes, &wasFull);
+    std::size_t count = m_ring->popBatch(slots, &wasFull);
     if (wasFull && count > 0) {
         ShmSignaler::notifyOne(m_ring->notFullSync());
     }
@@ -122,7 +121,7 @@ std::size_t ShmInputChannel::receiveBatch(
     // Adaptive spin for high-speed burst transitions
     for (int spin = 0; spin < 64; ++spin) {
         cpuPause();
-        count = m_ring->popBatch(destinations, outSizes, &wasFull);
+        count = m_ring->popBatch(slots, &wasFull);
         if (count > 0) {
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
@@ -140,7 +139,7 @@ std::size_t ShmInputChannel::receiveBatch(
         auto waitDuration = std::min(remaining, Timeout(10));
         ShmSignaler::wait(m_ring->notEmptySync(), waitDuration);
 
-        count = m_ring->popBatch(destinations, outSizes, &wasFull);
+        count = m_ring->popBatch(slots, &wasFull);
         if (count > 0) {
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());

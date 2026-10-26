@@ -21,8 +21,7 @@ public:
         SocketAddress* outSourceAddress = nullptr) override;
     std::size_t receiveBatch(
         int socketFd,
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<BufferSlot> slots,
         Timeout timeout,
         std::span<SocketAddress> outSourceAddresses = { }) override;
 

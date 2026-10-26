@@ -70,17 +70,16 @@ std::size_t PosixSocketPoller::receive(
 
 std::size_t PosixSocketPoller::receiveBatch(
     int socketFd,
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
-    if (socketFd < 0 || destinations.empty() || outSizes.size() < destinations.size()) {
+    if (socketFd < 0 || slots.empty()) {
         return 0;
     }
 
     std::size_t count = 0;
-    const std::size_t maxBatch = destinations.size();
+    const std::size_t maxBatch = slots.size();
 
 #if defined(__linux__)
     // True vectorized ingress: recvmmsg fetches up to 32 datagrams in a single kernel transition
@@ -93,8 +92,8 @@ std::size_t PosixSocketPoller::receiveBatch(
     std::memset(msgvec, 0, sizeof(msgvec[0]) * batchTarget);
 
     for (std::size_t i = 0; i < batchTarget; ++i) {
-        iov[i].iov_base = destinations[i].data();
-        iov[i].iov_len = destinations[i].size();
+        iov[i].iov_base = slots[i].buffer.data();
+        iov[i].iov_len = slots[i].buffer.size();
         msgvec[i].msg_hdr.msg_iov = &iov[i];
         msgvec[i].msg_hdr.msg_iovlen = 1;
         if (i < outSourceAddresses.size()) {
@@ -106,7 +105,7 @@ std::size_t PosixSocketPoller::receiveBatch(
     int received = ::recvmmsg(socketFd, msgvec, static_cast<unsigned int>(batchTarget), MSG_DONTWAIT, nullptr);
     if (received > 0) {
         for (int i = 0; i < received; ++i) {
-            outSizes[i] = msgvec[i].msg_len;
+            slots[i].size = msgvec[i].msg_len;
             if (i < outSourceAddresses.size()) {
                 outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
             }
@@ -123,8 +122,8 @@ std::size_t PosixSocketPoller::receiveBatch(
 
         ssize_t bytes = ::recvfrom(
             socketFd,
-            reinterpret_cast<char*>(destinations[count].data()),
-            destinations[count].size(),
+            reinterpret_cast<char*>(slots[count].buffer.data()),
+            slots[count].buffer.size(),
             MSG_DONTWAIT,
             saPtr,
             saLenPtr);
@@ -133,7 +132,7 @@ std::size_t PosixSocketPoller::receiveBatch(
             if (count < outSourceAddresses.size()) {
                 outSourceAddresses[count].setFromNative(&ss, addrLen);
             }
-            outSizes[count++] = static_cast<std::size_t>(bytes);
+            slots[count++].size = static_cast<std::size_t>(bytes);
         } else {
             break;
         }
@@ -160,8 +159,8 @@ std::size_t PosixSocketPoller::receiveBatch(
 
             ssize_t bytes = ::recvfrom(
                 socketFd,
-                reinterpret_cast<char*>(destinations[count].data()),
-                destinations[count].size(),
+                reinterpret_cast<char*>(slots[count].buffer.data()),
+                slots[count].buffer.size(),
                 MSG_DONTWAIT,
                 saPtr,
                 saLenPtr);
@@ -170,7 +169,7 @@ std::size_t PosixSocketPoller::receiveBatch(
                 if (count < outSourceAddresses.size()) {
                     outSourceAddresses[count].setFromNative(&ss, addrLen);
                 }
-                outSizes[count++] = static_cast<std::size_t>(bytes);
+                slots[count++].size = static_cast<std::size_t>(bytes);
             } else {
                 break;
             }

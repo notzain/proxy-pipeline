@@ -178,8 +178,7 @@ std::size_t UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 std::size_t UdpInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!m_socketFd) {
@@ -189,34 +188,32 @@ std::size_t UdpInputChannel::receiveBatch(
         }
     }
 
-    if (destinations.empty() || outSizes.size() < destinations.size() || !m_poller) {
+    if (slots.empty() || !m_poller) {
         return 0;
     }
 
     constexpr std::size_t MaxBatch = 32;
-    const std::size_t batchSize = std::min(destinations.size(), MaxBatch);
+    const std::size_t batchSize = std::min(slots.size(), MaxBatch);
 
-    std::array<std::span<std::byte>, MaxBatch> payloadDests;
-    std::array<std::size_t, MaxBatch> payloadSizes { };
+    std::array<::Backend::BufferSlot, MaxBatch> payloadSlots;
     std::array<Backend::SocketAddress, MaxBatch> clientAddrs;
 
     for (std::size_t i = 0; i < batchSize; ++i) {
-        if (destinations[i].size() <= EnvelopePreambleSize) {
+        if (slots[i].buffer.size() <= EnvelopePreambleSize) {
             return 0;
         }
-        payloadDests[i] = destinations[i].subspan(EnvelopePreambleSize);
+        payloadSlots[i] = ::Backend::BufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
     }
 
     std::size_t count = m_poller->receiveBatch(
         m_socketFd.get(),
-        std::span<const std::span<std::byte>>(payloadDests.data(), batchSize),
-        std::span<std::size_t>(payloadSizes.data(), batchSize),
+        std::span<::Backend::BufferSlot>(payloadSlots.data(), batchSize),
         timeout,
         std::span<Backend::SocketAddress>(clientAddrs.data(), batchSize));
 
     for (std::size_t i = 0; i < count; ++i) {
-        writeEnvelopePreamble(destinations[i], payloadSizes[i], clientAddrs[i], m_boundAddr);
-        outSizes[i] = EnvelopePreambleSize + payloadSizes[i];
+        writeEnvelopePreamble(slots[i].buffer, payloadSlots[i].size, clientAddrs[i], m_boundAddr);
+        slots[i].size = EnvelopePreambleSize + payloadSlots[i].size;
     }
 
     return count;

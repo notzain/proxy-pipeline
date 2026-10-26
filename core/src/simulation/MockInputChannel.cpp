@@ -91,11 +91,10 @@ std::size_t MockInputChannel::receiveInto(std::span<std::byte> destination, Time
 }
 
 std::size_t MockInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
-    if (destinations.empty() || outSizes.size() < destinations.size()) {
+    if (slots.empty()) {
         return 0;
     }
 
@@ -105,11 +104,11 @@ std::size_t MockInputChannel::receiveBatch(
     while (true) {
         {
             std::lock_guard lock(m_mutex);
-            while (drained < destinations.size() && !m_queue.empty() && isReady(m_queue.front())) {
+            while (drained < slots.size() && !m_queue.empty() && isReady(m_queue.front())) {
                 const auto& item = m_queue.front();
-                std::size_t copyLen = std::min(destinations[drained].size(), item.data.size());
-                std::memcpy(destinations[drained].data(), item.data.data(), copyLen);
-                outSizes[drained] = copyLen;
+                std::size_t copyLen = std::min(slots[drained].buffer.size(), item.data.size());
+                std::memcpy(slots[drained].buffer.data(), item.data.data(), copyLen);
+                slots[drained].size = copyLen;
                 drained++;
                 m_queue.pop_front();
             }

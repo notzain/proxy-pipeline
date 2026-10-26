@@ -87,8 +87,7 @@ std::size_t SocketInputChannel::receiveInto(std::span<std::byte> destination, Ti
 }
 
 std::size_t SocketInputChannel::receiveBatch(
-    std::span<const std::span<std::byte>> destinations,
-    std::span<std::size_t> outSizes,
+    std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {
@@ -99,7 +98,7 @@ std::size_t SocketInputChannel::receiveBatch(
     }
 
     if (m_poller) {
-        return m_poller->receiveBatch(m_socketFd, destinations, outSizes, timeout);
+        return m_poller->receiveBatch(m_socketFd, slots, timeout);
     }
 
     return 0;

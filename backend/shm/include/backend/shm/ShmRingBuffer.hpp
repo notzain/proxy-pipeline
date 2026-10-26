@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/BufferSlot.hpp"
 #include "backend/shm/sync/ShmSignaler.hpp"
 #include <atomic>
 #include <cstddef>
@@ -106,16 +107,14 @@ public:
     std::size_t popInto(std::span<std::byte> destination, bool* wasFull = nullptr);
 
     /**
-     * @brief Vectorized reception draining up to destinations.size() messages from the ring buffer.
+     * @brief Vectorized reception draining up to slots.size() messages from the ring buffer.
      *
-     * @param destinations Slices of destination memory to receive messages.
-     * @param outSizes Array receiving the byte length of each transferred message.
+     * @param slots Target buffer slots to populate with messages.
      * @param wasFull Optional out-parameter set to true if the ring buffer was completely full prior to this pop.
      * @return Number of messages successfully received.
      */
     std::size_t popBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<::Backend::BufferSlot> slots,
         bool* wasFull = nullptr);
 
     /**

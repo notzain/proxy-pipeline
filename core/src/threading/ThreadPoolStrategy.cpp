@@ -126,20 +126,18 @@ namespace {
         if (sharedQueue) {
             constexpr std::size_t maxBatch = 16;
             auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
-            std::array<std::span<std::byte>, maxBatch> destSpans;
+            std::array<::Backend::BufferSlot, maxBatch> batchSlots;
             for (std::size_t i = 0; i < maxBatch; ++i) {
-                destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
+                batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
             }
-            alignas(64) std::array<std::size_t, maxBatch> sizes { };
 
             const std::size_t received = namedChannel.channel->receiveBatch(
-                std::span<const std::span<std::byte>>(destSpans.data(), maxBatch),
-                std::span<std::size_t>(sizes.data(), maxBatch),
+                std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
                 timeout);
 
             for (std::size_t i = 0; i < received; ++i) {
                 MessageTask task;
-                const std::size_t msgSize = sizes[i];
+                const std::size_t msgSize = batchSlots[i].size;
                 if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
                     if (auto slice = bufferPool->acquire()) {
                         std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
@@ -162,19 +160,17 @@ namespace {
         bool hasOversized = false;
 
         auto fillSlots = [&](std::span<MessageTask> slots) -> std::size_t {
-            std::array<std::span<std::byte>, maxBatch> inPlaceSpans;
-            std::array<std::size_t, maxBatch> inPlaceSizes { };
+            std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
             const std::size_t n = std::min(slots.size(), maxBatch);
             for (std::size_t i = 0; i < n; ++i) {
-                inPlaceSpans[i] = slots[i].prepareInline(namedChannel.name);
+                inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(namedChannel.name), 0 };
             }
             const std::size_t nReceived = namedChannel.channel->receiveBatch(
-                std::span<const std::span<std::byte>>(inPlaceSpans.data(), n),
-                std::span<std::size_t>(inPlaceSizes.data(), n),
+                std::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
                 timeout);
             for (std::size_t i = 0; i < nReceived; ++i) {
-                slots[i].commitInline(inPlaceSizes[i]);
-                if (inPlaceSizes[i] == MessageTask::SmallBufferSize) {
+                slots[i].commitInline(inPlaceSlots[i].size);
+                if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
                     hasOversized = true;
                 }
             }
@@ -235,16 +231,13 @@ namespace {
         // Sized to maxBatch x 65,535 B to receive full datagram batches without truncation.
         // Allocated on the heap to prevent thread stack overflow, while avoiding recurring allocations in the poll loop.
         auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
-        std::array<std::span<std::byte>, maxBatch> destSpans;
+        std::array<::Backend::BufferSlot, maxBatch> batchSlots;
         for (std::size_t i = 0; i < maxBatch; ++i) {
-            destSpans[i] = std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size());
+            batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
-        // alignas(64): Aligns the size array to a cache line so batch size updates don't false-share with loop control state.
-        alignas(64) std::array<std::size_t, maxBatch> sizes { };
 
         const std::size_t received = namedChannel.channel->receiveBatch(
-            std::span<const std::span<std::byte>>(destSpans.data(), maxBatch),
-            std::span<std::size_t>(sizes.data(), maxBatch),
+            std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
             timeout);
 
         if (received == 0) {
@@ -254,12 +247,12 @@ namespace {
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            std::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), sizes[runStart]);
+            std::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                std::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), sizes[runEnd]);
+                std::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }
@@ -271,7 +264,7 @@ namespace {
                 runCount,
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
-                    const std::size_t pktSize = sizes[pktIdx];
+                    const std::size_t pktSize = batchSlots[pktIdx].size;
                     if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
                         if (auto slice = bufferPool->acquire()) {
                             std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);

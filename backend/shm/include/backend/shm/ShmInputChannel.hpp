@@ -25,8 +25,7 @@ public:
 
     std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
     std::size_t receiveBatch(
-        std::span<const std::span<std::byte>> destinations,
-        std::span<std::size_t> outSizes,
+        std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
     /**
