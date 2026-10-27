@@ -4,6 +4,7 @@
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
+#include "core/telemetry/MetricsRegistry.hpp"
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
@@ -23,12 +24,15 @@ namespace {
 
 class MockInputChannel : public Backend::IInputChannel {
 public:
-    MockInputChannel(std::string name, std::vector<std::string> messages)
+    MockInputChannel(std::string name, std::vector<std::string> messages, bool appendMalformed = false)
         : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
             auto env = Core::Message::MessageEnvelope::packRaw(std::as_bytes(std::span(msg.data(), msg.size())));
             m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
+        }
+        if (appendMalformed) {
+            m_messages.emplace_back("invalid envelope");
         }
     }
 
@@ -151,6 +155,33 @@ private:
     Core::Handler::HandlerRunner* m_runner { nullptr };
     Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
     int m_count { 0 };
+};
+
+class TelemetryAccountingHandler : public Core::Handler::IHandler {
+public:
+    explicit TelemetryAccountingHandler(::Backend::IBackend& backend)
+        : Core::Handler::IHandler(backend)
+    {
+    }
+
+    void setRunner(Core::Handler::HandlerRunner* runner)
+    {
+        m_runner = runner;
+    }
+
+    Core::Message::MessageResult onMessageReceived(
+        std::string_view,
+        const Core::Message::MessageView&) override
+    {
+        receivedCount.fetch_add(1, std::memory_order_relaxed);
+        m_runner->stop();
+        return Core::Message::Consumed { };
+    }
+
+    std::atomic<std::size_t> receivedCount { 0 };
+
+private:
+    Core::Handler::HandlerRunner* m_runner { nullptr };
 };
 
 class SerializedAccessHandler : public Core::Handler::IHandler {
@@ -403,6 +434,51 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 
     REQUIRE(handler.receivedMessages.size() == 2);
     REQUIRE(rawOutChan->sentMessages.size() == 2);
+}
+
+TEST_CASE("Ingress accounting is consistent across execution models", "[channel][core][telemetry]")
+{
+    auto& registry = Core::Telemetry::MetricsRegistry::instance();
+    auto& ingressCounter = registry.counter("messages_ingress_total");
+    auto& bytesCounter = registry.counter("bytes_ingress_total");
+    auto& droppedCounter = registry.counter("messages_dropped_total");
+    auto& latencyHistogram = registry.latencyHistogram("message_processing_duration_us");
+
+    const auto initialIngress = ingressCounter.value();
+    const auto initialBytes = bytesCounter.value();
+    const auto initialDropped = droppedCounter.value();
+    const auto initialLatency = latencyHistogram.count();
+
+    const std::string payload = "valid";
+    const auto expectedBytes = Core::Message::MessageEnvelope::packRaw(
+        std::as_bytes(std::span(payload.data(), payload.size())))
+                                   .size();
+
+    const std::array<Core::Handler::ExecutionModel, 3> models {
+        Core::Handler::SequentialModel { },
+        Core::Handler::DedicatedThreadModel { },
+        Core::Handler::ThreadPoolModel { .poolSize = 2 }
+    };
+
+    for (const auto& model : models) {
+        Core::Simulation::SimulationBackend backend;
+        TelemetryAccountingHandler handler(backend);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(model);
+        handler.setRunner(&runner);
+        handler.registerInputChannel(std::make_unique<MockInputChannel>(
+            "accounting", std::vector<std::string> { payload }, true));
+
+        runner.startAsync();
+        runner.wait();
+
+        REQUIRE(handler.receivedCount.load(std::memory_order_relaxed) == 1);
+    }
+
+    CHECK(ingressCounter.value() - initialIngress == models.size());
+    CHECK(bytesCounter.value() - initialBytes == expectedBytes * models.size());
+    CHECK(droppedCounter.value() - initialDropped == models.size());
+    CHECK(latencyHistogram.count() - initialLatency == models.size());
 }
 
 TEST_CASE("Parallel execution models can serialize handler callbacks and step", "[channel][core]")

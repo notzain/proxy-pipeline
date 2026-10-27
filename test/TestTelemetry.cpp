@@ -173,6 +173,6 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
     REQUIRE(handler.receivedCount.load() == 1);
 
     auto snap = reg.latencyHistogram("message_processing_duration_us").snapshot();
-    REQUIRE(snap.count >= 1);
+    REQUIRE(snap.count == 1);
     REQUIRE(snap.sum > 0.0);
 }

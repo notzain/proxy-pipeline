@@ -1,8 +1,8 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
+#include "MessageDispatcher.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/message/UdpMetadata.hpp"
-#include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -54,10 +54,6 @@ namespace {
         std::size_t& invalidEnvelopeCount,
         std::mutex* handlerMutex)
     {
-        static auto& s_msgCounter = Telemetry::MetricsRegistry::instance().counter("messages_ingress_total", "Total messages received at ingress");
-        static auto& s_bytesCounter = Telemetry::MetricsRegistry::instance().counter("bytes_ingress_total", "Total bytes received at ingress");
-        static auto& s_droppedCounter = Telemetry::MetricsRegistry::instance().counter("messages_dropped_total", "Total malformed messages dropped");
-
         const std::size_t drainCount = tasks.size();
         std::size_t batchStart = 0;
         while (batchStart < drainCount) {
@@ -66,50 +62,17 @@ namespace {
             while (batchEnd < drainCount && tasks[batchEnd].channelName() == chName) {
                 ++batchEnd;
             }
-            std::array<Core::Message::MessageView, 16> views;
-            std::size_t validViews = 0;
-            std::size_t batchBytes = 0;
             std::size_t spanCount = batchEnd - batchStart;
+            std::array<std::span<const std::byte>, 16> rawMessages;
             for (std::size_t k = 0; k < spanCount; ++k) {
-                auto payloadSpan = tasks[batchStart + k].payload();
-                auto optView = Core::Message::MessageView::from(payloadSpan);
-                if (optView) {
-                    views[validViews++] = *optView;
-                    batchBytes += payloadSpan.size();
-                } else {
-                    ++invalidEnvelopeCount;
-                    s_droppedCounter.increment();
-                    if (invalidEnvelopeCount <= 8 || (invalidEnvelopeCount & 1023) == 0) {
-                        Proxy::Log::warn("[ThreadPoolStrategy] Channel '{}' task received invalid envelope ({} bytes, total dropped: {}).",
-                            chName, payloadSpan.size(), invalidEnvelopeCount);
-                    }
-                }
+                rawMessages[k] = tasks[batchStart + k].payload();
             }
-            if (validViews > 0) {
-                static auto& s_latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
-                    "message_processing_duration_us", "Message transit and processing duration in microseconds");
-
-                uint64_t nowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                        .count());
-
-                for (std::size_t i = 0; i < validViews; ++i) {
-                    const auto& msg = views[i];
-                    if (msg.timestampNs() > 0 && nowNs >= msg.timestampNs()) {
-                        double durationUs = static_cast<double>(nowNs - msg.timestampNs()) / 1000.0;
-                        s_latencyHist.observe(durationUs);
-                    }
-                }
-
-                s_msgCounter.increment(validViews);
-                s_bytesCounter.increment(batchBytes);
-                if (handlerMutex) {
-                    std::lock_guard lock(*handlerMutex);
-                    handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
-                } else {
-                    handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
-                }
-            }
+            Detail::dispatchReceivedBatch(
+                handler,
+                chName,
+                std::span<const std::span<const std::byte>>(rawMessages.data(), spanCount),
+                invalidEnvelopeCount,
+                handlerMutex);
             batchStart = batchEnd;
         }
     }

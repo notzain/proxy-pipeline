@@ -4,14 +4,12 @@
 #include "backend/IOutputChannel.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/memory/Borrow.hpp"
-#include "core/memory/ObserverPtr.hpp"
 #include <chrono>
 #include <concepts>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <span>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -129,7 +127,8 @@ public:
      * @brief Dispatches a received batch of messages to the handler.
      *
      * Invokes the batch callback and reports each returned result alongside its corresponding
-     * message to the injected backend.
+     * message to the injected backend. This is the handler-level dispatch boundary for
+     * message-age telemetry; calling onMessageReceived() or onBatchReceived() directly bypasses it.
      *
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.

@@ -27,10 +27,10 @@ This roadmap captures architectural findings from a representative review of the
 
 ## 2. Dispatch and Observability
 
-- [ ] **Centralize message validation and ingress accounting**
+- [x] **Centralize message validation and ingress accounting**
   - **Issue**: The sequential, dedicated-thread, and thread-pool strategies duplicate envelope validation, malformed-message accounting, and batch dispatch. Latency is also observed in the strategy dispatch paths and again in `IHandler::processBatch()`, causing duplicate observations for these paths.
-  - **Action**: Give latency observation a single owner and extract shared validation/accounting/dispatch behavior. Keep strategy-specific code focused on scheduling, queueing, and buffer ownership.
-  - **Evidence**: `core/src/threading/SequentialStrategy.cpp`; `core/src/threading/DedicatedThreadStrategy.cpp`; `core/src/threading/ThreadPoolStrategy.cpp`; `core/src/handler/IHandler.cpp`.
+  - **Action**: Centralize envelope validation, malformed-message accounting, ingress message/byte counters, and batch dispatch. Keep message-age latency observation in `IHandler::processBatch()` as the single owner. Keep strategy-specific code focused on scheduling, queueing, and buffer ownership.
+  - **Evidence**: `core/src/threading/MessageDispatcher.cpp`; `core/src/threading/SequentialStrategy.cpp`; `core/src/threading/DedicatedThreadStrategy.cpp`; `core/src/threading/ThreadPoolStrategy.cpp`; `core/src/handler/IHandler.cpp`; `test/TestChannels.cpp`; `test/TestTelemetry.cpp`.
 
 ## 3. Backend Interface Evolution
 
