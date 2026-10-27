@@ -39,10 +39,10 @@ This roadmap captures architectural findings from a representative review of the
   - **Action**: Design a typed receive result that distinguishes data, timeout, closure, and error. Update channels and strategies together, and add tests for each result state.
   - **Evidence**: `backend/interface/include/backend/IInputChannel.hpp`; `core/src/net/UdpInputChannel.cpp`.
 
-- [ ] **Specify the message envelope wire format explicitly**
+- [x] **Specify the message envelope wire format explicitly**
   - **Issue**: The envelope is represented by a packed C++ struct and integer fields are copied in host byte order. This couples the wire representation to compiler/platform layout and endianness assumptions.
-  - **Action**: For a future protocol revision, define field byte order and encode/decode fields explicitly. Preserve compatibility through a deliberate versioning or migration plan, with tests using fixed wire-format byte sequences.
-  - **Evidence**: `core/include/core/message/EnvelopeHeader.hpp`; `core/src/message/MessageEnvelope.cpp`; `core/src/message/MessageView.cpp`.
+  - **Action**: Defined explicit big-endian (network byte order) integer serialization and deserialization in `Core::Message::Wire`, eliminating compiler struct packing and endianness dependencies. Decoupled `MessageView` from fixed headers so handlers consistently access `payload()`, enabling custom backend protocol framing. Added unit tests with golden byte sequence vectors.
+  - **Evidence**: `docs/message-envelope-wire-format.md`; `core/include/core/message/WireFormat.hpp`; `core/include/core/message/EnvelopeHeader.hpp`; `core/include/core/message/MessageView.hpp`; `core/src/message/MessageEnvelope.cpp`; `core/src/message/MessageView.cpp`; `test/TestUdpIngress.cpp`.
 
 ## Suggested Order
 

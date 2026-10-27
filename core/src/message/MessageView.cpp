@@ -1,4 +1,6 @@
 #include "core/message/MessageView.hpp"
+#include "core/message/EnvelopeHeader.hpp"
+#include "core/message/WireFormat.hpp"
 
 namespace Core::Message {
 
@@ -8,28 +10,55 @@ std::optional<MessageView> MessageView::from(std::span<const std::byte> buffer) 
         return std::nullopt;
     }
 
-    const auto* header = reinterpret_cast<const EnvelopeHeader*>(buffer.data());
-    if (header->magic != EnvelopeMagic || header->version != EnvelopeVersion) {
+    const std::byte* data = buffer.data();
+    std::uint16_t magic = Wire::readUint16Be(data);
+    std::uint8_t version = static_cast<std::uint8_t>(data[2]);
+    if (magic != EnvelopeMagic || version != EnvelopeVersion) {
         return std::nullopt;
     }
 
-    std::size_t requiredSize = sizeof(EnvelopeHeader) + header->metadataLength + header->payloadLength;
+    auto protocol = static_cast<ProtocolId>(data[3]);
+    std::uint16_t metadataLength = Wire::readUint16Be(data + 4);
+    std::uint32_t payloadLength = Wire::readUint32Be(data + 6);
+    std::uint64_t timestampNs = Wire::readUint64Be(data + 10);
+
+    std::size_t requiredSize = sizeof(EnvelopeHeader) + metadataLength + payloadLength;
     if (buffer.size() < requiredSize) {
         return std::nullopt;
     }
 
-    return MessageView(buffer.subspan(0, requiredSize), header);
+    const std::byte* base = data + sizeof(EnvelopeHeader);
+    std::span<const std::byte> metadataSpan(base, metadataLength);
+    std::span<const std::byte> payloadSpan(base + metadataLength, payloadLength);
+    std::span<const std::byte> frameSpan = buffer.subspan(0, requiredSize);
+
+    return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs);
 }
 
-MessageView::MessageView(std::span<const std::byte> rawBuffer, const EnvelopeHeader* header) noexcept
+MessageView::MessageView(std::span<const std::byte> rawBuffer,
+    std::span<const std::byte> metadata,
+    std::span<const std::byte> payload,
+    ProtocolId protocol,
+    std::uint64_t timestampNs) noexcept
     : m_rawBuffer(rawBuffer)
-    , m_header(header)
+    , m_metadata(metadata)
+    , m_payload(payload)
+    , m_timestampNs(timestampNs)
+    , m_protocol(protocol)
 {
-    if (m_header) {
-        const std::byte* base = m_rawBuffer.data() + sizeof(EnvelopeHeader);
-        m_metadata = std::span<const std::byte>(base, m_header->metadataLength);
-        m_payload = std::span<const std::byte>(base + m_header->metadataLength, m_header->payloadLength);
-    }
+}
+
+MessageView::MessageView(std::span<const std::byte> payload,
+    std::span<const std::byte> rawBuffer,
+    std::uint64_t timestampNs,
+    ProtocolId protocol,
+    std::span<const std::byte> metadata) noexcept
+    : m_rawBuffer(rawBuffer.empty() ? payload : rawBuffer)
+    , m_metadata(metadata)
+    , m_payload(payload)
+    , m_timestampNs(timestampNs)
+    , m_protocol(protocol)
+{
 }
 
 std::span<const std::byte> MessageView::rawBuffer() const noexcept
@@ -49,12 +78,12 @@ std::span<const std::byte> MessageView::metadata() const noexcept
 
 ProtocolId MessageView::protocol() const noexcept
 {
-    return m_header ? m_header->protocol : ProtocolId::Raw;
+    return m_protocol;
 }
 
 std::uint64_t MessageView::timestampNs() const noexcept
 {
-    return m_header ? m_header->timestampNs : 0;
+    return m_timestampNs;
 }
 
 } // namespace Core::Message

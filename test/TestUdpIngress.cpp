@@ -233,6 +233,60 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
         std::string_view parsedMutated(reinterpret_cast<const char*>(mutatedView->payload().data()), mutatedView->payload().size());
         CHECK(parsedMutated == updatedPayload);
     }
+
+    SECTION("Explicit wire format encoding and decoding with fixed byte sequence")
+    {
+        // 18 bytes header:
+        // magic: 0x50, 0x58
+        // version: 1
+        // protocol: 0 (Raw)
+        // metaLen: 0x00, 0x00
+        // payloadLen: 0x00, 0x00, 0x00, 0x05 (5 bytes)
+        // timestampNs: 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08
+        // payload: 'H', 'e', 'l', 'l', 'o'
+        const std::array<std::uint8_t, 23> goldenWire = {
+            0x50, 0x58, // Magic
+            0x01, // Version
+            0x00, // ProtocolId::Raw
+            0x00, 0x00, // Metadata length = 0
+            0x00, 0x00, 0x00, 0x05, // Payload length = 5
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // Timestamp
+            'H', 'e', 'l', 'l', 'o' // Payload
+        };
+
+        auto wireSpan = std::as_bytes(std::span(goldenWire));
+        auto view = Core::Message::MessageView::from(wireSpan);
+        REQUIRE(view.has_value());
+        CHECK(view->protocol() == Core::Message::ProtocolId::Raw);
+        CHECK(view->metadata().empty());
+        CHECK(view->payload().size() == 5);
+        CHECK(view->timestampNs() == 0x0102030405060708ULL);
+        std::string_view payloadStr(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
+        CHECK(payloadStr == "Hello");
+
+        // Verify packing produces identical bytes
+        std::vector<std::byte> packed = Core::Message::MessageEnvelope::packRaw(
+            view->payload(),
+            0x0102030405060708ULL);
+        REQUIRE(packed.size() == goldenWire.size());
+        for (std::size_t i = 0; i < packed.size(); ++i) {
+            CHECK(static_cast<std::uint8_t>(packed[i]) == goldenWire[i]);
+        }
+    }
+
+    SECTION("Custom backend protocol view exposes payload uniformly")
+    {
+        // Simulate a custom backend frame that doesn't use 0x5058 header
+        std::string customPayload = "custom_backend_message_data";
+        std::span<const std::byte> payload(reinterpret_cast<const std::byte*>(customPayload.data()), customPayload.size());
+
+        // Custom backend creates a MessageView directly wrapping its payload and raw frame
+        Core::Message::MessageView customView(payload);
+        CHECK(customView.payload().size() == customPayload.size());
+        CHECK(customView.rawBuffer().size() == customPayload.size());
+        std::string_view extracted(reinterpret_cast<const char*>(customView.payload().data()), customView.payload().size());
+        CHECK(extracted == customPayload);
+    }
 }
 
 TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelopes", "[net][udp]")

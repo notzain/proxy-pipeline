@@ -66,8 +66,8 @@ class PcapPacket:
         assert len(meta) == 48
 
         header = struct.pack(
-            "<HBBHIQ",
-            0x5058,  # magic 'PX'
+            "!HBBHIQ",
+            0x5058,  # magic 'PX' (0x50, 0x58 in network byte order)
             1,  # version
             1,  # protocol = Udp
             len(meta),

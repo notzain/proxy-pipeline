@@ -1,4 +1,5 @@
 #include "core/message/MessageEnvelope.hpp"
+#include "core/message/WireFormat.hpp"
 #include <chrono>
 #include <cstring>
 
@@ -28,20 +29,21 @@ std::size_t MessageEnvelope::packInto(
         return 0;
     }
 
-    EnvelopeHeader header { };
-    header.magic = EnvelopeMagic;
-    header.version = EnvelopeVersion;
-    header.protocol = protocol;
-    header.metadataLength = static_cast<std::uint16_t>(metadata.size());
-    header.payloadLength = static_cast<std::uint32_t>(payload.size());
-    header.timestampNs = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
+    std::byte* dst = destination.data();
+    Wire::writeUint16Be(dst, EnvelopeMagic);
+    dst[2] = static_cast<std::byte>(EnvelopeVersion);
+    dst[3] = static_cast<std::byte>(protocol);
+    Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
+    Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
 
-    std::memcpy(destination.data(), &header, sizeof(EnvelopeHeader));
+    std::uint64_t ts = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
+    Wire::writeUint64Be(dst + 10, ts);
+
     if (!metadata.empty()) {
-        std::memcpy(destination.data() + sizeof(EnvelopeHeader), metadata.data(), metadata.size());
+        std::memcpy(dst + sizeof(EnvelopeHeader), metadata.data(), metadata.size());
     }
     if (!payload.empty()) {
-        std::memcpy(destination.data() + sizeof(EnvelopeHeader) + metadata.size(), payload.data(), payload.size());
+        std::memcpy(dst + sizeof(EnvelopeHeader) + metadata.size(), payload.data(), payload.size());
     }
 
     return totalSize;
