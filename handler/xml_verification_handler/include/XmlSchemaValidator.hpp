@@ -1,8 +1,8 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <filesystem>
-#include <span>
 
 // Forward declarations for libxml2 types to keep concrete C headers out of the class declaration
 typedef struct _xmlSchema* xmlSchemaPtr;
@@ -46,7 +46,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return true if valid according to schema rules, false if invalid or malformed.
      */
-    [[nodiscard]] bool validate(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] bool validate(Common::Compat::span<const std::byte> xmlData) const;
 
 private:
     xmlSchemaPtr m_schema { nullptr };

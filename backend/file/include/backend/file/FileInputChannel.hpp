@@ -15,7 +15,7 @@ public:
     FileInputChannel(std::string name, std::filesystem::path watchDir);
     ~FileInputChannel() override = default;
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
 
 private:
     std::filesystem::path m_watchDir;

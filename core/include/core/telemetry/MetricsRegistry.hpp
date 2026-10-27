@@ -1,10 +1,10 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/telemetry/Counter.hpp"
 #include "core/telemetry/Gauge.hpp"
 #include "core/telemetry/Histogram.hpp"
 #include <mutex>
-#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -39,7 +39,7 @@ public:
     /**
      * @brief Gets or registers a Histogram with custom bucket bounds.
      */
-    Histogram& histogram(std::string name, std::string help, std::span<const double> bucketBounds);
+    Histogram& histogram(std::string name, std::string help, Common::Compat::span<const double> bucketBounds);
 
     /**
      * @brief Gets or registers a default latency Histogram.

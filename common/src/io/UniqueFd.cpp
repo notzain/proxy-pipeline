@@ -1,9 +1,7 @@
-#include "core/io/UniqueFd.hpp"
-
+#include "common/io/UniqueFd.hpp"
 #include <unistd.h>
-#include <utility>
 
-namespace Core::Io {
+namespace Common::Io {
 
 UniqueFd::UniqueFd(int fd) noexcept
     : m_fd(fd)
@@ -45,7 +43,7 @@ UniqueFd::operator bool() const noexcept
 
 int UniqueFd::release() noexcept
 {
-    const int fd = m_fd;
+    int fd = m_fd;
     m_fd = -1;
     return fd;
 }
@@ -73,5 +71,4 @@ bool UniqueFd::operator!=(const UniqueFd& other) const noexcept
     return m_fd != other.m_fd;
 }
 
-} // namespace Core::Io
-
+} // namespace Common::Io

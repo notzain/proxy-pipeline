@@ -5,8 +5,8 @@ if(NOT TARGET backend-interface::backend-interface)
   find_package(backend-interface REQUIRED)
 endif()
 
-if(NOT TARGET core)
-  find_package(core REQUIRED)
+if(NOT TARGET common)
+  find_package(common REQUIRED)
 endif()
 
 if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
@@ -32,11 +32,11 @@ target_include_directories(backend-inproc
 target_link_libraries(backend-inproc
     PUBLIC
         backend-interface::backend-interface
-        core
+        common
         proxylog::proxylog
 )
 
-target_compile_features(backend-inproc PUBLIC cxx_std_20)
+target_compile_features(backend-inproc PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET backend-inproc::backend-inproc)
   add_library(backend-inproc::backend-inproc ALIAS backend-inproc)

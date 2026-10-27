@@ -47,7 +47,7 @@ void ShmInputChannel::reset()
     }
 }
 
-BytesResult ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult ShmInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     if (!isValid()) {
         return BytesResult::failure(::Backend::receiveClosed());
@@ -103,7 +103,7 @@ BytesResult ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 BatchResult ShmInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!isValid() || slots.empty()) {

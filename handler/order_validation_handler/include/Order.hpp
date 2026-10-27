@@ -14,7 +14,14 @@ struct Order {
     std::string item;
     std::uint32_t quantity { 0 };
 
-    bool operator==(const Order& other) const = default;
+    bool operator==(const Order& other) const noexcept
+    {
+        return customer == other.customer && item == other.item && quantity == other.quantity;
+    }
+    bool operator!=(const Order& other) const noexcept
+    {
+        return !(*this == other);
+    }
 };
 
 /**
@@ -25,7 +32,14 @@ struct OrderView {
     std::string_view item;
     std::uint32_t quantity { 0 };
 
-    bool operator==(const OrderView& other) const = default;
+    bool operator==(const OrderView& other) const noexcept
+    {
+        return customer == other.customer && item == other.item && quantity == other.quantity;
+    }
+    bool operator!=(const OrderView& other) const noexcept
+    {
+        return !(*this == other);
+    }
 };
 
 } // namespace Proxy::Model

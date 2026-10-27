@@ -1,16 +1,17 @@
 #pragma once
 
+#include "common/compat/StopToken.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <stop_token>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
-namespace Core::Queue {
+namespace Common::Queue {
 
 /**
  * @brief High-performance lock-free Multi-Producer Multi-Consumer (MPMC) bounded ring buffer.
@@ -25,9 +26,11 @@ namespace Core::Queue {
  * @tparam T Element type stored in the queue. Must be default constructible and movable.
  * @tparam Capacity Power-of-two queue capacity (>= 2).
  */
-template <typename T, std::size_t Capacity = 4096>
-    requires((Capacity & (Capacity - 1)) == 0 && Capacity >= 2)
-class MpmcQueue {
+template <typename T, std::size_t Capacity = 4096, typename = void>
+class MpmcQueue;
+
+template <typename T, std::size_t Capacity>
+class MpmcQueue<T, Capacity, std::enable_if_t<((Capacity & (Capacity - 1)) == 0 && Capacity >= 2)>> {
 public:
     static constexpr std::size_t BufferCapacity = Capacity;
     static constexpr std::size_t Mask = Capacity - 1;
@@ -88,7 +91,7 @@ public:
      * @return true if successfully pushed, false if stop was requested.
      */
     template <typename U>
-    bool push(U&& data, std::stop_token stoken = { })
+    bool push(U&& data, Common::Compat::stop_token stoken = { })
     {
         std::size_t pos = m_tail.load(std::memory_order_relaxed);
         while (!stoken.stop_requested() && !m_stopped.load(std::memory_order_relaxed)) {
@@ -147,7 +150,7 @@ public:
      * @param stoken Cooperative cancellation token.
      * @return true if popped, false if stop was requested.
      */
-    bool pop(T& out, std::stop_token stoken = { })
+    bool pop(T& out, Common::Compat::stop_token stoken = { })
     {
         std::size_t pos = m_head.load(std::memory_order_relaxed);
         while (!stoken.stop_requested() && !m_stopped.load(std::memory_order_relaxed)) {
@@ -229,4 +232,4 @@ private:
     alignas(64) std::array<Cell, Capacity> m_cells;
 };
 
-} // namespace Core::Queue
+} // namespace Common::Queue

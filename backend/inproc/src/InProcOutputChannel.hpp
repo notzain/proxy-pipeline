@@ -15,12 +15,11 @@ public:
     InProcOutputChannel(std::string name, std::shared_ptr<InProcRing> ring);
     ~InProcOutputChannel() override;
 
-    bool send(std::span<const std::byte> message) override;
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
+    bool send(Common::Compat::span<const std::byte> message) override;
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 
 private:
     std::shared_ptr<InProcRing> m_ring;
 };
 
 } // namespace Proxy::Backend::InProc
-

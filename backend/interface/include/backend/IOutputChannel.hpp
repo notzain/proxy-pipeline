@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include <cstddef>
-#include <span>
 #include <string>
 #include <string_view>
 
@@ -33,7 +33,7 @@ public:
      * @param message View of the byte buffer to transmit.
      * @return true If the message was successfully dispatched/written, false otherwise.
      */
-    virtual bool send(std::span<const std::byte> message) = 0;
+    virtual bool send(Common::Compat::span<const std::byte> message) = 0;
 
     /**
      * @brief Transmits a batch of messages through this output channel.
@@ -45,7 +45,7 @@ public:
      * @param messages View of message byte spans to transmit.
      * @return std::size_t Number of messages successfully dispatched.
      */
-    virtual std::size_t sendBatch(std::span<const std::span<const std::byte>> messages);
+    virtual std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages);
 
 protected:
     IOutputChannel(IOutputChannel&&) noexcept = default;

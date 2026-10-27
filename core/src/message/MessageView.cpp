@@ -4,7 +4,7 @@
 
 namespace Core::Message {
 
-std::optional<MessageView> MessageView::from(std::span<const std::byte> buffer) noexcept
+std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byte> buffer) noexcept
 {
     if (buffer.size() < sizeof(EnvelopeHeader)) {
         return std::nullopt;
@@ -28,16 +28,16 @@ std::optional<MessageView> MessageView::from(std::span<const std::byte> buffer) 
     }
 
     const std::byte* base = data + sizeof(EnvelopeHeader);
-    std::span<const std::byte> metadataSpan(base, metadataLength);
-    std::span<const std::byte> payloadSpan(base + metadataLength, payloadLength);
-    std::span<const std::byte> frameSpan = buffer.subspan(0, requiredSize);
+    Common::Compat::span<const std::byte> metadataSpan(base, metadataLength);
+    Common::Compat::span<const std::byte> payloadSpan(base + metadataLength, payloadLength);
+    Common::Compat::span<const std::byte> frameSpan = buffer.subspan(0, requiredSize);
 
     return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs);
 }
 
-MessageView::MessageView(std::span<const std::byte> rawBuffer,
-    std::span<const std::byte> metadata,
-    std::span<const std::byte> payload,
+MessageView::MessageView(Common::Compat::span<const std::byte> rawBuffer,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
     ProtocolId protocol,
     std::uint64_t timestampNs) noexcept
     : m_rawBuffer(rawBuffer)
@@ -48,11 +48,11 @@ MessageView::MessageView(std::span<const std::byte> rawBuffer,
 {
 }
 
-MessageView::MessageView(std::span<const std::byte> payload,
-    std::span<const std::byte> rawBuffer,
+MessageView::MessageView(Common::Compat::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> rawBuffer,
     std::uint64_t timestampNs,
     ProtocolId protocol,
-    std::span<const std::byte> metadata) noexcept
+    Common::Compat::span<const std::byte> metadata) noexcept
     : m_rawBuffer(rawBuffer.empty() ? payload : rawBuffer)
     , m_metadata(metadata)
     , m_payload(payload)
@@ -61,17 +61,17 @@ MessageView::MessageView(std::span<const std::byte> payload,
 {
 }
 
-std::span<const std::byte> MessageView::rawBuffer() const noexcept
+Common::Compat::span<const std::byte> MessageView::rawBuffer() const noexcept
 {
     return m_rawBuffer;
 }
 
-std::span<const std::byte> MessageView::payload() const noexcept
+Common::Compat::span<const std::byte> MessageView::payload() const noexcept
 {
     return m_payload;
 }
 
-std::span<const std::byte> MessageView::metadata() const noexcept
+Common::Compat::span<const std::byte> MessageView::metadata() const noexcept
 {
     return m_metadata;
 }

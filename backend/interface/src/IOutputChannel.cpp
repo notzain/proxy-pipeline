@@ -13,7 +13,7 @@ std::string_view IOutputChannel::name() const noexcept
     return m_name;
 }
 
-std::size_t IOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t IOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     std::size_t count = 0;
     for (const auto& msg : messages) {

@@ -35,7 +35,7 @@ target_link_libraries(backend-sim
         fmt::fmt
 )
 
-target_compile_features(backend-sim PUBLIC cxx_std_20)
+target_compile_features(backend-sim PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET backend-sim::backend-sim)
   add_library(backend-sim::backend-sim ALIAS backend-sim)

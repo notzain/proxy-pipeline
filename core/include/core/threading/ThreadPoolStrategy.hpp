@@ -1,8 +1,9 @@
 #pragma once
 
-#include "core/memory/BufferPool.hpp"
-#include "core/queue/MpmcQueue.hpp"
-#include "core/queue/SpscQueue.hpp"
+#include "common/compat/Jthread.hpp"
+#include "common/memory/BufferPool.hpp"
+#include "common/queue/MpmcQueue.hpp"
+#include "common/queue/SpscQueue.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
 #include "core/threading/MessageTask.hpp"
 #include <atomic>
@@ -59,17 +60,17 @@ private:
     std::mutex m_handlerMutex;
     std::atomic<bool> m_running { false };
 
-    using QueueType = Queue::SpscQueue<MessageTask, 1024>;
+    using QueueType = Common::Queue::SpscQueue<MessageTask, 1024>;
     std::vector<std::unique_ptr<QueueType>> m_workerQueues;
     std::atomic<std::size_t> m_nextWorker { 0 };
 
-    using SharedQueueType = Queue::MpmcQueue<MessageTask, 4096>;
+    using SharedQueueType = Common::Queue::MpmcQueue<MessageTask, 4096>;
     std::unique_ptr<SharedQueueType> m_sharedQueue;
-    std::shared_ptr<Memory::BufferPool> m_bufferPool;
+    std::shared_ptr<Common::Memory::BufferPool> m_bufferPool;
 
-    std::vector<std::jthread> m_channelThreads;
-    std::vector<std::jthread> m_workerThreads;
-    std::jthread m_stepThread;
+    std::vector<Common::Compat::jthread> m_channelThreads;
+    std::vector<Common::Compat::jthread> m_workerThreads;
+    Common::Compat::jthread m_stepThread;
 };
 
 } // namespace Core::Threading

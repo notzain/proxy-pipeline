@@ -2,9 +2,9 @@
 
 #include "backend/BufferSlot.hpp"
 #include "backend/ReceiveResult.hpp"
+#include "common/compat/Span.hpp"
 #include <chrono>
 #include <cstddef>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,7 +43,7 @@ public:
      * @param timeout Maximum duration to wait for data.
      * @return A typed result distinguishing data, timeout, closure, and channel errors.
      */
-    virtual BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) = 0;
+    virtual BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) = 0;
 
     /**
      * @brief Polls the input channel for the next available message, returning an allocated buffer.
@@ -65,7 +65,7 @@ public:
      * @return A typed result containing the number of datagrams or the reason no data was received.
      */
     virtual BatchResult receiveBatch(
-        std::span<BufferSlot> slots,
+        Common::Compat::span<BufferSlot> slots,
         Timeout timeout);
 
 protected:

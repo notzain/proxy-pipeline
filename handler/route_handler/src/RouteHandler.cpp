@@ -1,7 +1,7 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/ProtocolId.hpp"
 #include "log/Log.hpp"
 #include <charconv>
@@ -43,7 +43,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
     if (!ruleNames.empty()) {
         std::string_view namesView(ruleNames);
         std::size_t start = 0;
-        std::unordered_map<std::string, Core::Memory::ObserverPtr<::Backend::IOutputChannel>> createdChannels;
+        std::unordered_map<std::string, Common::Memory::ObserverPtr<::Backend::IOutputChannel>> createdChannels;
 
         while (start < namesView.size()) {
             auto pos = namesView.find(',', start);
@@ -80,7 +80,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 
             // Create target channel if not yet created
             auto it = createdChannels.find(target);
-            Core::Memory::ObserverPtr<::Backend::IOutputChannel> outPtr;
+            Common::Memory::ObserverPtr<::Backend::IOutputChannel> outPtr;
             if (it == createdChannels.end()) {
                 auto outChan = backend().createOutputChannel(target, config);
                 if (outChan) {
@@ -107,7 +107,7 @@ void RouteHandler::addRule(RouteRule rule)
     m_rules.push_back(std::move(rule));
 }
 
-void RouteHandler::setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
+void RouteHandler::setDefaultChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
 {
     m_defaultOutputChannel = channel;
 }
@@ -143,20 +143,20 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
 
 void RouteHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     if (messages.empty())
         return;
 
     // Fast path: if there is only 1 rule or all match default, optimize.
     // Otherwise bucket messages by target channel.
-    std::unordered_map<Core::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<std::span<const std::byte>>> buckets;
+    std::unordered_map<Common::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<Common::Compat::span<const std::byte>>> buckets;
     const auto count = std::min(messages.size(), outResults.size());
 
     for (std::size_t i = 0; i < count; ++i) {
         const auto& msg = messages[i];
-        Core::Memory::ObserverPtr<::Backend::IOutputChannel> destination;
+        Common::Memory::ObserverPtr<::Backend::IOutputChannel> destination;
         std::string_view destinationName;
         for (const auto& rule : m_rules) {
             if (rule.matches(msg)) {
@@ -189,7 +189,7 @@ void RouteHandler::onBatchReceived(
 
     for (auto& [chan, rawVec] : buckets) {
         if (chan && !rawVec.empty()) {
-            std::span<const std::span<const std::byte>> batchSpan(rawVec.data(), rawVec.size());
+            Common::Compat::span<const Common::Compat::span<const std::byte>> batchSpan(rawVec.data(), rawVec.size());
             chan->sendBatch(batchSpan);
         }
     }

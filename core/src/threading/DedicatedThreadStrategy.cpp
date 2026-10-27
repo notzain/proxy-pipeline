@@ -1,10 +1,10 @@
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "MessageDispatcher.hpp"
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
 #include <chrono>
-#include <span>
 
 namespace Core::Threading {
 
@@ -29,7 +29,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
 
     handler.forEachInputChannel([this, &handler, channelTimeout](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
-        m_workerThreads.emplace_back([this, &handler, channelName = channel.name(), channelPtr, channelTimeout](std::stop_token stoken) {
+        m_workerThreads.emplace_back([this, &handler, channelName = channel.name(), channelPtr, channelTimeout](Common::Compat::stop_token stoken) {
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", channelName);
 
             // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
@@ -38,25 +38,25 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
             auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
             std::array<::Backend::BufferSlot, 16> batchSlots;
             for (std::size_t i = 0; i < 16; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+                batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
             }
-            std::array<std::span<const std::byte>, 16> rawMessages;
+            std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
             std::size_t invalidEnvelopeCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 auto result = channelPtr->receiveBatch(
-                    std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
+                    Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        rawMessages[i] = std::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
+                        rawMessages[i] = Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
                         channelName,
-                        std::span<const std::span<const std::byte>>(rawMessages.data(), batchCount),
+                        Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), batchCount),
                         invalidEnvelopeCount,
                         m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }
@@ -76,7 +76,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         });
     });
 
-    m_workerThreads.emplace_back([this, &handler](std::stop_token stoken) {
+    m_workerThreads.emplace_back([this, &handler](Common::Compat::stop_token stoken) {
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
             if (m_serializeHandlerAccess) {
                 std::lock_guard lock(m_handlerMutex);

@@ -1,12 +1,12 @@
-#include "core/memory/SmallSpanBuffer.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <span>
 #include <vector>
 
-TEST_CASE("Core::Memory::SmallSpanBuffer inline stack capacity", "[memory][core]")
+TEST_CASE("Common::Memory::SmallSpanBuffer inline stack capacity", "[memory][core]")
 {
-    Core::Memory::SmallSpanBuffer<int, 4> buffer(4);
+    Common::Memory::SmallSpanBuffer<int, 4> buffer(4);
     CHECK(buffer.capacity() == 4);
 
     for (int i = 0; i < 4; ++i) {
@@ -21,9 +21,9 @@ TEST_CASE("Core::Memory::SmallSpanBuffer inline stack capacity", "[memory][core]
     CHECK(span[3] == 30);
 }
 
-TEST_CASE("Core::Memory::SmallSpanBuffer heap spillover", "[memory][core]")
+TEST_CASE("Common::Memory::SmallSpanBuffer heap spillover", "[memory][core]")
 {
-    Core::Memory::SmallSpanBuffer<int, 4> buffer(10);
+    Common::Memory::SmallSpanBuffer<int, 4> buffer(10);
     CHECK(buffer.capacity() == 10);
 
     for (int i = 0; i < 10; ++i) {

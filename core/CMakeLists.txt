@@ -27,13 +27,14 @@ target_include_directories(core
 target_link_libraries(core
     PUBLIC
         backend-interface
+        common
         proxylog::proxylog
         fmt::fmt
         nlohmann_json::nlohmann_json
         pugixml::pugixml
 )
 
-target_compile_features(core PUBLIC cxx_std_20)
+target_compile_features(core PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 include(GNUInstallDirs)
 install(TARGETS core

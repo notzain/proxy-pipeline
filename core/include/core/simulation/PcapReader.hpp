@@ -1,11 +1,11 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/simulation/PcapFormat.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <optional>
-#include <span>
 #include <string>
 #include <vector>
 

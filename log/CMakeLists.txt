@@ -31,7 +31,7 @@ if(APPLE)
     target_compile_definitions(proxylog PUBLIC SPDLOG_NO_TLS)
 endif()
 
-target_compile_features(proxylog PUBLIC cxx_std_20)
+target_compile_features(proxylog PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET proxylog::proxylog)
   add_library(proxylog::proxylog ALIAS proxylog)

@@ -1,5 +1,6 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "MessageDispatcher.hpp"
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/message/UdpMetadata.hpp"
@@ -9,7 +10,6 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
-#include <span>
 
 namespace Core::Threading {
 
@@ -17,7 +17,7 @@ namespace {
 
     std::size_t computeFlowWorkerIndex(
         std::size_t channelIdx,
-        std::span<const std::byte> rawPacket,
+        Common::Compat::span<const std::byte> rawPacket,
         std::size_t numWorkers) noexcept
     {
         if (numWorkers <= 1) {
@@ -48,7 +48,7 @@ namespace {
      */
     void drainWorkerTasks(
         Handler::IHandler& handler,
-        std::span<const MessageTask> tasks,
+        Common::Compat::span<const MessageTask> tasks,
         std::size_t& invalidEnvelopeCount,
         std::mutex* handlerMutex)
     {
@@ -61,22 +61,22 @@ namespace {
                 ++batchEnd;
             }
             std::size_t spanCount = batchEnd - batchStart;
-            std::array<std::span<const std::byte>, 16> rawMessages;
+            std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
             for (std::size_t k = 0; k < spanCount; ++k) {
                 rawMessages[k] = tasks[batchStart + k].payload();
             }
             Detail::dispatchReceivedBatch(
                 handler,
                 chName,
-                std::span<const std::span<const std::byte>>(rawMessages.data(), spanCount),
+                Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), spanCount),
                 invalidEnvelopeCount,
                 handlerMutex);
             batchStart = batchEnd;
         }
     }
 
-    using QueueType = Core::Queue::SpscQueue<MessageTask, 1024>;
-    using SharedQueueType = Core::Queue::MpmcQueue<MessageTask, 4096>;
+    using QueueType = Common::Queue::SpscQueue<MessageTask, 1024>;
+    using SharedQueueType = Common::Queue::MpmcQueue<MessageTask, 4096>;
 
     bool channelFailed(std::string_view channelName, const ::Backend::ReceiveError& error)
     {
@@ -106,22 +106,22 @@ namespace {
         std::string_view channelName,
         ::Backend::IInputChannel& channel,
         SharedQueueType* sharedQueue,
-        std::span<const std::unique_ptr<QueueType>> queues,
+        Common::Compat::span<const std::unique_ptr<QueueType>> queues,
         std::atomic<std::size_t>& nextWorker,
-        const std::shared_ptr<Memory::BufferPool>& bufferPool,
+        const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
         Handler::IHandler::Timeout timeout,
-        std::stop_token stoken)
+        Common::Compat::stop_token stoken)
     {
         if (sharedQueue) {
             constexpr std::size_t maxBatch = 16;
             auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
             std::array<::Backend::BufferSlot, maxBatch> batchSlots;
             for (std::size_t i = 0; i < maxBatch; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+                batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
             }
 
             auto result = channel.receiveBatch(
-                std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
+                Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
                 timeout);
             const bool failed = channelFailed(channelName, result);
             const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
@@ -137,10 +137,10 @@ namespace {
                         std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
                         task.assignSlice(channelName, std::move(*slice), msgSize);
                     } else {
-                        task.assign(channelName, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                        task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                     }
                 } else {
-                    task.assign(channelName, std::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                    task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                 }
 
                 if (!sharedQueue->tryPush(std::move(task))) {
@@ -154,14 +154,14 @@ namespace {
         bool hasOversized = false;
         bool receiveFailed = false;
 
-        auto fillSlots = [&](std::span<MessageTask> slots) -> std::size_t {
+        auto fillSlots = [&](Common::Compat::span<MessageTask> slots) -> std::size_t {
             std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
             const std::size_t n = std::min(slots.size(), maxBatch);
             for (std::size_t i = 0; i < n; ++i) {
                 inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
             }
             auto result = channel.receiveBatch(
-                std::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
+                Common::Compat::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
                 timeout);
             receiveFailed = channelFailed(channelName, result) || receiveFailed;
             const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
@@ -214,7 +214,7 @@ namespace {
                                 return;
                             }
                         }
-                        slot.assign(channelName, std::span<const std::byte>(jumboBuf.data(), jumboBytes));
+                        slot.assign(channelName, Common::Compat::span<const std::byte>(jumboBuf.data(), jumboBytes));
                     },
                     stoken);
             }
@@ -229,10 +229,10 @@ namespace {
         std::string_view channelName,
         ::Backend::IInputChannel& channel,
         std::size_t channelIdx,
-        std::span<const std::unique_ptr<QueueType>> queues,
-        const std::shared_ptr<Memory::BufferPool>& bufferPool,
+        Common::Compat::span<const std::unique_ptr<QueueType>> queues,
+        const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
         Handler::IHandler::Timeout timeout,
-        std::stop_token stoken)
+        Common::Compat::stop_token stoken)
     {
         constexpr std::size_t maxBatch = 16;
 
@@ -242,11 +242,11 @@ namespace {
         auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
         std::array<::Backend::BufferSlot, maxBatch> batchSlots;
         for (std::size_t i = 0; i < maxBatch; ++i) {
-            batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+            batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
 
         auto result = channel.receiveBatch(
-            std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
+            Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
             timeout);
 
         const bool failed = channelFailed(channelName, result);
@@ -261,12 +261,12 @@ namespace {
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            std::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
+            Common::Compat::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                std::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
+                Common::Compat::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }
@@ -286,7 +286,7 @@ namespace {
                             return;
                         }
                     }
-                    slot.assign(channelName, std::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
+                    slot.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
                 },
                 stoken);
 
@@ -317,7 +317,7 @@ ThreadPoolStrategy::ThreadPoolStrategy(
     if (!m_strictFifo) {
         m_sharedQueue = std::make_unique<SharedQueueType>();
     }
-    m_bufferPool = std::make_shared<Memory::BufferPool>(65536, 256);
+    m_bufferPool = std::make_shared<Common::Memory::BufferPool>(65536, 256);
 }
 
 void ThreadPoolStrategy::setStrictFifo(bool enable) noexcept
@@ -350,7 +350,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
 
     // 1. Launch pool worker threads with partitioned queues
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
-        m_workerThreads.emplace_back([this, &handler, i](std::stop_token stoken) {
+        m_workerThreads.emplace_back([this, &handler, i](Common::Compat::stop_token stoken) {
             auto& myQueue = *m_workerQueues[i];
             std::size_t invalidEnvelopeCount = 0;
 
@@ -364,7 +364,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
                     if (count > 0) {
                         drainWorkerTasks(
                             handler,
-                            std::span<const MessageTask>(batchTasks.data(), count),
+                            Common::Compat::span<const MessageTask>(batchTasks.data(), count),
                             invalidEnvelopeCount,
                             m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                     } else {
@@ -377,7 +377,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
             while (!stoken.stop_requested()) {
                 myQueue.drainContiguous(
                     16,
-                    [this, &handler, &invalidEnvelopeCount](std::span<const MessageTask> tasks) {
+                    [this, &handler, &invalidEnvelopeCount](Common::Compat::span<const MessageTask> tasks) {
                         drainWorkerTasks(
                             handler,
                             tasks,
@@ -395,7 +395,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     handler.forEachInputChannel([this, channelTimeout, enforceFifo, &channelIdx](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
         const auto currentChannelIdx = channelIdx++;
-        m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](std::stop_token stoken) {
+        m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](Common::Compat::stop_token stoken) {
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!enforceFifo) {
                     if (!pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken)) {
@@ -411,7 +411,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     });
 
     // 3. Launch background periodic step() thread
-    m_stepThread = std::jthread([this, &handler](std::stop_token stoken) {
+    m_stepThread = Common::Compat::jthread([this, &handler](Common::Compat::stop_token stoken) {
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
             if (m_serializeHandlerAccess) {
                 std::lock_guard lock(m_handlerMutex);

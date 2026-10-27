@@ -9,7 +9,7 @@ bool IBackend::tracksMessageResults() const noexcept
 
 void IBackend::onMessageResult(
     std::string_view,
-    std::span<const std::byte>,
+    Common::Compat::span<const std::byte>,
     const MessageResult&)
 {
 }

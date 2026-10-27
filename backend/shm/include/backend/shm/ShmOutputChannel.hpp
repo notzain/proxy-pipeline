@@ -24,8 +24,8 @@ public:
     ShmOutputChannel(std::string name, std::string destPath, std::size_t capacity = 1024);
     ~ShmOutputChannel() override;
 
-    bool send(std::span<const std::byte> message) override;
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
+    bool send(Common::Compat::span<const std::byte> message) override;
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 
     /**
      * @brief Checks if the underlying shared memory ring buffer is initialized.

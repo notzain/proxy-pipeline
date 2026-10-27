@@ -18,10 +18,10 @@ namespace {
 } // namespace
 
 std::size_t MessageEnvelope::packInto(
-    std::span<std::byte> destination,
+    Common::Compat::span<std::byte> destination,
     ProtocolId protocol,
-    std::span<const std::byte> metadata,
-    std::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
     std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
@@ -51,8 +51,8 @@ std::size_t MessageEnvelope::packInto(
 
 std::vector<std::byte> MessageEnvelope::pack(
     ProtocolId protocol,
-    std::span<const std::byte> metadata,
-    std::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
     std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
@@ -62,7 +62,7 @@ std::vector<std::byte> MessageEnvelope::pack(
 }
 
 std::vector<std::byte> MessageEnvelope::packRaw(
-    std::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
     return pack(ProtocolId::Raw, { }, payload, timestampNs);
@@ -70,10 +70,10 @@ std::vector<std::byte> MessageEnvelope::packRaw(
 
 std::vector<std::byte> MessageEnvelope::packUdp(
     const UdpMetadata& meta,
-    std::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
-    std::span<const std::byte> metaSpan(
+    Common::Compat::span<const std::byte> metaSpan(
         reinterpret_cast<const std::byte*>(&meta),
         sizeof(UdpMetadata));
     return pack(ProtocolId::Udp, metaSpan, payload, timestampNs);
@@ -81,7 +81,7 @@ std::vector<std::byte> MessageEnvelope::packUdp(
 
 std::vector<std::byte> MessageEnvelope::withPayload(
     const MessageView& view,
-    std::span<const std::byte> newPayload)
+    Common::Compat::span<const std::byte> newPayload)
 {
     return pack(view.protocol(), view.metadata(), newPayload, view.timestampNs());
 }

@@ -6,12 +6,6 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace Core::Queue {
-template <typename T, std::size_t Capacity>
-    requires((Capacity & (Capacity - 1)) == 0 && Capacity >= 2)
-class SpscQueue;
-} // namespace Core::Queue
-
 namespace Proxy::Backend::InProc {
 
 class InProcRing;
@@ -61,4 +55,3 @@ private:
 };
 
 } // namespace Proxy::Backend::InProc
-

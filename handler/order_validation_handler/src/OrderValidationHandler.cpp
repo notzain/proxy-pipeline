@@ -1,7 +1,7 @@
 #include "OrderValidationHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
@@ -50,7 +50,7 @@ bool OrderValidationHandler::onConfigure(const Core::Config::Configuration& conf
     return true;
 }
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -60,7 +60,7 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(std::span<
     return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::Order>::deserialize(xmlStr, { .rootName = "order" });
 }
 
-std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -70,7 +70,7 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(st
     return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::OrderView>::deserialize(xmlStr, { .rootName = "order" });
 }
 
-std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInPlace(std::span<std::byte> xmlData) const
+std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInPlace(Common::Compat::span<std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -82,7 +82,7 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInP
         { .rootName = "order" });
 }
 
-std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderDirect(std::span<std::byte> xmlData) const
+std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderDirect(Common::Compat::span<std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -127,7 +127,7 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderDirect(
     };
 }
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -212,7 +212,7 @@ namespace {
     }
 } // namespace
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXerces(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXerces(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -309,7 +309,7 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXerces(std:
     }
 }
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reader(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reader(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -506,7 +506,7 @@ namespace {
     };
 } // namespace
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesSax(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesSax(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -578,7 +578,7 @@ namespace {
     };
 } // namespace
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reused(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reused(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -645,7 +645,7 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reus
     };
 }
 
-std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesReused(std::span<const std::byte> xmlData) const
+std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesReused(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
         return std::nullopt;
@@ -933,13 +933,13 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
 
 void OrderValidationHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     if (messages.empty())
         return;
 
-    Core::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer spans(messages.size());
     std::size_t validCount = 0;
     const auto count = std::min(messages.size(), outResults.size());
 
@@ -986,7 +986,7 @@ void OrderValidationHandler::onBatchReceived(
     }
 }
 
-void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer)
+void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName, Common::Compat::span<std::byte> buffer)
 {
     auto order = parseOrderDirect(buffer);
     if (!order.has_value()) {

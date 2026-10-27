@@ -1,4 +1,5 @@
-#include "core/queue/MpmcQueue.hpp"
+#include "common/compat/Jthread.hpp"
+#include "common/queue/MpmcQueue.hpp"
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -7,9 +8,9 @@
 #include <thread>
 #include <vector>
 
-TEST_CASE("Core::Queue::MpmcQueue basic push and pop", "[mpmc]")
+TEST_CASE("Common::Queue::MpmcQueue basic push and pop", "[mpmc]")
 {
-    Core::Queue::MpmcQueue<int, 4> q;
+    Common::Queue::MpmcQueue<int, 4> q;
 
     CHECK(q.empty());
     CHECK(q.size() == 0);
@@ -32,9 +33,9 @@ TEST_CASE("Core::Queue::MpmcQueue basic push and pop", "[mpmc]")
     CHECK_FALSE(q.tryPop(val)); // Queue empty
 }
 
-TEST_CASE("Core::Queue::MpmcQueue preserves FIFO order across wrap-around", "[mpmc]")
+TEST_CASE("Common::Queue::MpmcQueue preserves FIFO order across wrap-around", "[mpmc]")
 {
-    Core::Queue::MpmcQueue<int, 8> q;
+    Common::Queue::MpmcQueue<int, 8> q;
 
     for (int round = 0; round < 50; ++round) {
         for (int i = 0; i < 4; ++i) {
@@ -49,16 +50,16 @@ TEST_CASE("Core::Queue::MpmcQueue preserves FIFO order across wrap-around", "[mp
     CHECK(q.empty());
 }
 
-TEST_CASE("Core::Queue::MpmcQueue multi-producer multi-consumer concurrent stress", "[mpmc]")
+TEST_CASE("Common::Queue::MpmcQueue multi-producer multi-consumer concurrent stress", "[mpmc]")
 {
     constexpr std::size_t NumProducers = 4;
     constexpr std::size_t NumConsumers = 4;
     constexpr std::size_t ItemsPerProducer = 10000;
     constexpr std::size_t TotalItems = NumProducers * ItemsPerProducer;
 
-    Core::Queue::MpmcQueue<int, 1024> q;
+    Common::Queue::MpmcQueue<int, 1024> q;
 
-    std::vector<std::jthread> producers;
+    std::vector<Common::Compat::jthread> producers;
     producers.reserve(NumProducers);
 
     for (std::size_t p = 0; p < NumProducers; ++p) {
@@ -73,7 +74,7 @@ TEST_CASE("Core::Queue::MpmcQueue multi-producer multi-consumer concurrent stres
     }
 
     std::vector<std::vector<int>> consumerResults(NumConsumers);
-    std::vector<std::jthread> consumers;
+    std::vector<Common::Compat::jthread> consumers;
     consumers.reserve(NumConsumers);
 
     std::atomic<std::size_t> totalPopped { 0 };

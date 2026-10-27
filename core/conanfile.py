@@ -28,6 +28,7 @@ class CoreConan(ConanFile):
         self.requires(
             "backend-interface/0.1.0", transitive_headers=True, transitive_libs=True
         )
+        self.requires("common/0.1.0", transitive_headers=True, transitive_libs=True)
         self.requires("proxylog/0.1.0", transitive_headers=True, transitive_libs=True)
         self.requires("fmt/12.1.0", transitive_headers=True, transitive_libs=True)
         self.requires(

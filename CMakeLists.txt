@@ -1,7 +1,17 @@
 cmake_minimum_required(VERSION 4.0)
 project(Proxy LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+# C++ Standard Selection: defaults to C++20, but configurable to C++17 via -DCMAKE_CXX_STANDARD=17 or -DPROXY_CXX_STANDARD=17
+set(PROXY_CXX_STANDARD "20" CACHE STRING "C++ standard for the project (17 or 20)")
+set_property(CACHE PROXY_CXX_STANDARD PROPERTY STRINGS "17" "20")
+
+if(DEFINED CMAKE_CXX_STANDARD)
+    set(PROXY_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
+else()
+    set(CMAKE_CXX_STANDARD "${PROXY_CXX_STANDARD}")
+endif()
+
+set(CMAKE_CXX_STANDARD "${PROXY_CXX_STANDARD}" CACHE STRING "C++ standard" FORCE)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
@@ -19,10 +29,13 @@ include(ProxyBackends)
 # Universal logging library (ProxyLog)
 add_subdirectory(log)
 
+# Foundational utilities and C++17 compatibility library
+add_subdirectory(common)
+
 # Backend interface library
 add_subdirectory(backend/interface)
 
-# Core domain library (depends on backend-interface and proxylog)
+# Core domain library (depends on backend-interface, common, and proxylog)
 add_subdirectory(core)
 
 # In-process transport backend (in-tree)

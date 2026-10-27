@@ -34,7 +34,7 @@ target_link_libraries(backend-shm
         fmt::fmt
 )
 
-target_compile_features(backend-shm PUBLIC cxx_std_20)
+target_compile_features(backend-shm PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET backend-shm::backend-shm)
   add_library(backend-shm::backend-shm ALIAS backend-shm)

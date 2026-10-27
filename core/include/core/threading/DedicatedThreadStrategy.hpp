@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/compat/Jthread.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
 #include <atomic>
 #include <mutex>
@@ -29,7 +30,7 @@ private:
     const bool m_serializeHandlerAccess;
     std::mutex m_handlerMutex;
     std::atomic<bool> m_running { false };
-    std::vector<std::jthread> m_workerThreads;
+    std::vector<Common::Compat::jthread> m_workerThreads;
 };
 
 } // namespace Core::Threading

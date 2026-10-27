@@ -31,7 +31,7 @@ void DummySendHandler::step()
     if (now - m_lastSendTime >= m_delay) {
         m_lastSendTime = now;
 
-        std::span<const std::byte> byteSpan(
+        Common::Compat::span<const std::byte> byteSpan(
             reinterpret_cast<const std::byte*>(m_messageText.data()),
             m_messageText.size());
 

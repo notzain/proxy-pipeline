@@ -1,8 +1,8 @@
 #include "UdpIngressHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "log/Log.hpp"
@@ -62,8 +62,8 @@ Core::Message::MessageResult UdpIngressHandler::onMessageReceived(std::string_vi
 
 void UdpIngressHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     if (!m_outputChannel) {
@@ -87,7 +87,7 @@ void UdpIngressHandler::onBatchReceived(
     Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, outputChannelName);
 
-    Core::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer spans(messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
         spans[i] = messages[i].rawBuffer();
     }

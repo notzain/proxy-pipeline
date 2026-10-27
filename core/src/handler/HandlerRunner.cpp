@@ -174,7 +174,7 @@ void HandlerRunner::startAsync(bool registerSignals)
         Proxy::Log::info("[HandlerRunner] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...",
             m_handler.inputChannelCount());
         m_strategy->start(m_handler);
-        m_shutdownThread = std::jthread([this, registerSignals](std::stop_token stopToken) {
+        m_shutdownThread = Common::Compat::jthread([this, registerSignals](Common::Compat::stop_token stopToken) {
             while (!stopToken.stop_requested()) {
                 if (m_stopRequested.load(std::memory_order_acquire)
                     || (registerSignals && g_shutdownRequested.load(std::memory_order_relaxed))) {

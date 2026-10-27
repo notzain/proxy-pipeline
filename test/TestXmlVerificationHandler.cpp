@@ -65,9 +65,9 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
 
     std::string malformedXml = "<note><to>Incomplete";
 
-    std::span<const std::byte> validSpan(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());
-    std::span<const std::byte> invalidSpan(reinterpret_cast<const std::byte*>(invalidXml.data()), invalidXml.size());
-    std::span<const std::byte> malformedSpan(reinterpret_cast<const std::byte*>(malformedXml.data()), malformedXml.size());
+    Common::Compat::span<const std::byte> validSpan(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());
+    Common::Compat::span<const std::byte> invalidSpan(reinterpret_cast<const std::byte*>(invalidXml.data()), invalidXml.size());
+    Common::Compat::span<const std::byte> malformedSpan(reinterpret_cast<const std::byte*>(malformedXml.data()), malformedXml.size());
 
     CHECK(handler.validate(validSpan));
     CHECK_FALSE(handler.validate(invalidSpan));

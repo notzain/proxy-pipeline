@@ -37,7 +37,7 @@ bool ShmOutputChannel::isValid() const noexcept
     return m_ring && m_ring->isValid();
 }
 
-bool ShmOutputChannel::send(std::span<const std::byte> message)
+bool ShmOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (!isValid() || message.size() > ShmRingBuffer::MaxPayloadBytes) {
         return false;
@@ -77,7 +77,7 @@ bool ShmOutputChannel::send(std::span<const std::byte> message)
     return false;
 }
 
-std::size_t ShmOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t ShmOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     if (!isValid() || messages.empty()) {
         return 0;

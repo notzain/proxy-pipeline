@@ -157,7 +157,7 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
 
     // Create a mock envelope with ingress timestamp
     std::string payload = "Hello Telemetry";
-    std::span<const std::byte> payloadSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
+    Common::Compat::span<const std::byte> payloadSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
     uint64_t pastNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::system_clock::now().time_since_epoch())
                               .count())

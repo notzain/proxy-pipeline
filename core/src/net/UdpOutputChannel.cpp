@@ -97,7 +97,7 @@ void UdpOutputChannel::openSocket()
     }
 }
 
-bool UdpOutputChannel::send(std::span<const std::byte> message)
+bool UdpOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (!m_hasDefaultAddr) {
         Proxy::Log::error("[UdpOutputChannel] No default destination configured for send()");
@@ -107,7 +107,7 @@ bool UdpOutputChannel::send(std::span<const std::byte> message)
     return sendTo(message, m_defaultAddr);
 }
 
-std::size_t UdpOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t UdpOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     std::size_t sentCount = 0;
     for (const auto& msg : messages) {
@@ -118,7 +118,7 @@ std::size_t UdpOutputChannel::sendBatch(std::span<const std::span<const std::byt
     return sentCount;
 }
 
-bool UdpOutputChannel::sendTo(std::span<const std::byte> message, const ::Backend::SocketAddress& destination)
+bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const ::Backend::SocketAddress& destination)
 {
     int fd = ensureSocketForFamily(destination.family());
     if (fd < 0) {
@@ -148,12 +148,12 @@ bool UdpOutputChannel::sendTo(std::span<const std::byte> message, const ::Backen
     return true;
 }
 
-bool UdpOutputChannel::sendTo(std::span<const std::byte> message, std::uint32_t ipNetworkOrder, std::uint16_t portNetworkOrder)
+bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, std::uint32_t ipNetworkOrder, std::uint16_t portNetworkOrder)
 {
     return sendTo(message, ::Backend::SocketAddress::fromIpv4Net(ipNetworkOrder, portNetworkOrder));
 }
 
-bool UdpOutputChannel::sendTo(std::span<const std::byte> message, const std::string& host, std::uint16_t port)
+bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const std::string& host, std::uint16_t port)
 {
     auto addr = ::Backend::SocketAddress::fromString(host, port);
     if (addr.family() == ::Backend::AddressFamily::Unknown) {

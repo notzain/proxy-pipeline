@@ -37,7 +37,7 @@ SimOutputChannel::~SimOutputChannel()
     }
 }
 
-void SimOutputChannel::emitEvent(std::span<const std::byte> message, std::string_view status)
+void SimOutputChannel::emitEvent(Common::Compat::span<const std::byte> message, std::string_view status)
 {
     if (m_eventFd < 0 || m_eventHost.empty() || m_eventPort <= 0) {
         return;
@@ -45,16 +45,16 @@ void SimOutputChannel::emitEvent(std::span<const std::byte> message, std::string
 
     std::string text;
     std::string fullText;
-    std::span<const std::byte> appPayload = message;
+    Common::Compat::span<const std::byte> appPayload = message;
 
     if (message.size() >= 18) {
-        uint16_t magic = (static_cast<uint8_t>(message[1]) << 8) | static_cast<uint8_t>(message[0]);
+        uint16_t magic = (static_cast<uint8_t>(message[0]) << 8) | static_cast<uint8_t>(message[1]);
         if (magic == 0x5058) {
-            uint16_t metaLen = static_cast<uint8_t>(message[4]) | (static_cast<uint8_t>(message[5]) << 8);
-            uint32_t payloadLen = static_cast<uint8_t>(message[6])
-                | (static_cast<uint8_t>(message[7]) << 8)
-                | (static_cast<uint8_t>(message[8]) << 16)
-                | (static_cast<uint8_t>(message[9]) << 24);
+            uint16_t metaLen = (static_cast<uint8_t>(message[4]) << 8) | static_cast<uint8_t>(message[5]);
+            uint32_t payloadLen = (static_cast<uint8_t>(message[6]) << 24)
+                | (static_cast<uint8_t>(message[7]) << 16)
+                | (static_cast<uint8_t>(message[8]) << 8)
+                | static_cast<uint8_t>(message[9]);
 
             std::size_t offset = 18 + metaLen;
             if (offset <= message.size()) {
@@ -109,7 +109,7 @@ void SimOutputChannel::emitEvent(std::span<const std::byte> message, std::string
     ::sendto(m_eventFd, json.data(), json.size(), 0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
-bool SimOutputChannel::send(std::span<const std::byte> message)
+bool SimOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (m_clientFd < 0 || m_destSocketPath.empty()) {
         return false;
@@ -132,7 +132,7 @@ bool SimOutputChannel::send(std::span<const std::byte> message)
     return ok;
 }
 
-std::size_t SimOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t SimOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     std::size_t sentCount = 0;
     for (const auto& msg : messages) {

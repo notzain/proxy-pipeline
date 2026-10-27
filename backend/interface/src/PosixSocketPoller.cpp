@@ -38,7 +38,7 @@ namespace {
 
 BytesResult PosixSocketPoller::receive(
     int socketFd,
-    std::span<std::byte> destination,
+    Common::Compat::span<std::byte> destination,
     Timeout timeout,
     SocketAddress* outSourceAddress)
 {
@@ -115,9 +115,9 @@ BytesResult PosixSocketPoller::receive(
 
 BatchResult PosixSocketPoller::receiveBatch(
     int socketFd,
-    std::span<BufferSlot> slots,
+    Common::Compat::span<BufferSlot> slots,
     Timeout timeout,
-    std::span<SocketAddress> outSourceAddresses)
+    Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0) {
         return BatchResult::failure({ 0, receiveClosed() });

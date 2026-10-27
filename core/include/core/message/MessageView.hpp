@@ -1,11 +1,11 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/message/EnvelopeHeader.hpp"
 #include "core/message/ProtocolId.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <span>
 
 namespace Core::Message {
 
@@ -24,7 +24,7 @@ public:
      * @param buffer Non-owning view of raw bytes received from an IPC channel.
      * @return std::optional<MessageView> Valid view if the header and lengths match, or std::nullopt.
      */
-    static std::optional<MessageView> from(std::span<const std::byte> buffer) noexcept;
+    static std::optional<MessageView> from(Common::Compat::span<const std::byte> buffer) noexcept;
 
     /**
      * @brief Default constructor creating an empty view.
@@ -34,9 +34,9 @@ public:
     /**
      * @brief Constructs a view from a parsed native envelope header and slices.
      */
-    MessageView(std::span<const std::byte> rawBuffer,
-        std::span<const std::byte> metadata,
-        std::span<const std::byte> payload,
+    MessageView(Common::Compat::span<const std::byte> rawBuffer,
+        Common::Compat::span<const std::byte> metadata,
+        Common::Compat::span<const std::byte> payload,
         ProtocolId protocol,
         std::uint64_t timestampNs) noexcept;
 
@@ -46,26 +46,26 @@ public:
      * Enables backends with proprietary protocols or alternate framing to construct
      * valid views exposing their decoded payload to handlers.
      */
-    explicit MessageView(std::span<const std::byte> payload,
-        std::span<const std::byte> rawBuffer = { },
+    explicit MessageView(Common::Compat::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> rawBuffer = { },
         std::uint64_t timestampNs = 0,
         ProtocolId protocol = ProtocolId::Raw,
-        std::span<const std::byte> metadata = { }) noexcept;
+        Common::Compat::span<const std::byte> metadata = { }) noexcept;
 
     /**
      * @brief Returns a view of the application payload body.
      */
-    [[nodiscard]] std::span<const std::byte> payload() const noexcept;
+    [[nodiscard]] Common::Compat::span<const std::byte> payload() const noexcept;
 
     /**
      * @brief Returns the entire raw wire buffer (including any transport framing/header).
      */
-    [[nodiscard]] std::span<const std::byte> rawBuffer() const noexcept;
+    [[nodiscard]] Common::Compat::span<const std::byte> rawBuffer() const noexcept;
 
     /**
      * @brief Returns a view of the transport metadata section.
      */
-    [[nodiscard]] std::span<const std::byte> metadata() const noexcept;
+    [[nodiscard]] Common::Compat::span<const std::byte> metadata() const noexcept;
 
     /**
      * @brief Returns the protocol identifier tag.
@@ -93,9 +93,9 @@ public:
     }
 
 private:
-    std::span<const std::byte> m_rawBuffer { };
-    std::span<const std::byte> m_metadata { };
-    std::span<const std::byte> m_payload { };
+    Common::Compat::span<const std::byte> m_rawBuffer { };
+    Common::Compat::span<const std::byte> m_metadata { };
+    Common::Compat::span<const std::byte> m_payload { };
     std::uint64_t m_timestampNs { 0 };
     ProtocolId m_protocol { ProtocolId::Raw };
 };

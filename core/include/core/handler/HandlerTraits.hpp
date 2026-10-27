@@ -8,10 +8,10 @@ namespace Core::Handler {
  * @brief High-level operational role of a handler in the pipeline topology.
  */
 enum class HandlerRole {
-    Processor,       ///< Standard intermediate processing node (receives via input channel, sends to output channel)
-    Generator,       ///< Autonomous synthetic message generator driven by internal timers or step() ticks
+    Processor, ///< Standard intermediate processing node (receives via input channel, sends to output channel)
+    Generator, ///< Autonomous synthetic message generator driven by internal timers or step() ticks
     ExternalIngress, ///< Gateway receiving messages from external network protocols (UDP, HTTP, etc.)
-    ExternalEgress   ///< Gateway sending pipeline messages outwards to external network protocols
+    ExternalEgress ///< Gateway sending pipeline messages outwards to external network protocols
 };
 
 /**
@@ -19,8 +19,8 @@ enum class HandlerRole {
  */
 enum class HandlerProtocol {
     None, ///< No external protocol (operates exclusively on internal pipeline channels)
-    Udp,  ///< UDP network datagrams
-    Http  ///< HTTP / REST protocol
+    Udp, ///< UDP network datagrams
+    Http ///< HTTP / REST protocol
 };
 
 /**
@@ -58,4 +58,3 @@ enum class HandlerProtocol {
 }
 
 } // namespace Core::Handler
-

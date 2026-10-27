@@ -1,4 +1,5 @@
 #include "core/telemetry/StatsDExporter.hpp"
+#include "common/compat/StringView.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <cstring>
@@ -143,7 +144,7 @@ void StatsDExporter::flushNow()
             continue;
         }
 
-        if (line.starts_with("# TYPE ")) {
+        if (Common::Compat::starts_with(line, "# TYPE ")) {
             auto space1 = line.find(' ', 7);
             if (space1 != std::string_view::npos) {
                 std::string_view type = line.substr(space1 + 1);
@@ -160,7 +161,7 @@ void StatsDExporter::flushNow()
             continue;
         }
 
-        if (line.starts_with('#')) {
+        if (Common::Compat::starts_with(line, '#')) {
             continue;
         }
 
@@ -173,10 +174,10 @@ void StatsDExporter::flushNow()
         std::string_view val = line.substr(spacePos + 1);
 
         // Filter bucket lines or convert:
-        if (key.ends_with("_sum")) {
+        if (Common::Compat::ends_with(key, "_sum")) {
             auto base = key.substr(0, key.size() - 4);
             sendRaw(fmt::format("{}.{}.sum:{}|ms\n", m_prefix, base, val));
-        } else if (key.ends_with("_count")) {
+        } else if (Common::Compat::ends_with(key, "_count")) {
             auto base = key.substr(0, key.size() - 6);
             sendRaw(fmt::format("{}.{}.count:{}|c\n", m_prefix, base, val));
         } else if (auto bucketPos = key.find("_bucket{le=\""); bucketPos != std::string_view::npos) {

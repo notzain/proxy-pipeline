@@ -1,7 +1,7 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "core/memory/Borrow.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
+#include "common/memory/Borrow.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
@@ -23,7 +23,7 @@ bool IHandler::configure(const Config::Configuration& config)
     return onConfigure(config);
 }
 
-Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
+Common::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
 {
     if (!channel) {
         Proxy::Log::error("[IHandler] Attempted to register null input channel");
@@ -31,7 +31,7 @@ Core::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(st
     }
     auto* rawPtr = channel.get();
     m_inputChannels.push_back(std::move(channel));
-    return Core::Memory::Borrow<::Backend::IInputChannel>(*rawPtr);
+    return Common::Memory::Borrow<::Backend::IInputChannel>(*rawPtr);
 }
 
 std::size_t IHandler::inputChannelCount() const noexcept
@@ -46,8 +46,8 @@ Message::MessageResult IHandler::onMessageReceived(std::string_view, const Messa
 
 void IHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Message::MessageView> messages,
-    std::span<Message::MessageResult> outResults)
+    Common::Compat::span<const Message::MessageView> messages,
+    Common::Compat::span<Message::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -55,7 +55,7 @@ void IHandler::onBatchReceived(
     }
 }
 
-void IHandler::processBatch(std::string_view channelName, std::span<const Message::MessageView> messages)
+void IHandler::processBatch(std::string_view channelName, Common::Compat::span<const Message::MessageView> messages)
 {
     auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
         "message_processing_duration_us", "Message transit and processing duration in microseconds");
@@ -69,7 +69,7 @@ void IHandler::processBatch(std::string_view channelName, std::span<const Messag
         }
     }
 
-    Core::Memory::SmallSpanBuffer<Message::MessageResult, 64> resultsBuffer(messages.size());
+    Common::Memory::SmallSpanBuffer<Message::MessageResult, 64> resultsBuffer(messages.size());
     auto resultsSpan = resultsBuffer.span(messages.size());
     onBatchReceived(channelName, messages, resultsSpan);
 
@@ -85,7 +85,7 @@ void IHandler::processBatch(std::string_view channelName, std::span<const Messag
     return m_backend;
 }
 
-Core::Memory::Borrow<::Backend::IOutputChannel> IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
+Common::Memory::Borrow<::Backend::IOutputChannel> IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
 {
     if (!channel) {
         Proxy::Log::error("[IHandler] Attempted to register null output channel");
@@ -93,7 +93,7 @@ Core::Memory::Borrow<::Backend::IOutputChannel> IHandler::registerOutputChannel(
     }
     auto* rawPtr = channel.get();
     m_outputChannels.push_back(std::move(channel));
-    return Core::Memory::Borrow<::Backend::IOutputChannel>(*rawPtr);
+    return Common::Memory::Borrow<::Backend::IOutputChannel>(*rawPtr);
 }
 
 void IHandler::step()

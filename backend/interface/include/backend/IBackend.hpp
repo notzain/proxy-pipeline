@@ -4,9 +4,9 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "backend/MessageResult.hpp"
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <memory>
-#include <span>
 #include <string_view>
 
 namespace Backend {
@@ -68,7 +68,7 @@ public:
      */
     virtual void onMessageResult(
         std::string_view inputChannel,
-        std::span<const std::byte> rawMessage,
+        Common::Compat::span<const std::byte> rawMessage,
         const MessageResult& result);
 
     /**

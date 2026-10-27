@@ -1,10 +1,9 @@
 #pragma once
 
-#include "core/memory/ObserverPtr.hpp"
-#include <concepts>
+#include "common/memory/ObserverPtr.hpp"
 #include <type_traits>
 
-namespace Core::Memory {
+namespace Common::Memory {
 
 /**
  * @brief Rebindable, non-owning reference wrapper representing a non-null borrowed object.
@@ -38,14 +37,14 @@ public:
     /**
      * @brief Copy constructor from compatible Borrow<U>.
      */
-    template <typename U>
-        requires(std::convertible_to<U*, T*>)
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U*, T*>, int> = 0>
     constexpr Borrow(const Borrow<U>& other) noexcept
         : m_ptr(&other.get())
     {
     }
 
-    constexpr ~Borrow() noexcept = default;
+    ~Borrow() noexcept = default;
     constexpr Borrow(const Borrow&) noexcept = default;
     constexpr Borrow& operator=(const Borrow&) noexcept = default;
     constexpr Borrow(Borrow&&) noexcept = default;
@@ -63,7 +62,7 @@ public:
     Borrow& operator=(T&&) = delete;
 
     /**
-     * @brief Returns a reference to the borrowed object.
+     * @brief Returns a reference to the underlying object.
      */
     [[nodiscard]] constexpr T& get() const noexcept
     {
@@ -71,25 +70,9 @@ public:
     }
 
     /**
-     * @brief Dereferences the borrowed object.
-     */
-    [[nodiscard]] constexpr T& operator*() const noexcept
-    {
-        return *m_ptr;
-    }
-
-    /**
-     * @brief Member access operator forwarding to the borrowed object.
-     */
-    [[nodiscard]] constexpr T* operator->() const noexcept
-    {
-        return m_ptr;
-    }
-
-    /**
      * @brief Implicit conversion to lvalue reference.
      */
-    constexpr operator T&() const noexcept
+    [[nodiscard]] constexpr operator T&() const noexcept
     {
         return *m_ptr;
     }
@@ -97,27 +80,61 @@ public:
     /**
      * @brief Implicit conversion to non-owning ObserverPtr<T>.
      */
-    constexpr operator ObserverPtr<T>() const noexcept
+    [[nodiscard]] constexpr operator ObserverPtr<T>() const noexcept
     {
         return ObserverPtr<T>(m_ptr);
+    }
+
+    /**
+     * @brief Dereference operator forwarding to underlying object.
+     */
+    [[nodiscard]] constexpr T& operator*() const noexcept
+    {
+        return *m_ptr;
+    }
+
+    /**
+     * @brief Member access operator forwarding to underlying object.
+     */
+    [[nodiscard]] constexpr T* operator->() const noexcept
+    {
+        return m_ptr;
+    }
+
+    /**
+     * @brief Returns the raw pointer to the borrowed object.
+     */
+    [[nodiscard]] constexpr T* raw() const noexcept
+    {
+        return m_ptr;
     }
 
     template <typename U>
     [[nodiscard]] constexpr bool operator==(const Borrow<U>& other) const noexcept
     {
-        return m_ptr == &other.get();
+        return m_ptr == other.raw();
     }
 
     template <typename U>
-    [[nodiscard]] constexpr auto operator<=>(const Borrow<U>& other) const noexcept
+    [[nodiscard]] constexpr bool operator!=(const Borrow<U>& other) const noexcept
     {
-        return m_ptr <=> &other.get();
+        return m_ptr != other.raw();
     }
 
     template <typename U>
-    [[nodiscard]] constexpr bool operator==(const U* raw) const noexcept
+    [[nodiscard]] constexpr bool operator==(const U& other) const noexcept
     {
-        return m_ptr == raw;
+        if constexpr (std::is_pointer_v<U>) {
+            return m_ptr == other;
+        } else {
+            return m_ptr == &other;
+        }
+    }
+
+    template <typename U>
+    [[nodiscard]] constexpr bool operator!=(const U& other) const noexcept
+    {
+        return !(*this == other);
     }
 
 private:
@@ -128,5 +145,4 @@ private:
 template <typename T>
 Borrow(T&) -> Borrow<T>;
 
-} // namespace Core::Memory
-
+} // namespace Common::Memory

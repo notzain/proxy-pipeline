@@ -10,7 +10,7 @@ InProcOutputChannel::InProcOutputChannel(std::string name, std::shared_ptr<InPro
 
 InProcOutputChannel::~InProcOutputChannel() = default;
 
-bool InProcOutputChannel::send(std::span<const std::byte> message)
+bool InProcOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (!m_ring) {
         return false;
@@ -18,7 +18,7 @@ bool InProcOutputChannel::send(std::span<const std::byte> message)
     return m_ring->push(message);
 }
 
-std::size_t InProcOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t InProcOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     if (!m_ring || messages.empty()) {
         return 0;
@@ -27,4 +27,3 @@ std::size_t InProcOutputChannel::sendBatch(std::span<const std::span<const std::
 }
 
 } // namespace Proxy::Backend::InProc
-

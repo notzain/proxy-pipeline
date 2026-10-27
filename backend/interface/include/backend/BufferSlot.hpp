@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include <cstddef>
-#include <span>
 
 namespace Backend {
 
@@ -12,13 +12,13 @@ namespace Backend {
  * Replaces parallel destination and size spans in `IInputChannel::receiveBatch` and `ISocketPoller::receiveBatch`.
  */
 struct BufferSlot {
-    std::span<std::byte> buffer { };
+    Common::Compat::span<std::byte> buffer { };
     std::size_t size { 0 };
 
     /**
      * @brief Returns a non-owning span over the populated bytes.
      */
-    [[nodiscard]] constexpr std::span<const std::byte> filledSpan() const noexcept
+    [[nodiscard]] constexpr Common::Compat::span<const std::byte> filledSpan() const noexcept
     {
         return buffer.subspan(0, size);
     }
@@ -26,11 +26,10 @@ struct BufferSlot {
     /**
      * @brief Returns a mutable span over the populated bytes.
      */
-    [[nodiscard]] constexpr std::span<std::byte> filledSpan() noexcept
+    [[nodiscard]] constexpr Common::Compat::span<std::byte> filledSpan() noexcept
     {
         return buffer.subspan(0, size);
     }
 };
 
 } // namespace Backend
-

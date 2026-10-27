@@ -22,13 +22,13 @@ public:
 
     ~SimInputChannel() override;
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
     BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
 private:
-    void emitEvent(std::span<const std::byte> payload, std::string_view status);
+    void emitEvent(Common::Compat::span<const std::byte> payload, std::string_view status);
 
     std::string m_channelName;
     std::string m_socketPath;

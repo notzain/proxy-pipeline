@@ -17,7 +17,7 @@ FileOutputChannel::FileOutputChannel(std::string name, std::filesystem::path out
     Proxy::Log::info("[FileOutputChannel] Output directory: {}", m_outputDir.string());
 }
 
-bool FileOutputChannel::send(std::span<const std::byte> message)
+bool FileOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     std::error_code ec;
     std::filesystem::create_directories(m_outputDir, ec);

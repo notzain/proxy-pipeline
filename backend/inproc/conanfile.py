@@ -29,7 +29,7 @@ class BackendInProcConan(ConanFile):
 
     def requirements(self):
         self.requires("backend-interface/0.1.0", transitive_headers=True)
-        self.requires("core/0.1.0", transitive_headers=True)
+        self.requires("common/0.1.0", transitive_headers=True)
         self.requires("proxylog/0.1.0")
 
     def generate(self):

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "backend/IBackend.hpp"
-#include "core/memory/ObserverPtr.hpp"
+#include "common/memory/ObserverPtr.hpp"
 #include "core/simulation/MockInputChannel.hpp"
 #include "core/simulation/MockOutputChannel.hpp"
 #include "core/simulation/SimulationClock.hpp"
@@ -48,18 +48,18 @@ public:
 
     void onMessageResult(
         std::string_view inputChannel,
-        std::span<const std::byte> rawMessage,
+        Common::Compat::span<const std::byte> rawMessage,
         const ::Backend::MessageResult& result) override;
 
     /**
      * @brief Gets non-owning observer pointer to an active mock output channel by name.
      */
-    [[nodiscard]] Core::Memory::ObserverPtr<MockOutputChannel> getOutputChannel(std::string_view name) const;
+    [[nodiscard]] Common::Memory::ObserverPtr<MockOutputChannel> getOutputChannel(std::string_view name) const;
 
     /**
      * @brief Gets non-owning observer pointer to an active mock input channel by name.
      */
-    [[nodiscard]] Core::Memory::ObserverPtr<MockInputChannel> getInputChannel(std::string_view name) const;
+    [[nodiscard]] Common::Memory::ObserverPtr<MockInputChannel> getInputChannel(std::string_view name) const;
 
     /**
      * @brief Returns all MessageResult outcomes recorded by handlers using this backend.

@@ -2,10 +2,10 @@
 
 #include "backend/IOutputChannel.hpp"
 #include "backend/SocketAddress.hpp"
-#include "core/io/UniqueFd.hpp"
+#include "common/compat/Span.hpp"
+#include "common/io/UniqueFd.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string>
 
 namespace Core::Net {
@@ -42,17 +42,17 @@ public:
     /**
      * @brief Transmits a message to the default destination address.
      */
-    bool send(std::span<const std::byte> message) override;
+    bool send(Common::Compat::span<const std::byte> message) override;
 
     /**
      * @brief Transmits a batch of messages to the default destination address.
      */
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 
     /**
      * @brief Sends a datagram directly to a specified SocketAddress (IPv4 or IPv6).
      */
-    bool sendTo(std::span<const std::byte> message, const ::Backend::SocketAddress& destination);
+    bool sendTo(Common::Compat::span<const std::byte> message, const ::Backend::SocketAddress& destination);
 
     /**
      * @brief Sends a datagram directly to a specified destination address in network byte order.
@@ -62,12 +62,12 @@ public:
      * @param portNetworkOrder 16-bit UDP port in network byte order.
      * @return true If transmission succeeded, false otherwise.
      */
-    bool sendTo(std::span<const std::byte> message, std::uint32_t ipNetworkOrder, std::uint16_t portNetworkOrder);
+    bool sendTo(Common::Compat::span<const std::byte> message, std::uint32_t ipNetworkOrder, std::uint16_t portNetworkOrder);
 
     /**
      * @brief Sends a datagram directly to a specified destination host and port.
      */
-    bool sendTo(std::span<const std::byte> message, const std::string& host, std::uint16_t port);
+    bool sendTo(Common::Compat::span<const std::byte> message, const std::string& host, std::uint16_t port);
 
     /**
      * @brief Gets the native socket file descriptor.
@@ -82,8 +82,8 @@ private:
     std::string m_defaultHost;
     std::uint16_t m_defaultPort { 0 };
     std::size_t m_sendBufferSize { 8 * 1024 * 1024 };
-    Core::Io::UniqueFd m_socketFd;
-    Core::Io::UniqueFd m_socketFdV6;
+    Common::Io::UniqueFd m_socketFd;
+    Common::Io::UniqueFd m_socketFdV6;
     ::Backend::SocketAddress m_defaultAddr { };
     bool m_hasDefaultAddr { false };
 };

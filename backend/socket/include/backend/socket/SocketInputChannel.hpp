@@ -19,9 +19,9 @@ public:
     SocketInputChannel(std::string name, std::string host, std::uint16_t port);
     ~SocketInputChannel() override;
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
     BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
 private:

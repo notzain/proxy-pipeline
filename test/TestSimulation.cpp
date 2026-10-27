@@ -53,11 +53,11 @@ TEST_CASE("Core::Simulation::PcapWriter and PcapReader end-to-end round trip", "
         std::uint16_t serverPort = htons(9000);
 
         std::string payload1 = "<order><id>1</id><sym>AAPL</sym></order>";
-        std::span<const std::byte> span1(reinterpret_cast<const std::byte*>(payload1.data()), payload1.size());
+        Common::Compat::span<const std::byte> span1(reinterpret_cast<const std::byte*>(payload1.data()), payload1.size());
         REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, span1, 1'700'000'000'100'000ULL));
 
         std::string payload2 = "<order><id>2</id><sym>MSFT</sym></order>";
-        std::span<const std::byte> span2(reinterpret_cast<const std::byte*>(payload2.data()), payload2.size());
+        Common::Compat::span<const std::byte> span2(reinterpret_cast<const std::byte*>(payload2.data()), payload2.size());
         REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, span2, 1'700'000'000'250'000ULL));
 
         writer.close();
@@ -137,7 +137,7 @@ TEST_CASE("Core::Simulation::MockInputChannel and MockOutputChannel pipeline sim
 
     // Test MockOutputChannel recording
     std::string reply = "Ack Message 2";
-    std::span<const std::byte> replySpan(reinterpret_cast<const std::byte*>(reply.data()), reply.size());
+    Common::Compat::span<const std::byte> replySpan(reinterpret_cast<const std::byte*>(reply.data()), reply.size());
     REQUIRE(outChannel.send(replySpan));
 
     REQUIRE(outChannel.messageCount() == 1);
@@ -161,7 +161,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
         {
         }
 
-        Core::Memory::ObserverPtr<::Backend::IOutputChannel> out;
+        Common::Memory::ObserverPtr<::Backend::IOutputChannel> out;
 
         bool onConfigure(const Core::Config::Configuration& cfg) override
         {
@@ -192,7 +192,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
     // Push envelope into ingress
     std::string payload = "Deterministic Sim Payload";
-    std::span<const std::byte> pSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
+    Common::Compat::span<const std::byte> pSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
     auto env = Core::Message::MessageEnvelope::packRaw(pSpan, 100'000ULL);
     inCh->pushMessage(env, 100'000ULL);
 
@@ -227,8 +227,8 @@ TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[s
 
         void onBatchReceived(
             std::string_view,
-            std::span<const Core::Message::MessageView> messages,
-            std::span<Core::Message::MessageResult> outResults) override
+            Common::Compat::span<const Core::Message::MessageView> messages,
+            Common::Compat::span<Core::Message::MessageResult> outResults) override
         {
             if (outResults.size() >= 2) {
                 outResults[0] = Core::Message::Forwarded { .channel = "accepted" };
@@ -244,9 +244,9 @@ TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[s
     std::string firstPayload = "valid";
     std::string secondPayload = "invalid";
     auto firstEnvelope = Core::Message::MessageEnvelope::packRaw(
-        std::as_bytes(std::span(firstPayload.data(), firstPayload.size())));
+        Common::Compat::as_bytes(Common::Compat::span<const char>(firstPayload.data(), firstPayload.size())));
     auto secondEnvelope = Core::Message::MessageEnvelope::packRaw(
-        std::as_bytes(std::span(secondPayload.data(), secondPayload.size())));
+        Common::Compat::as_bytes(Common::Compat::span<const char>(secondPayload.data(), secondPayload.size())));
     std::array<Core::Message::MessageView, 2> messages {
         *Core::Message::MessageView::from(firstEnvelope),
         *Core::Message::MessageView::from(secondEnvelope)

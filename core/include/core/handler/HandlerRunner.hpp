@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/compat/Jthread.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/IHandler.hpp"
@@ -99,7 +100,7 @@ private:
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
     std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
     std::atomic<bool> m_stopRequested { false };
-    std::jthread m_shutdownThread;
+    Common::Compat::jthread m_shutdownThread;
 
     void registerSignalHandler();
     void unregisterSignalHandler();

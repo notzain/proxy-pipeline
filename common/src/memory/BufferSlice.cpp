@@ -1,9 +1,15 @@
-#include "core/memory/BufferSlice.hpp"
-#include "core/memory/BufferPool.hpp"
+#include "common/memory/BufferSlice.hpp"
+#include "common/memory/BufferPool.hpp"
 
-namespace Core::Memory {
+namespace Common::Memory {
 
-BufferSlice::BufferSlice() noexcept = default;
+BufferSlice::BufferSlice() noexcept
+    : m_data(nullptr)
+    , m_size(0)
+    , m_blockIndex(0)
+    , m_pool(nullptr)
+{
+}
 
 BufferSlice::BufferSlice(std::byte* data, std::size_t size, std::size_t blockIndex, std::shared_ptr<BufferPool> pool) noexcept
     : m_data(data)
@@ -45,14 +51,14 @@ BufferSlice& BufferSlice::operator=(BufferSlice&& other) noexcept
     return *this;
 }
 
-std::span<std::byte> BufferSlice::span() noexcept
+Common::Compat::span<std::byte> BufferSlice::span() noexcept
 {
-    return { m_data, m_size };
+    return Common::Compat::span<std::byte>(m_data, m_size);
 }
 
-std::span<const std::byte> BufferSlice::span() const noexcept
+Common::Compat::span<const std::byte> BufferSlice::span() const noexcept
 {
-    return { m_data, m_size };
+    return Common::Compat::span<const std::byte>(m_data, m_size);
 }
 
 std::byte* BufferSlice::data() noexcept
@@ -77,7 +83,7 @@ bool BufferSlice::empty() const noexcept
 
 BufferSlice::operator bool() const noexcept
 {
-    return m_data != nullptr && m_size > 0;
+    return m_data != nullptr;
 }
 
 void BufferSlice::resize(std::size_t newSize) noexcept
@@ -96,4 +102,4 @@ void BufferSlice::reset() noexcept
     m_pool.reset();
 }
 
-} // namespace Core::Memory
+} // namespace Common::Memory

@@ -22,7 +22,7 @@ public:
     {
     }
 
-    bool send(std::span<const std::byte> message) override
+    bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
         auto optView = Core::Message::MessageView::from(message);
@@ -36,7 +36,7 @@ public:
         return true;
     }
 
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override
     {
         for (const auto& msg : messages) {
             send(msg);
@@ -81,19 +81,19 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     {
         std::string msg1 = "Hello VIP Customer";
         auto env1 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msg1.data()), msg1.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg1.data()), msg1.size()));
         auto view1 = Core::Message::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
         std::string msg2 = "STD: Regular Customer";
         auto env2 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msg2.data()), msg2.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg2.data()), msg2.size()));
         auto view2 = Core::Message::MessageView::from(env2);
         REQUIRE(view2.has_value());
 
         std::string msg3 = "Other message";
         auto env3 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msg3.data()), msg3.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg3.data()), msg3.size()));
         auto view3 = Core::Message::MessageView::from(env3);
         REQUIRE(view3.has_value());
 
@@ -119,13 +119,13 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string msgDef = "Default Fallback";
 
         auto env1 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip1.data()), msgVip1.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip1.data()), msgVip1.size()));
         auto env2 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msgStd.data()), msgStd.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgStd.data()), msgStd.size()));
         auto env3 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip2.data()), msgVip2.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip2.data()), msgVip2.size()));
         auto env4 = Core::Message::MessageEnvelope::packRaw(
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(msgDef.data()), msgDef.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgDef.data()), msgDef.size()));
 
         std::vector<Core::Message::MessageView> batch = {
             *Core::Message::MessageView::from(env1),
@@ -171,7 +171,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string payload = "Datagram from 9050";
         auto env = Core::Message::MessageEnvelope::packUdp(
             meta,
-            std::span<const std::byte>(reinterpret_cast<const std::byte*>(payload.data()), payload.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(payload.data()), payload.size()));
         auto view = Core::Message::MessageView::from(env);
         REQUIRE(view.has_value());
 

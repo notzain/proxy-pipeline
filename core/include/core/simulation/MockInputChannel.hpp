@@ -1,11 +1,11 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -44,7 +44,7 @@ public:
      * @param data Serialized bytes.
      * @param scheduledTimeNs When the message becomes visible (0 = immediate).
      */
-    void pushMessage(std::span<const std::byte> data, std::uint64_t scheduledTimeNs = 0);
+    void pushMessage(Common::Compat::span<const std::byte> data, std::uint64_t scheduledTimeNs = 0);
 
     /**
      * @brief Pushes an ASCII/string payload into the mock queue.
@@ -67,9 +67,9 @@ public:
     [[nodiscard]] std::size_t pendingCount() const;
 
     // Backend::IInputChannel interface implementation
-    ::Backend::BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
     ::Backend::BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
 private:

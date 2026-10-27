@@ -20,7 +20,7 @@ MockInputChannel::MockInputChannel(const SimulationClock* clock)
 
 MockInputChannel::~MockInputChannel() = default;
 
-void MockInputChannel::pushMessage(std::span<const std::byte> data, std::uint64_t scheduledTimeNs)
+void MockInputChannel::pushMessage(Common::Compat::span<const std::byte> data, std::uint64_t scheduledTimeNs)
 {
     std::lock_guard lock(m_mutex);
     TimedMessage msg;
@@ -31,7 +31,7 @@ void MockInputChannel::pushMessage(std::span<const std::byte> data, std::uint64_
 
 void MockInputChannel::pushMessage(std::string_view text, std::uint64_t scheduledTimeNs)
 {
-    std::span<const std::byte> dataSpan(reinterpret_cast<const std::byte*>(text.data()), text.size());
+    Common::Compat::span<const std::byte> dataSpan(reinterpret_cast<const std::byte*>(text.data()), text.size());
     pushMessage(dataSpan, scheduledTimeNs);
 }
 
@@ -60,7 +60,7 @@ bool MockInputChannel::isReady(const TimedMessage& msg) const
     return m_clock->nowNs() >= msg.scheduledTimeNs;
 }
 
-Backend::BytesResult MockInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult MockInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     auto startTime = std::chrono::steady_clock::now();
 
@@ -92,7 +92,7 @@ Backend::BytesResult MockInputChannel::receiveInto(std::span<std::byte> destinat
 }
 
 Backend::BatchResult MockInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {

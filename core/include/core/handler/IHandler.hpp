@@ -2,15 +2,15 @@
 
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "common/compat/Span.hpp"
+#include "common/memory/Borrow.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/Borrow.hpp"
 #include <chrono>
-#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <memory>
-#include <span>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include "core/handler/HandlerTraits.hpp"
@@ -73,17 +73,17 @@ public:
      * @brief Registers an input channel to be polled by the handler event loop.
      *
      * @param channel The input channel instance (which owns its name).
-     * @return Core::Memory::Borrow<::Backend::IInputChannel> Rebindable, non-null borrow of the registered channel.
+     * @return Common::Memory::Borrow<::Backend::IInputChannel> Rebindable, non-null borrow of the registered channel.
      */
-    Core::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
+    Common::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
      * @brief Visits registered input channels without exposing their ownership storage.
      *
      * @param visitor Callable receiving each input channel.
      */
-    template <typename Visitor>
-        requires std::invocable<Visitor&, ::Backend::IInputChannel&>
+    template <typename Visitor,
+        std::enable_if_t<std::is_invocable_v<Visitor&, ::Backend::IInputChannel&>, int> = 0>
     void forEachInputChannel(Visitor&& visitor) const
     {
         for (const auto& inputChannel : m_inputChannels) {
@@ -120,8 +120,8 @@ public:
      */
     virtual void onBatchReceived(
         std::string_view channelName,
-        std::span<const Message::MessageView> messages,
-        std::span<Message::MessageResult> outResults);
+        Common::Compat::span<const Message::MessageView> messages,
+        Common::Compat::span<Message::MessageResult> outResults);
 
     /**
      * @brief Dispatches a received batch of messages to the handler.
@@ -133,7 +133,7 @@ public:
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.
      */
-    void processBatch(std::string_view channelName, std::span<const Message::MessageView> messages);
+    void processBatch(std::string_view channelName, Common::Compat::span<const Message::MessageView> messages);
 
     // --- Output Channel Management (Egress) ---
 
@@ -141,9 +141,9 @@ public:
      * @brief Registers an output channel to be managed by the handler.
      *
      * @param channel The output channel instance.
-     * @return Core::Memory::Borrow<::Backend::IOutputChannel> Rebindable, non-null borrow of the registered channel.
+     * @return Common::Memory::Borrow<::Backend::IOutputChannel> Rebindable, non-null borrow of the registered channel.
      */
-    Core::Memory::Borrow<::Backend::IOutputChannel> registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
+    Common::Memory::Borrow<::Backend::IOutputChannel> registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel);
 
     // --- Operational Metadata & Classification ---
 

@@ -8,6 +8,17 @@
 
 namespace Core::Serialization {
 
+namespace detail {
+
+    template <typename Format, typename Input, typename Options, typename = void>
+    struct HasDecodeWithOptions : std::false_type { };
+
+    template <typename Format, typename Input, typename Options>
+    struct HasDecodeWithOptions<Format, Input, Options,
+        std::void_t<decltype(Format::decode(std::declval<Input>(), std::declval<Options>()))>> : std::true_type { };
+
+} // namespace detail
+
 /**
  * @brief Serializes any supported type to the specified wire format.
  *
@@ -36,7 +47,7 @@ template <typename Format, typename T>
 std::optional<T> deserialize(std::string_view input, const typename Format::Options& options = { })
 {
     std::optional<Ir::Value> ir;
-    if constexpr (requires { Format::decode(input, options); }) {
+    if constexpr (detail::HasDecodeWithOptions<Format, std::string_view, typename Format::Options>::value) {
         ir = Format::decode(input, options);
     } else {
         ir = Format::decode(input);

@@ -9,14 +9,14 @@ InProcRing::~InProcRing()
     stop();
 }
 
-bool InProcRing::push(std::span<const std::byte> message)
+bool InProcRing::push(Common::Compat::span<const std::byte> message)
 {
     return m_queue.pushBatch(1, [&](std::vector<std::byte>& slot, std::size_t) {
         slot.assign(message.begin(), message.end());
     });
 }
 
-std::size_t InProcRing::pushBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t InProcRing::pushBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     if (messages.empty()) {
         return 0;
@@ -44,4 +44,3 @@ bool InProcRing::empty() const noexcept
 }
 
 } // namespace Proxy::Backend::InProc
-

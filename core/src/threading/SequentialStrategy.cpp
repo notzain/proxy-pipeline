@@ -1,10 +1,10 @@
 #include "core/threading/SequentialStrategy.hpp"
 #include "MessageDispatcher.hpp"
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
 #include <chrono>
-#include <span>
 #include <thread>
 
 namespace Core::Threading {
@@ -25,16 +25,16 @@ void SequentialStrategy::start(Handler::IHandler& handler)
     const auto channelCount = handler.inputChannelCount();
     Proxy::Log::info("[SequentialStrategy] Started loop for {} channel(s)", channelCount);
 
-    m_workerThread = std::jthread([this, &handler, channelCount, channelTimeout](std::stop_token stoken) {
+    m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
         // Allocated once on the heap when the thread starts to prevent thread stack overflow,
         // while keeping the buffer resident across polling loops with zero per-message allocations.
         auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
         std::array<::Backend::BufferSlot, 16> batchSlots;
         for (std::size_t i = 0; i < 16; ++i) {
-            batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+            batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
-        std::array<std::span<const std::byte>, 16> rawMessages;
+        std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
@@ -44,18 +44,18 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                 }
 
                 auto result = channel.receiveBatch(
-                    std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
+                    Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        rawMessages[i] = std::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
+                        rawMessages[i] = Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
                         channel.name(),
-                        std::span<const std::span<const std::byte>>(rawMessages.data(), batchCount),
+                        Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), batchCount),
                         invalidEnvelopeCount,
                         nullptr);
                 }

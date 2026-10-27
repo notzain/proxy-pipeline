@@ -63,7 +63,7 @@ void SocketOutputChannel::openSocket()
     }
 }
 
-bool SocketOutputChannel::send(std::span<const std::byte> message)
+bool SocketOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (m_socketFd < 0) {
         openSocket();
@@ -172,7 +172,7 @@ bool SocketOutputChannel::send(std::span<const std::byte> message)
     return true;
 }
 
-std::size_t SocketOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t SocketOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     if (messages.empty()) {
         return 0;

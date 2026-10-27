@@ -80,7 +80,7 @@ void UdsInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdsInputChannel] Listening on UDS path {}", m_socketPath);
 }
 
-BytesResult UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult UdsInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
@@ -97,7 +97,7 @@ BytesResult UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 BatchResult UdsInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {

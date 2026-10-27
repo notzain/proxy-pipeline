@@ -18,7 +18,7 @@ FileInputChannel::FileInputChannel(std::string name, std::filesystem::path watch
     Proxy::Log::info("[FileInputChannel] Watching directory: {}", m_watchDir.string());
 }
 
-BytesResult FileInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult FileInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     if (destination.empty()) {
         return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));

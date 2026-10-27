@@ -2,11 +2,11 @@
 
 #include "backend/IInputChannel.hpp"
 #include "backend/SocketAddress.hpp"
-#include "core/io/UniqueFd.hpp"
+#include "common/compat/Span.hpp"
+#include "common/io/UniqueFd.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <span>
 #include <string>
 
 namespace Backend {
@@ -54,13 +54,13 @@ public:
     /**
      * @brief Reads a datagram and serializes an in-place envelope directly into destination.
      */
-    ::Backend::BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
 
     /**
      * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.
      */
     ::Backend::BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
     /**
@@ -85,7 +85,7 @@ private:
     std::string m_host;
     std::uint16_t m_port { 0 };
     std::size_t m_receiveBufferSize { 8 * 1024 * 1024 };
-    Core::Io::UniqueFd m_socketFd;
+    Common::Io::UniqueFd m_socketFd;
     ::Backend::SocketAddress m_boundAddr;
     std::unique_ptr<::Backend::ISocketPoller> m_poller;
 };

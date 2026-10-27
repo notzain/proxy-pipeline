@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/queue/SpscQueue.hpp"
+#include "common/compat/Span.hpp"
+#include "common/queue/SpscQueue.hpp"
 #include <cstddef>
 #include <memory>
-#include <span>
 #include <vector>
 
 namespace Proxy::Backend::InProc {
@@ -15,13 +15,13 @@ class InProcRing {
 public:
     static constexpr std::size_t DefaultCapacity = 16384;
 
-    using QueueType = Core::Queue::SpscQueue<std::vector<std::byte>, DefaultCapacity>;
+    using QueueType = Common::Queue::SpscQueue<std::vector<std::byte>, DefaultCapacity>;
 
     InProcRing();
     ~InProcRing();
 
-    bool push(std::span<const std::byte> message);
-    std::size_t pushBatch(std::span<const std::span<const std::byte>> messages);
+    bool push(Common::Compat::span<const std::byte> message);
+    std::size_t pushBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages);
 
     template <typename ConsumerFn>
     std::size_t drain(std::size_t maxCount, ConsumerFn&& consumer)

@@ -3,7 +3,7 @@
 
 namespace Core::Threading {
 
-void MessageTask::assign(std::string_view name, std::span<const std::byte> data)
+void MessageTask::assign(std::string_view name, Common::Compat::span<const std::byte> data)
 {
     m_channelName = name;
     m_pooledSlice.reset();
@@ -17,7 +17,7 @@ void MessageTask::assign(std::string_view name, std::span<const std::byte> data)
     }
 }
 
-void MessageTask::assignSlice(std::string_view name, Memory::BufferSlice slice, std::size_t size)
+void MessageTask::assignSlice(std::string_view name, Common::Memory::BufferSlice slice, std::size_t size)
 {
     m_channelName = name;
     m_inlineSize = 0;
@@ -26,12 +26,12 @@ void MessageTask::assignSlice(std::string_view name, Memory::BufferSlice slice, 
     m_pooledSlice = std::move(slice);
 }
 
-std::span<std::byte> MessageTask::prepareInline(std::string_view name)
+Common::Compat::span<std::byte> MessageTask::prepareInline(std::string_view name)
 {
     if (m_channelName != name) {
         m_channelName = name;
     }
-    return std::span<std::byte>(m_inlineBuffer.data(), m_inlineBuffer.size());
+    return Common::Compat::span<std::byte>(m_inlineBuffer.data(), m_inlineBuffer.size());
 }
 
 void MessageTask::commitInline(std::size_t size) noexcept
@@ -41,7 +41,7 @@ void MessageTask::commitInline(std::size_t size) noexcept
     m_heapBuffer.clear();
 }
 
-MessageTask::MessageTask(std::string name, std::span<const std::byte> data)
+MessageTask::MessageTask(std::string name, Common::Compat::span<const std::byte> data)
     : m_channelName(std::move(name))
 {
     if (data.size() <= SmallBufferSize) {
@@ -83,15 +83,15 @@ std::string_view MessageTask::channelName() const noexcept
     return m_channelName;
 }
 
-std::span<const std::byte> MessageTask::payload() const noexcept
+Common::Compat::span<const std::byte> MessageTask::payload() const noexcept
 {
     if (m_inlineSize > 0) {
-        return std::span<const std::byte>(m_inlineBuffer.data(), m_inlineSize);
+        return Common::Compat::span<const std::byte>(m_inlineBuffer.data(), m_inlineSize);
     }
     if (m_pooledSlice) {
         return m_pooledSlice.span();
     }
-    return std::span<const std::byte>(m_heapBuffer.data(), m_heapBuffer.size());
+    return Common::Compat::span<const std::byte>(m_heapBuffer.data(), m_heapBuffer.size());
 }
 
 } // namespace Core::Threading

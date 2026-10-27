@@ -31,7 +31,7 @@ target_link_libraries(backend-socket
         proxylog::proxylog
 )
 
-target_compile_features(backend-socket PUBLIC cxx_std_20)
+target_compile_features(backend-socket PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET backend-socket::backend-socket)
   add_library(backend-socket::backend-socket ALIAS backend-socket)

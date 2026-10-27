@@ -36,6 +36,7 @@ target_include_directories(proxy_tests PRIVATE
 
 target_link_libraries(proxy_tests PRIVATE
     core
+    common
     backend-socket
     backend-uds
     backend-shm
@@ -45,7 +46,7 @@ target_link_libraries(proxy_tests PRIVATE
     Catch2::Catch2WithMain
 )
 
-target_compile_features(proxy_tests PRIVATE cxx_std_20)
+target_compile_features(proxy_tests PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
 
 include(CTest)
 include(Catch)

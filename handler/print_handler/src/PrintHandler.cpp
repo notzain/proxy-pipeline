@@ -44,8 +44,8 @@ Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view ch
 
 void PrintHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     Proxy::Log::info("[PrintHandler] Channel '{}' received batch of {} message(s)", channelName, messages.size());
     const auto count = std::min(messages.size(), outResults.size());

@@ -85,8 +85,7 @@ void critical(std::string_view message);
 /**
  * @brief Logs a formatted message at Trace level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void trace(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Trace)) {
@@ -98,8 +97,7 @@ void trace(fmt::format_string<Args...> fmtStr, Args&&... args)
 /**
  * @brief Logs a formatted message at Debug level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void debug(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Debug)) {
@@ -111,8 +109,7 @@ void debug(fmt::format_string<Args...> fmtStr, Args&&... args)
 /**
  * @brief Logs a formatted message at Info level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void info(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Info)) {
@@ -124,8 +121,7 @@ void info(fmt::format_string<Args...> fmtStr, Args&&... args)
 /**
  * @brief Logs a formatted message at Warn level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void warn(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Warn)) {
@@ -137,8 +133,7 @@ void warn(fmt::format_string<Args...> fmtStr, Args&&... args)
 /**
  * @brief Logs a formatted message at Error level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void error(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Error)) {
@@ -150,8 +145,7 @@ void error(fmt::format_string<Args...> fmtStr, Args&&... args)
 /**
  * @brief Logs a formatted message at Critical level using fmt formatting.
  */
-template <typename... Args>
-    requires(sizeof...(Args) > 0)
+template <typename... Args, std::enable_if_t<(sizeof...(Args) > 0), int> = 0>
 void critical(fmt::format_string<Args...> fmtStr, Args&&... args)
 {
     if (!shouldLog(Level::Critical)) {

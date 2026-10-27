@@ -62,7 +62,7 @@ std::optional<std::string_view> Configuration::getString(std::string_view key) c
 
 bool Configuration::has(std::string_view key) const noexcept
 {
-    return m_entries.contains(std::string(key));
+    return m_entries.find(std::string(key)) != m_entries.end();
 }
 
 } // namespace Core::Config

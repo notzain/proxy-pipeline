@@ -1,4 +1,6 @@
 #include "backend/ISocketPoller.hpp"
+#include "common/compat/Latch.hpp"
+#include "common/compat/Span.hpp"
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
@@ -13,10 +15,8 @@
 #include <condition_variable>
 #include <csignal>
 #include <fmt/core.h>
-#include <latch>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -33,7 +33,7 @@ public:
         : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
-            auto env = Core::Message::MessageEnvelope::packRaw(std::as_bytes(std::span(msg.data(), msg.size())));
+            auto env = Core::Message::MessageEnvelope::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
             m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
         }
         if (appendMalformed) {
@@ -41,7 +41,7 @@ public:
         }
     }
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
     {
         std::lock_guard lock(m_mutex);
         if (m_index < m_messages.size()) {
@@ -54,7 +54,7 @@ public:
     }
 
     BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout) override
     {
         std::lock_guard lock(m_mutex);
@@ -87,7 +87,7 @@ public:
     {
     }
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
     {
         return BytesResult::failure(m_error);
     }
@@ -98,7 +98,7 @@ private:
 
 class PartialFailureInputChannel : public Backend::IInputChannel {
 public:
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
     {
         if (m_received) {
             return BytesResult::failure(Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
@@ -114,14 +114,14 @@ private:
 
 class StepWaitingInputChannel : public MockInputChannel {
 public:
-    StepWaitingInputChannel(std::string name, std::vector<std::string> messages, std::latch& stepStarted)
+    StepWaitingInputChannel(std::string name, std::vector<std::string> messages, Common::Compat::latch& stepStarted)
         : MockInputChannel(std::move(name), std::move(messages))
         , m_stepStarted(stepStarted)
     {
     }
 
     BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override
     {
         if (!m_waited) {
@@ -132,7 +132,7 @@ public:
     }
 
 private:
-    std::latch& m_stepStarted;
+    Common::Compat::latch& m_stepStarted;
     bool m_waited { false };
 };
 
@@ -170,10 +170,10 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
     CHECK(Backend::isReceiveClosed(closedPoller.error()));
 
     ::Backend::BufferSlot slot { buffer, 0 };
-    auto batchTimeout = timeoutChannel.receiveBatch(std::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
+    auto batchTimeout = timeoutChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
     REQUIRE_FALSE(batchTimeout.hasValue());
     CHECK(Backend::isReceiveTimeout(batchTimeout.error().cause));
-    auto batchError = errorChannel.receiveBatch(std::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
+    auto batchError = errorChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
     REQUIRE_FALSE(batchError.hasValue());
     const auto* batchReceiveFailure = std::get_if<Backend::ReceiveFailure>(&batchError.error().cause);
     REQUIRE(batchReceiveFailure != nullptr);
@@ -195,7 +195,7 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
 
 class MockOutputChannel : public Backend::IOutputChannel {
 public:
-    bool send(std::span<const std::byte> message) override
+    bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
         auto optView = Core::Message::MessageView::from(message);
@@ -222,7 +222,7 @@ public:
         m_runner = runner;
     }
 
-    void setOutChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> out)
+    void setOutChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> out)
     {
         m_outChannel = out;
     }
@@ -249,7 +249,7 @@ public:
 
 private:
     Core::Handler::HandlerRunner* m_runner { nullptr };
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
+    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
     int m_count { 0 };
 };
 
@@ -292,7 +292,7 @@ public:
         m_runner = runner;
     }
 
-    void setStepStarted(std::latch* stepStarted)
+    void setStepStarted(Common::Compat::latch* stepStarted)
     {
         m_stepStarted = stepStarted;
     }
@@ -328,7 +328,7 @@ public:
     }
 
 private:
-    void recordWork(std::chrono::milliseconds duration, std::latch* stepStarted = nullptr)
+    void recordWork(std::chrono::milliseconds duration, Common::Compat::latch* stepStarted = nullptr)
     {
         const auto active = m_activeCalls.fetch_add(1, std::memory_order_acq_rel) + 1;
         auto maxActive = m_maxConcurrentCalls.load(std::memory_order_relaxed);
@@ -344,7 +344,7 @@ private:
     }
 
     Core::Handler::HandlerRunner* m_runner { nullptr };
-    std::latch* m_stepStarted { nullptr };
+    Common::Compat::latch* m_stepStarted { nullptr };
     std::atomic<bool> m_firstStep { true };
     std::atomic<std::size_t> m_activeCalls { 0 };
     std::atomic<std::size_t> m_maxConcurrentCalls { 0 };
@@ -448,7 +448,7 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
     CHECK_THROWS_AS(handler.registerOutputChannel(nullptr), std::invalid_argument);
 
     std::string msg = "Hello Sender";
-    std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+    Common::Compat::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
 
     CHECK(registered->send(byteSpan));
 
@@ -547,7 +547,7 @@ TEST_CASE("Ingress accounting is consistent across execution models", "[channel]
 
     const std::string payload = "valid";
     const auto expectedBytes = Core::Message::MessageEnvelope::packRaw(
-        std::as_bytes(std::span(payload.data(), payload.size())))
+        Common::Compat::as_bytes(Common::Compat::span<const char>(payload.data(), payload.size())))
                                    .size();
 
     const std::array<Core::Handler::ExecutionModel, 3> models {
@@ -593,7 +593,7 @@ TEST_CASE("Parallel execution models can serialize handler callbacks and step", 
         Core::Handler::HandlerRunner runner(handler);
         runner.setExecutionModel(model);
         handler.setRunner(&runner);
-        std::latch stepStarted(1);
+        Common::Compat::latch stepStarted(1);
         handler.setStepStarted(&stepStarted);
         handler.registerInputChannel(std::make_unique<StepWaitingInputChannel>(
             "first", std::vector<std::string> { "one" }, stepStarted));
@@ -693,7 +693,7 @@ TEST_CASE("Direct output channel multi-dispatch", "[channel][core]")
     std::vector<::Backend::IOutputChannel*> channels = { rawA, rawB };
 
     std::string msg = "Broadcast Message";
-    std::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+    Common::Compat::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
 
     std::size_t sentCount = 0;
     for (auto* ch : channels) {
@@ -723,7 +723,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
             m_runner = runner;
         }
 
-        void setOutChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> out)
+        void setOutChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> out)
         {
             m_outChannel = out;
         }
@@ -742,7 +742,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
 
     private:
         Core::Handler::HandlerRunner* m_runner { nullptr };
-        Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
+        Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
         std::atomic<int> m_count { 0 };
     };
 
@@ -776,7 +776,7 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
     Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     std::string testMsg = "Hello UDS IPC!";
-    std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
+    Common::Compat::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
 
     std::array<std::byte, 128> recvBuf { };
     auto timeoutResult = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(0));
@@ -804,14 +804,14 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
     for (std::size_t i = 0; i < numMessages; ++i) {
         std::string msg = fmt::format("Batch Message #{}", i);
         sentMessages.push_back(msg);
-        std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+        Common::Compat::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
         REQUIRE(outChannel.send(sendSpan));
     }
 
     std::array<std::array<std::byte, 256>, numMessages> buffers;
     std::array<::Backend::BufferSlot, numMessages> slots;
     for (std::size_t i = 0; i < numMessages; ++i) {
-        slots[i] = ::Backend::BufferSlot { std::span<std::byte>(buffers[i].data(), buffers[i].size()), 0 };
+        slots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>(buffers[i].data(), buffers[i].size()), 0 };
     }
 
     auto result = inChannel.receiveBatch(
@@ -933,20 +933,20 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
     Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     std::vector<std::string> messages = { "Batch1", "Batch2", "Batch3", "Batch4" };
-    std::vector<std::span<const std::byte>> messageSpans;
+    std::vector<Common::Compat::span<const std::byte>> messageSpans;
     messageSpans.reserve(messages.size());
     for (const auto& msg : messages) {
         messageSpans.emplace_back(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
     }
 
     std::size_t sent = outChannel.sendBatch(
-        std::span<const std::span<const std::byte>>(messageSpans.data(), messageSpans.size()));
+        Common::Compat::span<const Common::Compat::span<const std::byte>>(messageSpans.data(), messageSpans.size()));
     REQUIRE(sent == messages.size());
 
     std::array<std::array<std::byte, 64>, 4> recvBuffers;
     std::array<::Backend::BufferSlot, 4> slots;
     for (std::size_t i = 0; i < 4; ++i) {
-        slots[i] = ::Backend::BufferSlot { std::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size()), 0 };
+        slots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size()), 0 };
     }
 
     auto result = inChannel.receiveBatch(

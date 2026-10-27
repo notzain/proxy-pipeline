@@ -74,7 +74,7 @@ bool XmlSchemaValidator::isLoaded() const noexcept
     return m_loaded;
 }
 
-bool XmlSchemaValidator::validate(std::span<const std::byte> xmlData) const
+bool XmlSchemaValidator::validate(Common::Compat::span<const std::byte> xmlData) const
 {
     if (!m_loaded || !m_schema) {
         return false;

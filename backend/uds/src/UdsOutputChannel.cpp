@@ -64,7 +64,7 @@ void UdsOutputChannel::openSocket()
     }
 }
 
-bool UdsOutputChannel::send(std::span<const std::byte> message)
+bool UdsOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (m_socketFd < 0) {
         openSocket();
@@ -163,7 +163,7 @@ bool UdsOutputChannel::send(std::span<const std::byte> message)
     return true;
 }
 
-std::size_t UdsOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t UdsOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     if (messages.empty()) {
         return 0;

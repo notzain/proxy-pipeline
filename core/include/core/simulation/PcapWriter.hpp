@@ -1,10 +1,10 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/simulation/PcapFormat.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <span>
 #include <string>
 
 namespace Core::Simulation {
@@ -36,7 +36,7 @@ public:
     /**
      * @brief Writes a raw Ethernet packet to the PCAP file.
      */
-    bool writeRawPacket(std::span<const std::byte> packetBytes, std::uint64_t timestampNs);
+    bool writeRawPacket(Common::Compat::span<const std::byte> packetBytes, std::uint64_t timestampNs);
 
     /**
      * @brief Constructs and writes a complete Ethernet + IPv4 + UDP packet with the given payload.
@@ -53,7 +53,7 @@ public:
         std::uint32_t dstIp,
         std::uint16_t srcPort,
         std::uint16_t dstPort,
-        std::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs);
 
     /**

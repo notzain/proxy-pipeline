@@ -134,7 +134,7 @@ void ShmRingBuffer::unmapMemory()
     m_slots = nullptr;
 }
 
-bool ShmRingBuffer::push(std::span<const std::byte> message, bool* wasEmpty)
+bool ShmRingBuffer::push(Common::Compat::span<const std::byte> message, bool* wasEmpty)
 {
     if (!isValid() || message.size() > MaxPayloadBytes) {
         return false;
@@ -161,7 +161,7 @@ bool ShmRingBuffer::push(std::span<const std::byte> message, bool* wasEmpty)
     return true;
 }
 
-std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>> messages, bool* wasEmpty)
+std::size_t ShmRingBuffer::pushBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages, bool* wasEmpty)
 {
     if (!isValid() || messages.empty()) {
         return 0;
@@ -201,7 +201,7 @@ std::size_t ShmRingBuffer::pushBatch(std::span<const std::span<const std::byte>>
     return toWrite;
 }
 
-std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination, bool* wasFull)
+std::size_t ShmRingBuffer::popInto(Common::Compat::span<std::byte> destination, bool* wasFull)
 {
     if (!isValid()) {
         return 0;
@@ -229,7 +229,7 @@ std::size_t ShmRingBuffer::popInto(std::span<std::byte> destination, bool* wasFu
 }
 
 std::size_t ShmRingBuffer::popBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     bool* wasFull)
 {
     if (!isValid() || slots.empty()) {

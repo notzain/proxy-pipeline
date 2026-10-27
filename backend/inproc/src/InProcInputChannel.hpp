@@ -15,10 +15,10 @@ public:
     InProcInputChannel(std::string name, std::shared_ptr<InProcRing> ring);
     ~InProcInputChannel() override;
 
-    ::Backend::BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
 
     ::Backend::BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
 private:
@@ -26,4 +26,3 @@ private:
 };
 
 } // namespace Proxy::Backend::InProc
-

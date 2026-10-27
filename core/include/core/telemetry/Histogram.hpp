@@ -1,8 +1,8 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include <atomic>
 #include <cstdint>
-#include <span>
 #include <string>
 #include <vector>
 
@@ -61,7 +61,7 @@ public:
      * @param help Description string.
      * @param bucketBounds Monotonically increasing list of bucket boundaries.
      */
-    Histogram(std::string name, std::string help, std::span<const double> bucketBounds);
+    Histogram(std::string name, std::string help, Common::Compat::span<const double> bucketBounds);
 
     /**
      * @brief Constructs a default latency histogram with standard microsecond bucket boundaries:

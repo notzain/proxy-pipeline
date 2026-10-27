@@ -83,7 +83,7 @@ void PcapWriter::flush()
     }
 }
 
-bool PcapWriter::writeRawPacket(std::span<const std::byte> packetBytes, std::uint64_t timestampNs)
+bool PcapWriter::writeRawPacket(Common::Compat::span<const std::byte> packetBytes, std::uint64_t timestampNs)
 {
     if (!isOpen() || packetBytes.empty()) {
         return false;
@@ -111,7 +111,7 @@ bool PcapWriter::writeUdpPacket(
     std::uint32_t dstIp,
     std::uint16_t srcPort,
     std::uint16_t dstPort,
-    std::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
     if (!isOpen()) {

@@ -2,10 +2,10 @@
 
 #include "backend/BufferSlot.hpp"
 #include "backend/shm/sync/ShmSignaler.hpp"
+#include "common/compat/Span.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string>
 
 namespace Proxy::Backend::Shm {
@@ -86,7 +86,7 @@ public:
      * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
      * @return true if written successfully; false if queue is full or message is oversized.
      */
-    bool push(std::span<const std::byte> message, bool* wasEmpty = nullptr);
+    bool push(Common::Compat::span<const std::byte> message, bool* wasEmpty = nullptr);
 
     /**
      * @brief Vectorized transmission writing a batch of messages in a single atomic sequence update.
@@ -95,7 +95,7 @@ public:
      * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
      * @return Number of messages successfully written.
      */
-    std::size_t pushBatch(std::span<const std::span<const std::byte>> messages, bool* wasEmpty = nullptr);
+    std::size_t pushBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages, bool* wasEmpty = nullptr);
 
     /**
      * @brief Reads the next available message from the ring buffer into the destination buffer.
@@ -104,7 +104,7 @@ public:
      * @param wasFull Optional out-parameter set to true if the ring buffer was completely full prior to this pop.
      * @return Number of bytes copied, or 0 if queue is empty.
      */
-    std::size_t popInto(std::span<std::byte> destination, bool* wasFull = nullptr);
+    std::size_t popInto(Common::Compat::span<std::byte> destination, bool* wasFull = nullptr);
 
     /**
      * @brief Vectorized reception draining up to slots.size() messages from the ring buffer.
@@ -114,7 +114,7 @@ public:
      * @return Number of messages successfully received.
      */
     std::size_t popBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         bool* wasFull = nullptr);
 
     /**

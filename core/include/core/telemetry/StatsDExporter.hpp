@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/io/UniqueFd.hpp"
+#include "common/io/UniqueFd.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include <atomic>
 #include <chrono>
@@ -63,7 +63,7 @@ private:
     std::string m_prefix;
     MetricsRegistry& m_registry;
 
-    Core::Io::UniqueFd m_socketFd;
+    Common::Io::UniqueFd m_socketFd;
     std::atomic<bool> m_running { false };
     std::thread m_worker;
 

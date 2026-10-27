@@ -1,7 +1,7 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
@@ -71,8 +71,8 @@ Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view ch
 
 void MergeHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
     const auto count = std::min(messages.size(), outResults.size());
@@ -82,7 +82,7 @@ void MergeHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Core::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer spans(messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
         spans[i] = messages[i].rawBuffer();
     }

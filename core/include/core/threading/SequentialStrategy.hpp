@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/compat/Jthread.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
 #include <atomic>
 #include <thread>
@@ -24,7 +25,7 @@ public:
 
 private:
     std::atomic<bool> m_running { false };
-    std::jthread m_workerThread;
+    Common::Compat::jthread m_workerThread;
 };
 
 } // namespace Core::Threading

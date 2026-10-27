@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace Core::Io {
+namespace Common::Io {
 
 /**
  * @brief Move-only RAII file descriptor wrapper ensuring POSIX file and socket handles are safely closed.
@@ -53,19 +53,19 @@ public:
     [[nodiscard]] bool isValid() const noexcept;
 
     /**
-     * @brief Boolean conversion operator checking descriptor validity.
+     * @brief Implicit conversion to bool, equivalent to isValid().
      */
-    explicit operator bool() const noexcept;
+    [[nodiscard]] explicit operator bool() const noexcept;
 
     /**
-     * @brief Releases ownership of the file descriptor without closing it.
+     * @brief Releases ownership of the managed descriptor without closing it.
      *
-     * @return The underlying file descriptor.
+     * @return The released descriptor, or -1 if invalid.
      */
     int release() noexcept;
 
     /**
-     * @brief Closes the currently held file descriptor (if valid) and takes ownership of @p newFd.
+     * @brief Replaces the managed descriptor with a new one. Closes the previously managed descriptor.
      *
      * @param newFd The new file descriptor to manage (defaults to -1).
      */
@@ -91,5 +91,4 @@ inline void swap(UniqueFd& lhs, UniqueFd& rhs) noexcept
     lhs.swap(rhs);
 }
 
-} // namespace Core::Io
-
+} // namespace Common::Io

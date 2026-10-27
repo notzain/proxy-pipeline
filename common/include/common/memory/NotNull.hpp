@@ -1,13 +1,12 @@
 #pragma once
 
 #include <cassert>
-#include <concepts>
 #include <cstddef>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
-namespace Core::Memory {
+namespace Common::Memory {
 
 /**
  * @brief Zero-overhead non-nullable pointer wrapper enforcing non-null invariants at compile and runtime.
@@ -28,8 +27,8 @@ public:
     /**
      * @brief Constructs a NotNull from a pointer-like value, asserting it is not null.
      */
-    template <typename U>
-        requires std::convertible_to<U, Ptr>
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U, Ptr>, int> = 0>
     constexpr explicit NotNull(U&& ptr)
         : m_ptr(std::forward<U>(ptr))
     {
@@ -44,8 +43,8 @@ public:
     /**
      * @brief Copy constructor from compatible NotNull<U>.
      */
-    template <typename U>
-        requires std::convertible_to<U, Ptr>
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U, Ptr>, int> = 0>
     constexpr NotNull(const NotNull<U>& other)
         : m_ptr(other.get())
     {
@@ -54,14 +53,14 @@ public:
     /**
      * @brief Move constructor from compatible NotNull<U>.
      */
-    template <typename U>
-        requires std::convertible_to<U, Ptr>
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U, Ptr>, int> = 0>
     constexpr NotNull(NotNull<U>&& other)
         : m_ptr(std::move(other).get())
     {
     }
 
-    constexpr ~NotNull() = default;
+    ~NotNull() = default;
     constexpr NotNull(const NotNull&) = default;
     constexpr NotNull& operator=(const NotNull&) = default;
     constexpr NotNull(NotNull&&) noexcept = default;
@@ -70,8 +69,8 @@ public:
     /**
      * @brief Assignment from compatible pointer, asserting non-null.
      */
-    template <typename U>
-        requires std::convertible_to<U, Ptr>
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U, Ptr>, int> = 0>
     constexpr NotNull& operator=(U&& ptr)
     {
         assert(ptr != nullptr && "NotNull cannot be assigned nullptr");
@@ -98,67 +97,71 @@ public:
     }
 
     /**
-     * @brief Dereferences the underlying pointer.
+     * @brief Dereference operator forwarding to underlying element.
      */
-    [[nodiscard]] constexpr decltype(auto) operator*() const noexcept
+    [[nodiscard]] constexpr decltype(auto) operator*() const
     {
         return *m_ptr;
     }
 
     /**
-     * @brief Member access operator forwarding to the underlying pointer.
+     * @brief Member access operator forwarding to underlying pointer.
      */
-    [[nodiscard]] constexpr decltype(auto) operator->() const noexcept
+    [[nodiscard]] constexpr const Ptr& operator->() const noexcept
     {
         return m_ptr;
     }
 
     /**
-     * @brief Implicit conversion to the underlying pointer type.
+     * @brief Implicit conversion to underlying pointer type.
      */
-    constexpr operator const Ptr&() const noexcept
+    [[nodiscard]] constexpr operator const Ptr&() const noexcept
     {
         return m_ptr;
     }
 
     /**
-     * @brief Implicit conversion to the underlying pointer type (mutable).
+     * @brief Equality comparison between two NotNull instances.
      */
-    constexpr operator Ptr&() noexcept
-    {
-        return m_ptr;
-    }
-
     template <typename U>
     [[nodiscard]] constexpr bool operator==(const NotNull<U>& other) const noexcept
     {
         return m_ptr == other.get();
     }
 
+    /**
+     * @brief Inequality comparison between two NotNull instances.
+     */
     template <typename U>
-    [[nodiscard]] constexpr auto operator<=>(const NotNull<U>& other) const noexcept
+    [[nodiscard]] constexpr bool operator!=(const NotNull<U>& other) const noexcept
     {
-        return m_ptr <=> other.get();
+        return m_ptr != other.get();
     }
 
+    /**
+     * @brief Equality comparison with a compatible raw pointer.
+     */
     template <typename U>
     [[nodiscard]] constexpr bool operator==(const U& other) const noexcept
     {
         return m_ptr == other;
     }
 
-    bool operator==(std::nullptr_t) const = delete;
+    /**
+     * @brief Inequality comparison with a compatible raw pointer.
+     */
+    template <typename U>
+    [[nodiscard]] constexpr bool operator!=(const U& other) const noexcept
+    {
+        return m_ptr != other;
+    }
 
 private:
     Ptr m_ptr;
 };
 
-// Deduction guide for raw pointers
+// Deduction guide
 template <typename T>
-NotNull(T*) -> NotNull<T*>;
+NotNull(T) -> NotNull<T>;
 
-// Deduction guide for general pointer types
-template <typename Ptr>
-NotNull(Ptr) -> NotNull<Ptr>;
-
-} // namespace Core::Memory
+} // namespace Common::Memory

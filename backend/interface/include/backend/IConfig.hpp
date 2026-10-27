@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/compat/TypeTraits.hpp"
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -29,7 +30,7 @@ namespace Detail {
     template <typename T>
     std::optional<T> parseValue(std::string_view str)
     {
-        using CleanT = std::remove_cvref_t<T>;
+        using CleanT = Common::Compat::remove_cvref_t<T>;
         if constexpr (std::is_same_v<CleanT, std::string>) {
             return parseString(str);
         } else if constexpr (std::is_same_v<CleanT, std::string_view>) {

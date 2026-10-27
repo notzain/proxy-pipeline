@@ -12,7 +12,7 @@ InProcInputChannel::InProcInputChannel(std::string name, std::shared_ptr<InProcR
 
 InProcInputChannel::~InProcInputChannel() = default;
 
-::Backend::BytesResult InProcInputChannel::receiveInto(std::span<std::byte> destination, Timeout)
+::Backend::BytesResult InProcInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout)
 {
     if (!m_ring) {
         return ::Backend::BytesResult::failure(::Backend::receiveClosed());
@@ -21,7 +21,7 @@ InProcInputChannel::~InProcInputChannel() = default;
     std::size_t copiedBytes = 0;
     bool found = false;
 
-    std::size_t drained = m_ring->drain(1, [&](std::span<const std::vector<std::byte>> slice) {
+    std::size_t drained = m_ring->drain(1, [&](Common::Compat::span<const std::vector<std::byte>> slice) {
         if (!slice.empty()) {
             const auto& msg = slice[0];
             copiedBytes = std::min(destination.size(), msg.size());
@@ -38,7 +38,7 @@ InProcInputChannel::~InProcInputChannel() = default;
 }
 
 ::Backend::BatchResult InProcInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout)
 {
     if (!m_ring) {
@@ -50,7 +50,7 @@ InProcInputChannel::~InProcInputChannel() = default;
     }
 
     std::size_t count = 0;
-    m_ring->drain(slots.size(), [&](std::span<const std::vector<std::byte>> slice) {
+    m_ring->drain(slots.size(), [&](Common::Compat::span<const std::vector<std::byte>> slice) {
         for (std::size_t i = 0; i < slice.size() && i < slots.size(); ++i) {
             const auto& msg = slice[i];
             const std::size_t toCopy = std::min(slots[i].buffer.size(), msg.size());
@@ -68,4 +68,3 @@ InProcInputChannel::~InProcInputChannel() = default;
 }
 
 } // namespace Proxy::Backend::InProc
-

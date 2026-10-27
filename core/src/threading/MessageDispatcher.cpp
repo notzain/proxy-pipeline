@@ -9,7 +9,7 @@ namespace Core::Threading::Detail {
 void dispatchReceivedBatch(
     Handler::IHandler& handler,
     std::string_view channelName,
-    std::span<const std::span<const std::byte>> rawMessages,
+    Common::Compat::span<const Common::Compat::span<const std::byte>> rawMessages,
     std::size_t& invalidEnvelopeCount,
     std::mutex* handlerMutex)
 {
@@ -47,7 +47,7 @@ void dispatchReceivedBatch(
     s_msgCounter.increment(validViews);
     s_bytesCounter.increment(batchBytes);
 
-    const auto messages = std::span<const Message::MessageView>(views.data(), validViews);
+    const auto messages = Common::Compat::span<const Message::MessageView>(views.data(), validViews);
     if (handlerMutex) {
         std::lock_guard lock(*handlerMutex);
         handler.processBatch(channelName, messages);

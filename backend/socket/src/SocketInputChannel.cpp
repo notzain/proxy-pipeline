@@ -69,7 +69,7 @@ void SocketInputChannel::openAndBindSocket()
     Proxy::Log::info("[SocketInputChannel] Listening on UDP {}:{}", m_host, m_port);
 }
 
-BytesResult SocketInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult SocketInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
@@ -86,7 +86,7 @@ BytesResult SocketInputChannel::receiveInto(std::span<std::byte> destination, Ti
 }
 
 BatchResult SocketInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {

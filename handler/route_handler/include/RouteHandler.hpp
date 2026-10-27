@@ -27,8 +27,8 @@ public:
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
     void onBatchReceived(
         std::string_view channelName,
-        std::span<const Core::Message::MessageView> messages,
-        std::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Core::Message::MessageView> messages,
+        Common::Compat::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Adds an explicit routing rule programmatically.
@@ -38,7 +38,7 @@ public:
     /**
      * @brief Sets an explicit default fallback channel.
      */
-    void setDefaultChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept;
+    void setDefaultChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept;
 
     /**
      * @brief Accessor for configured rules.
@@ -46,7 +46,7 @@ public:
     [[nodiscard]] const std::vector<RouteRule>& rules() const noexcept;
 
 private:
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_defaultOutputChannel;
+    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_defaultOutputChannel;
     std::vector<RouteRule> m_rules;
 };
 

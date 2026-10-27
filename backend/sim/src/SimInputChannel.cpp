@@ -60,7 +60,7 @@ SimInputChannel::~SimInputChannel()
     }
 }
 
-void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_view status)
+void SimInputChannel::emitEvent(Common::Compat::span<const std::byte> payload, std::string_view status)
 {
     if (m_eventFd < 0 || m_eventHost.empty() || m_eventPort <= 0) {
         return;
@@ -69,16 +69,16 @@ void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_
     // Inspect if envelope is present (18-byte EnvelopeHeader starting with 'PX' = 0x5058)
     std::string text;
     std::string fullText;
-    std::span<const std::byte> appPayload = payload;
+    Common::Compat::span<const std::byte> appPayload = payload;
 
     if (payload.size() >= 18) {
-        uint16_t magic = (static_cast<uint8_t>(payload[1]) << 8) | static_cast<uint8_t>(payload[0]);
+        uint16_t magic = (static_cast<uint8_t>(payload[0]) << 8) | static_cast<uint8_t>(payload[1]);
         if (magic == 0x5058) {
-            uint16_t metaLen = static_cast<uint8_t>(payload[4]) | (static_cast<uint8_t>(payload[5]) << 8);
-            uint32_t payloadLen = static_cast<uint8_t>(payload[6])
-                | (static_cast<uint8_t>(payload[7]) << 8)
-                | (static_cast<uint8_t>(payload[8]) << 16)
-                | (static_cast<uint8_t>(payload[9]) << 24);
+            uint16_t metaLen = (static_cast<uint8_t>(payload[4]) << 8) | static_cast<uint8_t>(payload[5]);
+            uint32_t payloadLen = (static_cast<uint8_t>(payload[6]) << 24)
+                | (static_cast<uint8_t>(payload[7]) << 16)
+                | (static_cast<uint8_t>(payload[8]) << 8)
+                | static_cast<uint8_t>(payload[9]);
 
             std::size_t offset = 18 + metaLen;
             if (offset <= payload.size()) {
@@ -133,7 +133,7 @@ void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_
     ::sendto(m_eventFd, json.data(), json.size(), 0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
-BytesResult SimInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult SimInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     std::array<::Backend::BufferSlot, 1> slots { ::Backend::BufferSlot { destination, 0 } };
     BatchResult result = receiveBatch(slots, timeout);
@@ -144,7 +144,7 @@ BytesResult SimInputChannel::receiveInto(std::span<std::byte> destination, Timeo
 }
 
 BatchResult SimInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty() || m_serverFd < 0) {

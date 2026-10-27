@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/compat/TypeTraits.hpp"
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -71,17 +72,25 @@ struct TypeTraits {
     static constexpr bool isReflected = false;
 };
 
-template <typename T>
-concept HasFields = requires {
-    { TypeTraits<std::remove_cvref_t<T>>::fields() };
-};
+template <typename T, typename = void>
+struct HasFieldsHelper : std::false_type { };
 
 template <typename T>
-concept HasAttributes = requires {
-    { TypeTraits<std::remove_cvref_t<T>>::attributes() };
-};
+struct HasFieldsHelper<T, std::void_t<decltype(TypeTraits<Common::Compat::remove_cvref_t<T>>::fields())>> : std::true_type { };
 
 template <typename T>
-concept ReflectedType = HasFields<T> || HasAttributes<T>;
+inline constexpr bool HasFields = HasFieldsHelper<T>::value;
+
+template <typename T, typename = void>
+struct HasAttributesHelper : std::false_type { };
+
+template <typename T>
+struct HasAttributesHelper<T, std::void_t<decltype(TypeTraits<Common::Compat::remove_cvref_t<T>>::attributes())>> : std::true_type { };
+
+template <typename T>
+inline constexpr bool HasAttributes = HasAttributesHelper<T>::value;
+
+template <typename T>
+inline constexpr bool ReflectedType = HasFields<T> || HasAttributes<T>;
 
 } // namespace Core::Serialization

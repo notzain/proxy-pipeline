@@ -31,7 +31,7 @@ target_link_libraries(backend-uds
         proxylog::proxylog
 )
 
-target_compile_features(backend-uds PUBLIC cxx_std_20)
+target_compile_features(backend-uds PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
 if(NOT TARGET backend-uds::backend-uds)
   add_library(backend-uds::backend-uds ALIAS backend-uds)

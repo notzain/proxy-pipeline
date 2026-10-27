@@ -1,18 +1,18 @@
-#include "core/io/UniqueFd.hpp"
-#include "core/memory/Borrow.hpp"
-#include "core/memory/NotNull.hpp"
-#include "core/memory/ObserverPtr.hpp"
+#include "common/io/UniqueFd.hpp"
+#include "common/memory/Borrow.hpp"
+#include "common/memory/NotNull.hpp"
+#include "common/memory/ObserverPtr.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <fcntl.h>
 #include <memory>
 #include <unistd.h>
 
-TEST_CASE("Core::Io::UniqueFd lifecycle and RAII ownership")
+TEST_CASE("Common::Io::UniqueFd lifecycle and RAII ownership")
 {
     SECTION("Default construction holds invalid descriptor")
     {
-        Core::Io::UniqueFd ufd;
+        Common::Io::UniqueFd ufd;
         CHECK_FALSE(ufd.isValid());
         CHECK(ufd.get() == -1);
         CHECK_FALSE(static_cast<bool>(ufd));
@@ -27,7 +27,7 @@ TEST_CASE("Core::Io::UniqueFd lifecycle and RAII ownership")
         int writeFd = pfd[1];
 
         {
-            Core::Io::UniqueFd ufd(readFd);
+            Common::Io::UniqueFd ufd(readFd);
             CHECK(ufd.isValid());
             CHECK(ufd.get() == readFd);
             CHECK(static_cast<bool>(ufd));
@@ -47,15 +47,15 @@ TEST_CASE("Core::Io::UniqueFd lifecycle and RAII ownership")
         int pfd[2];
         REQUIRE(::pipe(pfd) == 0);
 
-        Core::Io::UniqueFd u1(pfd[0]);
-        Core::Io::UniqueFd u2(std::move(u1));
+        Common::Io::UniqueFd u1(pfd[0]);
+        Common::Io::UniqueFd u2(std::move(u1));
 
         CHECK_FALSE(u1.isValid());
         CHECK(u1.get() == -1);
         CHECK(u2.isValid());
         CHECK(u2.get() == pfd[0]);
 
-        Core::Io::UniqueFd u3;
+        Common::Io::UniqueFd u3;
         u3 = std::move(u2);
         CHECK_FALSE(u2.isValid());
         CHECK(u3.isValid());
@@ -69,7 +69,7 @@ TEST_CASE("Core::Io::UniqueFd lifecycle and RAII ownership")
         int pfd[2];
         REQUIRE(::pipe(pfd) == 0);
 
-        Core::Io::UniqueFd ufd(pfd[0]);
+        Common::Io::UniqueFd ufd(pfd[0]);
         int raw = ufd.release();
         CHECK_FALSE(ufd.isValid());
         CHECK(raw == pfd[0]);
@@ -85,13 +85,13 @@ TEST_CASE("Core::Io::UniqueFd lifecycle and RAII ownership")
     }
 }
 
-TEST_CASE("Core::Memory::NotNull guarantees and semantics")
+TEST_CASE("Common::Memory::NotNull guarantees and semantics")
 {
     int value = 42;
 
     SECTION("Construct from valid raw pointer")
     {
-        Core::Memory::NotNull<int*> notNullPtr(&value);
+        Common::Memory::NotNull<int*> notNullPtr(&value);
         CHECK(*notNullPtr == 42);
         *notNullPtr = 99;
         CHECK(value == 99);
@@ -100,8 +100,8 @@ TEST_CASE("Core::Memory::NotNull guarantees and semantics")
     SECTION("Construct from ObserverPtr")
     {
         value = 42;
-        Core::Memory::ObserverPtr<int> obs(&value);
-        Core::Memory::NotNull<Core::Memory::ObserverPtr<int>> notNullObs(obs);
+        Common::Memory::ObserverPtr<int> obs(&value);
+        Common::Memory::NotNull<Common::Memory::ObserverPtr<int>> notNullObs(obs);
         CHECK(*notNullObs == 42);
         *notNullObs = 123;
         CHECK(value == 123);
@@ -110,28 +110,28 @@ TEST_CASE("Core::Memory::NotNull guarantees and semantics")
 
     SECTION("Implicit conversion to underlying pointer type")
     {
-        Core::Memory::NotNull<int*> notNullPtr(&value);
+        Common::Memory::NotNull<int*> notNullPtr(&value);
         int* raw = notNullPtr;
         CHECK(raw == &value);
     }
 
     SECTION("Comparison with raw pointer and ObserverPtr")
     {
-        Core::Memory::NotNull<int*> p1(&value);
-        Core::Memory::NotNull<int*> p2(&value);
+        Common::Memory::NotNull<int*> p1(&value);
+        Common::Memory::NotNull<int*> p2(&value);
         CHECK(p1 == p2);
         CHECK(p1 == &value);
     }
 }
 
-TEST_CASE("Core::Memory::Borrow rebindable reference semantics")
+TEST_CASE("Common::Memory::Borrow rebindable reference semantics")
 {
     int val1 = 10;
     int val2 = 20;
 
     SECTION("Construction from lvalue reference and access")
     {
-        Core::Memory::Borrow<int> b(val1);
+        Common::Memory::Borrow<int> b(val1);
         CHECK(*b == 10);
         CHECK(b.get() == 10);
 
@@ -141,7 +141,7 @@ TEST_CASE("Core::Memory::Borrow rebindable reference semantics")
 
     SECTION("Rebinding to another reference")
     {
-        Core::Memory::Borrow<int> b(val1);
+        Common::Memory::Borrow<int> b(val1);
         CHECK(&b.get() == &val1);
 
         b = val2;
@@ -155,18 +155,18 @@ TEST_CASE("Core::Memory::Borrow rebindable reference semantics")
 
     SECTION("Implicit conversion to reference and ObserverPtr")
     {
-        Core::Memory::Borrow<int> b(val1);
+        Common::Memory::Borrow<int> b(val1);
 
         int& ref = b;
         CHECK(&ref == &val1);
 
-        Core::Memory::ObserverPtr<int> obs = b;
+        Common::Memory::ObserverPtr<int> obs = b;
         CHECK(obs.get() == &val1);
     }
 
     SECTION("Can be stored in std::vector")
     {
-        std::vector<Core::Memory::Borrow<int>> vec;
+        std::vector<Common::Memory::Borrow<int>> vec;
         vec.emplace_back(val1);
         vec.emplace_back(val2);
 

@@ -19,19 +19,41 @@
     {
       "name": "debug",
       "displayName": "Debug",
-      "description": "Debug build with Conan 2 dependency provider",
+      "description": "Debug build with Conan 2 dependency provider (C++20)",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_STANDARD": "20"
+      }
+    },
+    {
+      "name": "debug-cpp17",
+      "displayName": "Debug C++17",
+      "description": "Debug build with Conan 2 dependency provider (C++17)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_STANDARD": "17"
       }
     },
     {
       "name": "release",
       "displayName": "Release",
-      "description": "Release build with Conan 2 dependency provider",
+      "description": "Release build with Conan 2 dependency provider (C++20)",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_STANDARD": "20"
+      }
+    },
+    {
+      "name": "release-cpp17",
+      "displayName": "Release C++17",
+      "description": "Release build with Conan 2 dependency provider (C++17)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_STANDARD": "17"
       }
     }
   ],
@@ -42,9 +64,19 @@
       "configurePreset": "debug"
     },
     {
+      "name": "debug-cpp17",
+      "displayName": "Build Debug C++17",
+      "configurePreset": "debug-cpp17"
+    },
+    {
       "name": "release",
       "displayName": "Build Release",
       "configurePreset": "release"
+    },
+    {
+      "name": "release-cpp17",
+      "displayName": "Build Release C++17",
+      "configurePreset": "release-cpp17"
     }
   ]
 }

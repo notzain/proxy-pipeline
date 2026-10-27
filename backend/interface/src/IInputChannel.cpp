@@ -17,7 +17,7 @@ std::string_view IInputChannel::name() const noexcept
 ReceiveMessageResult IInputChannel::receive(Timeout timeout)
 {
     Buffer buffer(65535);
-    BytesResult result = receiveInto(std::span<std::byte>(buffer.data(), buffer.size()), timeout);
+    BytesResult result = receiveInto(Common::Compat::span<std::byte>(buffer.data(), buffer.size()), timeout);
     if (!result.hasValue()) {
         return ReceiveMessageResult::failure(result.error());
     }
@@ -26,7 +26,7 @@ ReceiveMessageResult IInputChannel::receive(Timeout timeout)
 }
 
 BatchResult IInputChannel::receiveBatch(
-    std::span<BufferSlot> slots,
+    Common::Compat::span<BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {

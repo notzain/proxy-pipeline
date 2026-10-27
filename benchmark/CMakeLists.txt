@@ -31,5 +31,5 @@ target_link_libraries(proxy_benchmark PRIVATE
     fmt::fmt
 )
 
-target_compile_features(proxy_benchmark PRIVATE cxx_std_20)
+target_compile_features(proxy_benchmark PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
 

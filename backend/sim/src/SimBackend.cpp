@@ -112,22 +112,29 @@ bool SimBackend::tracksMessageResults() const noexcept
 
 void SimBackend::onMessageResult(
     std::string_view inputChannel,
-    std::span<const std::byte> rawMessage,
+    Common::Compat::span<const std::byte> rawMessage,
     const ::Backend::MessageResult& result)
 {
-    std::span<const std::byte> appPayload = rawMessage;
+    Common::Compat::span<const std::byte> appPayload = rawMessage;
     std::uint64_t msgTimestampNs = 0;
 
     if (rawMessage.size() >= 18) {
-        std::uint16_t magic = (static_cast<std::uint8_t>(rawMessage[1]) << 8) | static_cast<std::uint8_t>(rawMessage[0]);
+        std::uint16_t magic = (static_cast<std::uint8_t>(rawMessage[0]) << 8) | static_cast<std::uint8_t>(rawMessage[1]);
         if (magic == 0x5058) {
-            std::uint16_t metaLen = static_cast<std::uint8_t>(rawMessage[4])
-                | (static_cast<std::uint8_t>(rawMessage[5]) << 8);
-            std::uint32_t payloadLen = static_cast<std::uint8_t>(rawMessage[6])
-                | (static_cast<std::uint8_t>(rawMessage[7]) << 8)
-                | (static_cast<std::uint8_t>(rawMessage[8]) << 16)
-                | (static_cast<std::uint8_t>(rawMessage[9]) << 24);
-            std::memcpy(&msgTimestampNs, rawMessage.data() + 10, sizeof(std::uint64_t));
+            std::uint16_t metaLen = (static_cast<std::uint8_t>(rawMessage[4]) << 8)
+                | static_cast<std::uint8_t>(rawMessage[5]);
+            std::uint32_t payloadLen = (static_cast<std::uint8_t>(rawMessage[6]) << 24)
+                | (static_cast<std::uint8_t>(rawMessage[7]) << 16)
+                | (static_cast<std::uint8_t>(rawMessage[8]) << 8)
+                | static_cast<std::uint8_t>(rawMessage[9]);
+            msgTimestampNs = (static_cast<std::uint64_t>(rawMessage[10]) << 56)
+                | (static_cast<std::uint64_t>(rawMessage[11]) << 48)
+                | (static_cast<std::uint64_t>(rawMessage[12]) << 40)
+                | (static_cast<std::uint64_t>(rawMessage[13]) << 32)
+                | (static_cast<std::uint64_t>(rawMessage[14]) << 24)
+                | (static_cast<std::uint64_t>(rawMessage[15]) << 16)
+                | (static_cast<std::uint64_t>(rawMessage[16]) << 8)
+                | static_cast<std::uint64_t>(rawMessage[17]);
 
             std::size_t offset = 18 + metaLen;
             if (offset <= rawMessage.size()) {

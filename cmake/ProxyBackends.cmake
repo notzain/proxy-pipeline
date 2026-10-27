@@ -128,7 +128,7 @@ function(proxy_add_handler_all_backends handler_base_name)
     endif()
 
     target_link_libraries(${target_exec} PRIVATE core ${backend_target} ${ARG_EXTRA_LIBS})
-    target_compile_features(${target_exec} PRIVATE cxx_std_20)
+    target_compile_features(${target_exec} PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
 
     # Output binary named with suffix in bin folder
     set_target_properties(${target_exec} PROPERTIES

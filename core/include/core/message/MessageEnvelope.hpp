@@ -1,12 +1,12 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/message/EnvelopeHeader.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/message/ProtocolId.hpp"
 #include "core/message/UdpMetadata.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 namespace Core::Message {
@@ -27,15 +27,15 @@ public:
      */
     static std::vector<std::byte> pack(
         ProtocolId protocol,
-        std::span<const std::byte> metadata,
-        std::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> metadata,
+        Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
     /**
      * @brief Packs an unadorned/raw application payload (ProtocolId::Raw, empty metadata).
      */
     static std::vector<std::byte> packRaw(
-        std::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
     /**
@@ -43,7 +43,7 @@ public:
      */
     static std::vector<std::byte> packUdp(
         const UdpMetadata& meta,
-        std::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
     /**
@@ -57,10 +57,10 @@ public:
      * @return std::size_t Number of bytes written into destination, or 0 if destination is too small.
      */
     static std::size_t packInto(
-        std::span<std::byte> destination,
+        Common::Compat::span<std::byte> destination,
         ProtocolId protocol,
-        std::span<const std::byte> metadata,
-        std::span<const std::byte> payload,
+        Common::Compat::span<const std::byte> metadata,
+        Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
     /**
@@ -72,7 +72,7 @@ public:
      */
     static std::vector<std::byte> withPayload(
         const MessageView& view,
-        std::span<const std::byte> newPayload);
+        Common::Compat::span<const std::byte> newPayload);
 };
 
 } // namespace Core::Message

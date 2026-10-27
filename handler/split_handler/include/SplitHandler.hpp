@@ -40,12 +40,12 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        std::span<const Core::Message::MessageView> messages,
-        std::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Core::Message::MessageView> messages,
+        Common::Compat::span<Core::Message::MessageResult> outResults) override;
 
 private:
     std::string m_outputChannelsStr;
-    std::vector<Core::Memory::ObserverPtr<::Backend::IOutputChannel>> m_outputChannelsList;
+    std::vector<Common::Memory::ObserverPtr<::Backend::IOutputChannel>> m_outputChannelsList;
 };
 
 } // namespace Proxy::Handler

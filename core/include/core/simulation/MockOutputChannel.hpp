@@ -1,10 +1,10 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
-#include <span>
 #include <string_view>
 #include <vector>
 
@@ -35,8 +35,8 @@ public:
     /**
      * @brief Backend::IOutputChannel implementation.
      */
-    bool send(std::span<const std::byte> message) override;
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override;
+    bool send(Common::Compat::span<const std::byte> message) override;
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 
     /**
      * @brief Returns a snapshot of all recorded messages.

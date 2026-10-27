@@ -18,7 +18,7 @@ MockOutputChannel::MockOutputChannel(const SimulationClock* clock)
 
 MockOutputChannel::~MockOutputChannel() = default;
 
-bool MockOutputChannel::send(std::span<const std::byte> message)
+bool MockOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     std::uint64_t now = m_clock ? m_clock->nowNs()
                                 : static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -33,7 +33,7 @@ bool MockOutputChannel::send(std::span<const std::byte> message)
     return true;
 }
 
-std::size_t MockOutputChannel::sendBatch(std::span<const std::span<const std::byte>> messages)
+std::size_t MockOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
     std::uint64_t now = m_clock ? m_clock->nowNs()
                                 : static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(

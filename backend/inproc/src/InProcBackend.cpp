@@ -71,4 +71,3 @@ std::unique_ptr<::Backend::IBackend> createBackend()
 }
 
 } // namespace Proxy::Backend::InProc
-

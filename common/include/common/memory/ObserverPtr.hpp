@@ -1,11 +1,10 @@
 #pragma once
 
-#include <compare>
 #include <cstddef>
 #include <functional>
 #include <type_traits>
 
-namespace Core::Memory {
+namespace Common::Memory {
 
 /**
  * @brief Non-owning, nullable observer pointer mimicking std::experimental::observer_ptr.
@@ -35,14 +34,14 @@ public:
     {
     }
 
-    template <typename U>
-        requires(std::is_convertible_v<U*, element_type*>)
+    template <typename U,
+        std::enable_if_t<std::is_convertible_v<U*, element_type*>, int> = 0>
     constexpr ObserverPtr(ObserverPtr<U> other) noexcept
         : m_ptr(other.get())
     {
     }
 
-    constexpr ~ObserverPtr() noexcept = default;
+    ~ObserverPtr() noexcept = default;
     constexpr ObserverPtr(const ObserverPtr&) noexcept = default;
     constexpr ObserverPtr& operator=(const ObserverPtr&) noexcept = default;
     constexpr ObserverPtr(ObserverPtr&&) noexcept = default;
@@ -95,9 +94,20 @@ public:
         return m_ptr == other.get();
     }
 
+    template <typename U>
+    [[nodiscard]] constexpr bool operator!=(ObserverPtr<U> other) const noexcept
+    {
+        return m_ptr != other.get();
+    }
+
     [[nodiscard]] constexpr bool operator==(std::nullptr_t) const noexcept
     {
         return m_ptr == nullptr;
+    }
+
+    [[nodiscard]] constexpr bool operator!=(std::nullptr_t) const noexcept
+    {
+        return m_ptr != nullptr;
     }
 
     template <typename U>
@@ -107,20 +117,33 @@ public:
     }
 
     template <typename U>
-    [[nodiscard]] constexpr auto operator<=>(ObserverPtr<U> other) const noexcept
+    [[nodiscard]] constexpr bool operator!=(U* other) const noexcept
     {
-        return m_ptr <=> other.get();
-    }
-
-    [[nodiscard]] constexpr auto operator<=>(std::nullptr_t) const noexcept
-    {
-        return m_ptr <=> static_cast<element_type*>(nullptr);
+        return m_ptr != other;
     }
 
     template <typename U>
-    [[nodiscard]] constexpr auto operator<=>(U* other) const noexcept
+    [[nodiscard]] constexpr bool operator<(ObserverPtr<U> other) const noexcept
     {
-        return m_ptr <=> other;
+        return m_ptr < other.get();
+    }
+
+    template <typename U>
+    [[nodiscard]] constexpr bool operator>(ObserverPtr<U> other) const noexcept
+    {
+        return m_ptr > other.get();
+    }
+
+    template <typename U>
+    [[nodiscard]] constexpr bool operator<=(ObserverPtr<U> other) const noexcept
+    {
+        return m_ptr <= other.get();
+    }
+
+    template <typename U>
+    [[nodiscard]] constexpr bool operator>=(ObserverPtr<U> other) const noexcept
+    {
+        return m_ptr >= other.get();
     }
 
 private:
@@ -133,17 +156,16 @@ void swap(ObserverPtr<T>& lhs, ObserverPtr<T>& rhs) noexcept
     lhs.swap(rhs);
 }
 
-} // namespace Core::Memory
+} // namespace Common::Memory
 
 namespace std {
 
 template <typename T>
-struct hash<Core::Memory::ObserverPtr<T>> {
-    std::size_t operator()(Core::Memory::ObserverPtr<T> ptr) const noexcept
+struct hash<Common::Memory::ObserverPtr<T>> {
+    std::size_t operator()(Common::Memory::ObserverPtr<T> ptr) const noexcept
     {
         return std::hash<T*>()(ptr.get());
     }
 };
 
 } // namespace std
-

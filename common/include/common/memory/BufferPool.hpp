@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/memory/BufferSlice.hpp"
+#include "common/memory/BufferSlice.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -8,7 +8,7 @@
 #include <optional>
 #include <vector>
 
-namespace Core::Memory {
+namespace Common::Memory {
 
 /**
  * @brief High-performance lock-free fixed-block memory slab pool.
@@ -55,4 +55,4 @@ private:
     alignas(64) std::atomic<std::size_t> m_lock { 0 };
 };
 
-} // namespace Core::Memory
+} // namespace Common::Memory

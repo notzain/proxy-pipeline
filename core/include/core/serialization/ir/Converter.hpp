@@ -32,7 +32,7 @@ namespace Detail {
     struct IsOptional<std::optional<T>> : std::true_type { };
 
     template <typename T>
-    inline constexpr bool isOptionalV = IsOptional<std::remove_cvref_t<T>>::value;
+    inline constexpr bool isOptionalV = IsOptional<Common::Compat::remove_cvref_t<T>>::value;
 
     template <typename T>
     struct IsVector : std::false_type { };
@@ -41,7 +41,7 @@ namespace Detail {
     struct IsVector<std::vector<T, Alloc>> : std::true_type { };
 
     template <typename T>
-    inline constexpr bool isVectorV = IsVector<std::remove_cvref_t<T>>::value;
+    inline constexpr bool isVectorV = IsVector<Common::Compat::remove_cvref_t<T>>::value;
 
     template <typename T>
     struct IsStdArray : std::false_type { };
@@ -50,7 +50,7 @@ namespace Detail {
     struct IsStdArray<std::array<T, N>> : std::true_type { };
 
     template <typename T>
-    inline constexpr bool isStdArrayV = IsStdArray<std::remove_cvref_t<T>>::value;
+    inline constexpr bool isStdArrayV = IsStdArray<Common::Compat::remove_cvref_t<T>>::value;
 
     template <typename T>
     struct IsMap : std::false_type { };
@@ -62,13 +62,13 @@ namespace Detail {
     struct IsMap<std::unordered_map<std::string, Val, Hash, KeyEqual, Alloc>> : std::true_type { };
 
     template <typename T>
-    inline constexpr bool isMapV = IsMap<std::remove_cvref_t<T>>::value;
+    inline constexpr bool isMapV = IsMap<Common::Compat::remove_cvref_t<T>>::value;
 
     // Helper to stringify an attribute value
     template <typename T>
     std::string attributeToString(const T& val)
     {
-        using CleanT = std::remove_cvref_t<T>;
+        using CleanT = Common::Compat::remove_cvref_t<T>;
         if constexpr (std::is_same_v<CleanT, std::string>) {
             return val;
         } else if constexpr (std::is_convertible_v<CleanT, std::string_view>) {
@@ -93,7 +93,7 @@ namespace Detail {
     template <typename T>
     std::optional<T> attributeFromString(std::string_view str)
     {
-        using CleanT = std::remove_cvref_t<T>;
+        using CleanT = Common::Compat::remove_cvref_t<T>;
         if constexpr (std::is_same_v<CleanT, std::string>) {
             return std::string(str);
         } else if constexpr (std::is_same_v<CleanT, bool>) {
@@ -134,7 +134,7 @@ namespace Detail {
 template <typename T>
 Value toIntermediate(const T& value)
 {
-    using CleanT = std::remove_cvref_t<T>;
+    using CleanT = Common::Compat::remove_cvref_t<T>;
 
     if constexpr (std::is_same_v<CleanT, Value>) {
         return value;
@@ -210,7 +210,7 @@ Value toIntermediate(const T& value)
 template <typename T>
 std::optional<T> fromIntermediate(const Value& value)
 {
-    using CleanT = std::remove_cvref_t<T>;
+    using CleanT = Common::Compat::remove_cvref_t<T>;
 
     if constexpr (std::is_same_v<CleanT, Value>) {
         return value;

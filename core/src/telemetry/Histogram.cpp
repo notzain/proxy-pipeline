@@ -1,4 +1,5 @@
 #include "core/telemetry/Histogram.hpp"
+#include "common/compat/BitCast.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -11,9 +12,9 @@ namespace {
     {
         uint64_t currentBits = atomicBits.load(std::memory_order_relaxed);
         while (true) {
-            double currentVal = std::bit_cast<double>(currentBits);
+            double currentVal = Common::Compat::bit_cast<double>(currentBits);
             double newVal = currentVal + delta;
-            uint64_t newBits = std::bit_cast<uint64_t>(newVal);
+            uint64_t newBits = Common::Compat::bit_cast<uint64_t>(newVal);
             if (atomicBits.compare_exchange_weak(currentBits, newBits, std::memory_order_relaxed, std::memory_order_relaxed)) {
                 break;
             }
@@ -29,7 +30,7 @@ namespace {
 
 Histogram::Histogram() = default;
 
-Histogram::Histogram(std::string name, std::string help, std::span<const double> bucketBounds)
+Histogram::Histogram(std::string name, std::string help, Common::Compat::span<const double> bucketBounds)
     : m_name(std::move(name))
     , m_help(std::move(help))
     , m_bounds(bucketBounds.begin(), bucketBounds.end())
@@ -87,7 +88,7 @@ void Histogram::observe(double value) noexcept
 double Histogram::sum() const noexcept
 {
     uint64_t bits = m_sumRawBits.load(std::memory_order_relaxed);
-    return std::bit_cast<double>(bits);
+    return Common::Compat::bit_cast<double>(bits);
 }
 
 uint64_t Histogram::count() const noexcept

@@ -55,7 +55,7 @@ void sendTestUdpDatagram(const std::string& host, std::uint16_t port, std::strin
 
 class TestOutputChannel : public ::Backend::IOutputChannel {
 public:
-    bool send(std::span<const std::byte> message) override
+    bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
         std::string str(reinterpret_cast<const char*>(message.data()), message.size());
@@ -63,7 +63,7 @@ public:
         return true;
     }
 
-    std::size_t sendBatch(std::span<const std::span<const std::byte>> messages) override
+    std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override
     {
         std::lock_guard lock(m_mutex);
         for (const auto& span : messages) {
@@ -97,7 +97,7 @@ public:
     {
     }
 
-    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
     {
         if (m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
@@ -109,7 +109,7 @@ public:
     }
 
     BatchResult receiveBatch(
-        std::span<::Backend::BufferSlot> slots,
+        Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override
     {
         std::size_t count = 0;
@@ -169,7 +169,7 @@ public:
 TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", "[message][envelope]")
 {
     std::string testPayload = "<order><item>Widget</item></order>";
-    std::span<const std::byte> payloadSpan(
+    Common::Compat::span<const std::byte> payloadSpan(
         reinterpret_cast<const std::byte*>(testPayload.data()),
         testPayload.size());
 
@@ -219,7 +219,7 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
         REQUIRE(view.has_value());
 
         std::string updatedPayload = "<order><item>SuperWidget</item><qty>10</qty></order>";
-        std::span<const std::byte> updatedSpan(
+        Common::Compat::span<const std::byte> updatedSpan(
             reinterpret_cast<const std::byte*>(updatedPayload.data()),
             updatedPayload.size());
 
@@ -254,7 +254,7 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
             'H', 'e', 'l', 'l', 'o' // Payload
         };
 
-        auto wireSpan = std::as_bytes(std::span(goldenWire));
+        auto wireSpan = Common::Compat::as_bytes(Common::Compat::span<const std::uint8_t, 23>(goldenWire));
         auto view = Core::Message::MessageView::from(wireSpan);
         REQUIRE(view.has_value());
         CHECK(view->protocol() == Core::Message::ProtocolId::Raw);
@@ -278,7 +278,7 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
     {
         // Simulate a custom backend frame that doesn't use 0x5058 header
         std::string customPayload = "custom_backend_message_data";
-        std::span<const std::byte> payload(reinterpret_cast<const std::byte*>(customPayload.data()), customPayload.size());
+        Common::Compat::span<const std::byte> payload(reinterpret_cast<const std::byte*>(customPayload.data()), customPayload.size());
 
         // Custom backend creates a MessageView directly wrapping its payload and raw frame
         Core::Message::MessageView customView(payload);
@@ -308,7 +308,7 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
 
         REQUIRE(receiveResult.hasValue());
         REQUIRE(receiveResult.value() > expectedPayload.size());
-        auto view = Core::Message::MessageView::from(std::span<const std::byte>(buffer.data(), receiveResult.value()));
+        auto view = Core::Message::MessageView::from(Common::Compat::span<const std::byte>(buffer.data(), receiveResult.value()));
         REQUIRE(view.has_value());
         CHECK(view->protocol() == Core::Message::ProtocolId::Udp);
 
@@ -376,7 +376,7 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
         REQUIRE(sentMessages.size() >= 1);
 
         auto view = Core::Message::MessageView::from(
-            std::span<const std::byte>(
+            Common::Compat::span<const std::byte>(
                 reinterpret_cast<const std::byte*>(sentMessages.front().data()),
                 sentMessages.front().size()));
 
@@ -412,7 +412,7 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     std::string expectedPayload = "<order_receipt status=\"confirmed\"/>";
     auto envelope = Core::Message::MessageEnvelope::packUdp(
         meta,
-        std::span<const std::byte>(reinterpret_cast<const std::byte*>(expectedPayload.data()), expectedPayload.size()));
+        Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(expectedPayload.data()), expectedPayload.size()));
 
     // Configure Egress Handler reading from a mock input channel
     DummyTestBackend backend;
@@ -473,7 +473,7 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
     auto envelope = Core::Message::MessageEnvelope::packUdp(
         meta,
-        std::span<const std::byte>(reinterpret_cast<const std::byte*>(expectedPayload.data()), expectedPayload.size()));
+        Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(expectedPayload.data()), expectedPayload.size()));
 
     DummyTestBackend backend;
     std::vector<std::vector<std::byte>> queuedMsgs { envelope };

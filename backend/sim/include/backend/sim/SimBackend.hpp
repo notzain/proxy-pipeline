@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/IBackend.hpp"
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <memory>
-#include <span>
 #include <string>
 #include <string_view>
 
@@ -34,7 +34,7 @@ public:
 
     void onMessageResult(
         std::string_view inputChannel,
-        std::span<const std::byte> rawMessage,
+        Common::Compat::span<const std::byte> rawMessage,
         const ::Backend::MessageResult& result) override;
 
     void onHandlerStarted() override;

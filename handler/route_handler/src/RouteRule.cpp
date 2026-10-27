@@ -1,4 +1,5 @@
 #include "RouteRule.hpp"
+#include "common/compat/StringView.hpp"
 #include "core/message/UdpMetadata.hpp"
 #include <arpa/inet.h>
 #include <cstring>
@@ -42,7 +43,7 @@ namespace {
                 return false;
             }
             std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
-            return payloadStr.starts_with(c.prefix);
+            return Common::Compat::starts_with(payloadStr, c.prefix);
         }
 
         bool operator()(const MatchCriteria::ClientPort& c) const noexcept
@@ -79,12 +80,12 @@ const std::string& RouteRule::targetChannelName() const noexcept
     return m_targetChannelName;
 }
 
-Core::Memory::ObserverPtr<::Backend::IOutputChannel> RouteRule::targetChannel() const noexcept
+Common::Memory::ObserverPtr<::Backend::IOutputChannel> RouteRule::targetChannel() const noexcept
 {
     return m_targetChannel;
 }
 
-void RouteRule::bindTargetChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
+void RouteRule::bindTargetChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
 {
     m_targetChannel = channel;
 }

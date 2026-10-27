@@ -9,7 +9,7 @@ namespace Backend {
  * @brief Message was forwarded to one or more downstream channels.
  */
 struct Forwarded {
-    std::string_view channel {};
+    std::string_view channel { };
 };
 
 /**
@@ -32,4 +32,3 @@ struct Dropped {
 using MessageResult = std::variant<Forwarded, Consumed, Dropped>;
 
 } // namespace Backend
-

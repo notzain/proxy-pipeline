@@ -1,8 +1,8 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include <cstddef>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,11 +54,11 @@ public:
     Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
     void onBatchReceived(
         std::string_view channelName,
-        std::span<const Core::Message::MessageView> messages,
-        std::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Core::Message::MessageView> messages,
+        Common::Compat::span<Core::Message::MessageResult> outResults) override;
 
 private:
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
+    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 
 } // namespace Proxy::Handler

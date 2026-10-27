@@ -40,7 +40,7 @@ bool SimulationBackend::tracksMessageResults() const noexcept
 
 void SimulationBackend::onMessageResult(
     std::string_view inputChannel,
-    std::span<const std::byte>,
+    Common::Compat::span<const std::byte>,
     const ::Backend::MessageResult& result)
 {
     RecordedMessageResult entry;
@@ -73,7 +73,7 @@ std::vector<RecordedMessageResult> SimulationBackend::getRecordedResults() const
     return m_recordedResults;
 }
 
-Core::Memory::ObserverPtr<MockOutputChannel> SimulationBackend::getOutputChannel(std::string_view name) const
+Common::Memory::ObserverPtr<MockOutputChannel> SimulationBackend::getOutputChannel(std::string_view name) const
 {
     auto it = m_outputMap.find(std::string(name));
     if (it != m_outputMap.end()) {
@@ -82,7 +82,7 @@ Core::Memory::ObserverPtr<MockOutputChannel> SimulationBackend::getOutputChannel
     return nullptr;
 }
 
-Core::Memory::ObserverPtr<MockInputChannel> SimulationBackend::getInputChannel(std::string_view name) const
+Common::Memory::ObserverPtr<MockInputChannel> SimulationBackend::getInputChannel(std::string_view name) const
 {
     auto it = m_inputMap.find(std::string(name));
     if (it != m_inputMap.end()) {

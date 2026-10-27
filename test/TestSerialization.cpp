@@ -19,7 +19,10 @@ struct Point {
     int x;
     int y;
 
-    bool operator==(const Point& other) const = default;
+    bool operator==(const Point& other) const noexcept
+    {
+        return x == other.x && y == other.y;
+    }
 };
 
 // 2. Nested POD
@@ -27,7 +30,10 @@ struct Circle {
     Point center;
     double radius;
 
-    bool operator==(const Circle& other) const = default;
+    bool operator==(const Circle& other) const noexcept
+    {
+        return center == other.center && radius == other.radius;
+    }
 };
 
 // 3. Complex Model with standard containers
@@ -39,7 +45,10 @@ struct ComplexModel {
     std::map<std::string, int> scores;
     Circle boundary;
 
-    bool operator==(const ComplexModel& other) const = default;
+    bool operator==(const ComplexModel& other) const noexcept
+    {
+        return id == other.id && description == other.description && numbers == other.numbers && flags == other.flags && scores == other.scores && boundary == other.boundary;
+    }
 };
 
 // 4. Model with XML attributes and child elements
@@ -54,7 +63,10 @@ struct UserProfile {
     std::string email;
     Point location;
 
-    bool operator==(const UserProfile& other) const = default;
+    bool operator==(const UserProfile& other) const noexcept
+    {
+        return id == other.id && role == other.role && active == other.active && username == other.username && email == other.email && location == other.location;
+    }
 };
 
 } // namespace

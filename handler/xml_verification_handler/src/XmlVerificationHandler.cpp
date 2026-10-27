@@ -1,8 +1,8 @@
 #include "XmlVerificationHandler.hpp"
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/memory/SmallSpanBuffer.hpp"
 #include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 
@@ -63,7 +63,7 @@ bool XmlVerificationHandler::isSchemaLoaded() const noexcept
     return m_validator && m_validator->isLoaded();
 }
 
-bool XmlVerificationHandler::validate(std::span<const std::byte> xmlData) const
+bool XmlVerificationHandler::validate(Common::Compat::span<const std::byte> xmlData) const
 {
     return m_validator && m_validator->validate(xmlData);
 }
@@ -97,13 +97,13 @@ Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::stri
 
 void XmlVerificationHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     if (messages.empty())
         return;
 
-    Core::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer spans(messages.size());
     std::size_t validCount = 0;
     const auto count = std::min(messages.size(), outResults.size());
 

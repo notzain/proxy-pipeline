@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Order.hpp"
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,7 +23,7 @@ public:
 
     ~OrderValidationHandler() override;
 
-    void setOutputChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
+    void setOutputChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
     {
         m_cachedOutputChannel = outChannel;
     }
@@ -54,8 +54,8 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        std::span<const Core::Message::MessageView> messages,
-        std::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Core::Message::MessageView> messages,
+        Common::Compat::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Deserializes an XML buffer into an Order model.
@@ -63,7 +63,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt if deserialization fails.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrder(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrder(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Deserializes an XML buffer into a zero-copy OrderView model (Option 1 optimization).
@@ -71,7 +71,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt if deserialization fails.
      */
-    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderView(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderView(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Deserializes a mutable XML buffer in-place into OrderView using Core::Serialization IR traits.
@@ -79,7 +79,7 @@ public:
      * @param xmlData Mutable non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt if deserialization fails.
      */
-    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderViewInPlace(std::span<std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderViewInPlace(Common::Compat::span<std::byte> xmlData) const;
 
     /**
      * @brief Direct zero-copy DOM parser (Option 3 optimization).
@@ -88,7 +88,7 @@ public:
      * @param xmlData Mutable non-owning span of the XML buffer for in-place parsing.
      * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderDirect(std::span<std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderDirect(Common::Compat::span<std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order using libxml2 DOM API.
@@ -96,7 +96,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order using Apache Xerces-C DOM API.
@@ -104,7 +104,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXerces(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXerces(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order using libxml2 xmlReader streaming cursor API.
@@ -112,7 +112,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reader(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reader(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order using Apache Xerces-C SAX2 parser.
@@ -120,7 +120,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesSax(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesSax(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order reusing a thread-local libxml2 parser context.
@@ -128,7 +128,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reused(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reused(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Parses XML buffer to Order reusing a thread-local Xerces DOM parser instance and document pool.
@@ -136,7 +136,7 @@ public:
      * @param xmlData Non-owning span of the XML buffer.
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
-    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesReused(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesReused(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Validates an Order instance against domain criteria.
@@ -176,10 +176,10 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param buffer Mutable byte buffer of the message payload for in-place parsing.
      */
-    void onMessageReceivedFast(std::string_view channelName, std::span<std::byte> buffer);
+    void onMessageReceivedFast(std::string_view channelName, Common::Compat::span<std::byte> buffer);
 
 private:
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_cachedOutputChannel;
+    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_cachedOutputChannel;
 };
 
 } // namespace Proxy::Handler

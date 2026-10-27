@@ -6,7 +6,11 @@ Guidelines and conventions for AI agents and developers working on this project.
 
 ## 1. Project Overview & Architecture
 
-- **Language Standard**: C++20 (`set(CMAKE_CXX_STANDARD 20)` with `CMAKE_CXX_STANDARD_REQUIRED ON` and `CMAKE_CXX_EXTENSIONS OFF`).
+- **Language Standard**: C++20 default (`set(CMAKE_CXX_STANDARD 20)` with `CMAKE_CXX_STANDARD_REQUIRED ON` and `CMAKE_CXX_EXTENSIONS OFF`). All code must be written with C++17 compatibility in mind, leveraging the zero-external-dependency compatibility polyfills in `common/include/common/compat/` (`Common::Compat`).
+- **C++17 Compatibility & Polyfill Policy (`Common::Compat`)**:
+  - Whenever using features introduced in C++20 (e.g. `span`, `jthread`, `stop_token`, `stop_source`, `stop_callback`, `latch`, `bit_cast`, `atomic_wait`/`atomic_notify_*`, `remove_cvref`), always explicitly qualify them under `Common::Compat::` (e.g. `Common::Compat::span<T>`, `Common::Compat::jthread`).
+  - **Never Inject into `namespace std`**: Never open or alias polyfilled types into `namespace std` (`namespace std { ... }` is undefined behavior and obscures whether code relies on standard or polyfilled implementations). All compat types must remain strictly inside `Common::Compat`.
+  - Under C++20 builds, `Common::Compat` types directly alias the standard `std::` equivalents. Under C++17 builds, they map to native/zero-dependency polyfill implementations.
 - **Build System**: Modern CMake 4.x (`cmake_minimum_required(VERSION 4.0)`).
 - **Package Manager**: Conan 2.x integrated via CMake Dependency Provider (`conan_provider.cmake` from `cmake-conan` branch `develop2`).
 - **Dependencies Manifest**: `conanfile.py` in the repository root.
@@ -48,13 +52,18 @@ Guidelines and conventions for AI agents and developers working on this project.
   ```
 - **CMakeLists.txt Agnosticism**: Never add Conan-specific logic inside target `CMakeLists.txt`. Standard modern CMake `find_package(<pkg> REQUIRED)` and `target_link_libraries(<target> PRIVATE <pkg>::<pkg>)` must be used. `conan_provider.cmake` intercepts `find_package` calls and invokes `conan install` automatically.
 - **Conan Packaging of Subprojects**:
-  - `log`, `backend/interface`, `backend/file`, `backend/socket`, and `core` each have a `conanfile.py` recipe.
+  - `common`, `log`, `backend/interface`, `backend/file`, `backend/socket`, `backend/inproc`, `backend/uds`, `backend/shm`, `backend/sim`, and `core` each have a `conanfile.py` recipe.
   - To package them into the local Conan 2 cache:
     ```bash
+    conan export common
     conan export log
     conan export backend/interface
     conan export backend/file
     conan export backend/socket
+    conan export backend/inproc
+    conan export backend/uds
+    conan export backend/shm
+    conan export backend/sim
     conan export core
     ```
 
@@ -125,42 +134,52 @@ cmake --build build
   - Header files (`.hpp`) must include only abstract interfaces (e.g. `Backend::IBackend`, `Backend::IInputChannel`, `Backend::IOutputChannel`, `Core::Handler::IHandler`, `Core::Threading::IExecutionStrategy`).
   - Concrete class implementations (e.g. `FileInputChannel.hpp`, `SocketOutputChannel.hpp`, `DedicatedThreadStrategy.hpp`) must **never** be included in header files;
 they must be included in source files(`.cpp`) only.
-    - **Naming Conventions** : -**Interfaces** : Interface class names must start with a capital `I` prefix(e.g., `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
-    - **Namespaces** : Namespaces must always be* * PascalCase * *(e.g., `Backend`, `Core`, `Proxy`, `Proxy::Log`, `Proxy::Backend::File`).Note : formatting / layout is maintained by `clang - format`,
-    while identifier casing is enforced via `.clang - tidy` (`readability - identifier - naming.NamespaceCase : CamelCase`).
-    - **Alpha Development& No Backwards Compatibility** : -The project is in active alpha development.Do not maintain backwards compatibility shims,
-    forwarding headers, deprecated type aliases, or transitional wrappers when refactoring or moving interfaces and types.Cleanly update call sites and references directly to the authoritative types and paths.
+  - **Naming Conventions**:
+    - **Interfaces**: Interface class names must start with a capital `I` prefix (e.g. `ILogSink`, `IHandler`, `IBackend`, `IConfig`).
+    - **Namespaces**: Namespaces must always be **PascalCase** (e.g. `Backend`, `Core`, `Common`, `Common::Compat`, `Proxy`, `Proxy::Log`).
+  - **Alpha Development & No Backwards Compatibility**:
+    - The project is in active alpha development. Do not maintain backwards compatibility shims, forwarding headers, deprecated type aliases, or transitional wrappers when refactoring or moving interfaces and types. Cleanly update call sites and references directly to the authoritative types and paths.
 
-                                                                                              -- -
+---
 
-                                                                                              ##7. Documentation(Doxygen)
+## 7. Documentation (Doxygen)
 
-        - **Location Convention** : Doxygen documentation comments(`/** ... */`) must be placed in the** header file**(`.hpp`)alongside declarations.- **Source File Exception** : Place Doxygen comments in the source file(`.cpp`) only if the entity / function is strictly defined and used within that source file(e.g., file - static helpers or internal anonymous - namespace functions).
+- **Location Convention**: Doxygen documentation comments (`/** ... */`) must be placed in the **header file** (`.hpp`) alongside declarations.
+- **Source File Exception**: Place Doxygen comments in the source file (`.cpp`) only if the entity / function is strictly defined and used within that source file (e.g., file-static helpers or internal anonymous-namespace functions).
 
-                                                                                                                                                                                                                                                          -- -
+---
 
-                                                                                                                                                                                                                                                          ##8. Architectural Layering& Abstraction
+## 8. Architectural Layering & Abstraction
 
-        - **Layer Responsibilities** : - `log` (`proxylog` target, `Proxy::Log` / `proxylog::proxylog`)
-    : -Abstract universal logging library encapsulating the underlying logging engine(`spdlog`).
-        - Exposes the abstract interface `ILogSink`:
-      ```cpp class ILogSink {
-public:
-    virtual ~ILogSink() = default;
-    virtual void log(Level level, std::string_view message) = 0;
-    virtual void flush() = 0;
-    virtual void setLevel(Level level) = 0;
-    [[nodiscard]] virtual Level getLevel() const = 0;
-};
-```
-    - Pre - built sink implementations encapsulating `spdlog`: - `ConsoleLogSink`: Formatted output to stdout / stderr.
-    - `FileLogSink`: File logging via `spdlog::sinks::basic_file_sink_mt` (with optional console mirroring).
-    - `SocketLogSink`: UDP datagram output via `spdlog::sinks::udp_sink_mt` (with optional console mirroring).
-    - Single initialization interface method :
+- **Layer Responsibilities**:
+  - `common` (`common` target, `Common` namespace):
+    - Abstract and reusable system utilities and zero-external-dependency C++17/20 compatibility polyfills (`Common::Compat`).
+    - Exposes compatibility primitives in `include/common/compat/`: `span`, `jthread`, `stop_token`, `stop_source`, `stop_callback`, `latch`, `bit_cast`, `atomic_wait`, `atomic_notify_one`, `atomic_notify_all`, string view helpers (`starts_with`, `ends_with`), and `remove_cvref`. When compiled under C++20 (`__cpp_lib_*`), these map directly to `std::` primitives. All usages must remain qualified under `Common::Compat::`.
+    - High-performance memory management in `include/common/memory/`: `BufferPool`, `BufferSlice`, `Borrow`, `NotNull`, `ObserverPtr`, `SmallSpanBuffer`.
+    - High-performance lockless concurrency queues in `include/common/queue/`: `SpscQueue`, `MpmcQueue`.
+    - Safe RAII file descriptors in `include/common/io/`: `UniqueFd`.
+  - `log` (`proxylog` target, `Proxy::Log` / `proxylog::proxylog`):
+    - Abstract universal logging library encapsulating the underlying logging engine (`spdlog`).
+    - Exposes the abstract interface `ILogSink`:
       ```cpp
-    void Proxy::Log::init(std::unique_ptr<Proxy::Log::ILogSink> sink);
-```
-    - Consumers include `"log/Log.hpp"` and call `Proxy::Log:: { trace, debug, info, warn, error, critical }` using string views or `fmt`-compatible formatting expressions.
+      class ILogSink {
+      public:
+          virtual ~ILogSink() = default;
+          virtual void log(Level level, std::string_view message) = 0;
+          virtual void flush() = 0;
+          virtual void setLevel(Level level) = 0;
+          [[nodiscard]] virtual Level getLevel() const = 0;
+      };
+      ```
+    - Pre-built sink implementations encapsulating `spdlog`:
+      - `ConsoleLogSink`: Formatted output to stdout/stderr.
+      - `FileLogSink`: File logging via `spdlog::sinks::basic_file_sink_mt` (with optional console mirroring).
+      - `SocketLogSink`: UDP datagram output via `spdlog::sinks::udp_sink_mt` (with optional console mirroring).
+    - Single initialization interface method:
+      ```cpp
+      void Proxy::Log::init(std::unique_ptr<Proxy::Log::ILogSink> sink);
+      ```
+    - Consumers include `"log/Log.hpp"` and call `Proxy::Log::{trace, debug, info, warn, error, critical}` using string views or `fmt`-compatible formatting expressions.
   - `backend/interface` (`backend-interface` target):
     - `IConfig`: Abstract configuration interface providing strongly-typed templated getters (`get<T>(key)`, `getOr<T>(key, default)`).
     - `IInputChannel`: Abstract interface for receiving messages (`receive(timeout)`).

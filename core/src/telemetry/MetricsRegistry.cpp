@@ -36,7 +36,7 @@ Gauge& MetricsRegistry::gauge(std::string name, std::string help)
     return insertedIt->second;
 }
 
-Histogram& MetricsRegistry::histogram(std::string name, std::string help, std::span<const double> bucketBounds)
+Histogram& MetricsRegistry::histogram(std::string name, std::string help, Common::Compat::span<const double> bucketBounds)
 {
     std::lock_guard lock(m_mutex);
     auto it = m_histograms.find(name);

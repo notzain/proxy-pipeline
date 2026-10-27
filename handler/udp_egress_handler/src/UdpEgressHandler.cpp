@@ -84,8 +84,8 @@ Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_vie
 
 void UdpEgressHandler::onBatchReceived(
     std::string_view channelName,
-    std::span<const Core::Message::MessageView> messages,
-    std::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Core::Message::MessageView> messages,
+    Common::Compat::span<Core::Message::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {

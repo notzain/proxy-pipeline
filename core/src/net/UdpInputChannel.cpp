@@ -31,7 +31,7 @@ namespace {
     }
 
     void writeEnvelopePreamble(
-        std::span<std::byte> destination,
+        Common::Compat::span<std::byte> destination,
         std::size_t payloadSize,
         const Backend::SocketAddress& clientAddr,
         const Backend::SocketAddress& boundAddr)
@@ -152,7 +152,7 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-Backend::BytesResult UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult UdpInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
 {
     if (!m_socketFd) {
         openAndBindSocket();
@@ -184,7 +184,7 @@ Backend::BytesResult UdpInputChannel::receiveInto(std::span<std::byte> destinati
 }
 
 Backend::BatchResult UdpInputChannel::receiveBatch(
-    std::span<::Backend::BufferSlot> slots,
+    Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!m_socketFd) {
@@ -216,9 +216,9 @@ Backend::BatchResult UdpInputChannel::receiveBatch(
 
     BatchResult result = m_poller->receiveBatch(
         m_socketFd.get(),
-        std::span<::Backend::BufferSlot>(payloadSlots.data(), batchSize),
+        Common::Compat::span<::Backend::BufferSlot>(payloadSlots.data(), batchSize),
         timeout,
-        std::span<Backend::SocketAddress>(clientAddrs.data(), batchSize));
+        Common::Compat::span<Backend::SocketAddress>(clientAddrs.data(), batchSize));
 
     const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
     for (std::size_t i = 0; i < receivedCount; ++i) {

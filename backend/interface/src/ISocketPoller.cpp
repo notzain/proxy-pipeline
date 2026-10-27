@@ -5,9 +5,9 @@ namespace Backend {
 
 BatchResult ISocketPoller::receiveBatch(
     int socketFd,
-    std::span<BufferSlot> slots,
+    Common::Compat::span<BufferSlot> slots,
     Timeout timeout,
-    std::span<SocketAddress> outSourceAddresses)
+    Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (slots.empty()) {
         return BatchResult::failure({ 0, receiveFailure(std::make_error_code(std::errc::invalid_argument)) });

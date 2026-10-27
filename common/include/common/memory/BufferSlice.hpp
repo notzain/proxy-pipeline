@@ -1,10 +1,10 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include <cstddef>
 #include <memory>
-#include <span>
 
-namespace Core::Memory {
+namespace Common::Memory {
 
 class BufferPool;
 
@@ -31,8 +31,8 @@ public:
     BufferSlice(const BufferSlice&) = delete;
     BufferSlice& operator=(const BufferSlice&) = delete;
 
-    [[nodiscard]] std::span<std::byte> span() noexcept;
-    [[nodiscard]] std::span<const std::byte> span() const noexcept;
+    [[nodiscard]] Common::Compat::span<std::byte> span() noexcept;
+    [[nodiscard]] Common::Compat::span<const std::byte> span() const noexcept;
     [[nodiscard]] std::byte* data() noexcept;
     [[nodiscard]] const std::byte* data() const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
@@ -49,4 +49,4 @@ private:
     std::shared_ptr<BufferPool> m_pool;
 };
 
-} // namespace Core::Memory
+} // namespace Common::Memory

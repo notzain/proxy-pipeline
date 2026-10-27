@@ -1,10 +1,10 @@
 #pragma once
 
-#include "core/memory/BufferSlice.hpp"
+#include "common/compat/Span.hpp"
+#include "common/memory/BufferSlice.hpp"
 #include <array>
 #include <cstddef>
 #include <cstring>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -28,12 +28,12 @@ public:
     /**
      * @brief Assigns channel name and payload, using inline buffer if size <= SmallBufferSize.
      */
-    void assign(std::string_view name, std::span<const std::byte> data);
+    void assign(std::string_view name, Common::Compat::span<const std::byte> data);
 
     /**
      * @brief Assigns a zero-copy pooled slice directly without heap allocation.
      */
-    void assignSlice(std::string_view name, Memory::BufferSlice slice, std::size_t size);
+    void assignSlice(std::string_view name, Common::Memory::BufferSlice slice, std::size_t size);
 
     /**
      * @brief Prepares the task for an in-place write and returns its writable inline buffer.
@@ -42,9 +42,9 @@ public:
      * span, then commitInline() records the size.
      *
      * @param name Channel name to associate with the task.
-     * @return std::span<std::byte> Writable inline buffer of SmallBufferSize bytes.
+     * @return Common::Compat::span<std::byte> Writable inline buffer of SmallBufferSize bytes.
      */
-    [[nodiscard]] std::span<std::byte> prepareInline(std::string_view name);
+    [[nodiscard]] Common::Compat::span<std::byte> prepareInline(std::string_view name);
 
     /**
      * @brief Finalizes an in-place write started with prepareInline().
@@ -56,7 +56,7 @@ public:
     /**
      * @brief Constructs task with channel name and payload.
      */
-    MessageTask(std::string name, std::span<const std::byte> data);
+    MessageTask(std::string name, Common::Compat::span<const std::byte> data);
 
     MessageTask(MessageTask&& other) noexcept;
     MessageTask& operator=(MessageTask&& other) noexcept;
@@ -73,13 +73,13 @@ public:
     /**
      * @brief Returns a non-owning span over the task payload data.
      */
-    [[nodiscard]] std::span<const std::byte> payload() const noexcept;
+    [[nodiscard]] Common::Compat::span<const std::byte> payload() const noexcept;
 
 private:
     std::string m_channelName;
     std::array<std::byte, SmallBufferSize> m_inlineBuffer;
     std::size_t m_inlineSize { 0 };
-    Memory::BufferSlice m_pooledSlice;
+    Common::Memory::BufferSlice m_pooledSlice;
     std::vector<std::byte> m_heapBuffer;
 };
 

@@ -1,11 +1,12 @@
-#include "core/memory/BufferPool.hpp"
+#include "common/compat/Jthread.hpp"
+#include "common/memory/BufferPool.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <thread>
 #include <vector>
 
-TEST_CASE("Core::Memory::BufferPool allocation and release", "[memory]")
+TEST_CASE("Common::Memory::BufferPool allocation and release", "[memory]")
 {
-    auto pool = std::make_shared<Core::Memory::BufferPool>(1024, 4);
+    auto pool = std::make_shared<Common::Memory::BufferPool>(1024, 4);
 
     CHECK(pool->available() == 4);
 
@@ -30,13 +31,13 @@ TEST_CASE("Core::Memory::BufferPool allocation and release", "[memory]")
     CHECK(pool->available() == 0);
 }
 
-TEST_CASE("Core::Memory::BufferPool multi-threaded concurrent churn", "[memory]")
+TEST_CASE("Common::Memory::BufferPool multi-threaded concurrent churn", "[memory]")
 {
     constexpr std::size_t Threads = 4;
     constexpr std::size_t Iterations = 5000;
-    auto pool = std::make_shared<Core::Memory::BufferPool>(256, 16);
+    auto pool = std::make_shared<Common::Memory::BufferPool>(256, 16);
 
-    std::vector<std::jthread> workers;
+    std::vector<Common::Compat::jthread> workers;
     for (std::size_t t = 0; t < Threads; ++t) {
         workers.emplace_back([pool]() {
             for (std::size_t i = 0; i < Iterations; ++i) {

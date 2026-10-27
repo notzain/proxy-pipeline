@@ -1,5 +1,8 @@
 #pragma once
 
+#include "common/compat/AtomicWait.hpp"
+#include "common/compat/Span.hpp"
+#include "common/compat/StopToken.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -7,11 +10,10 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
-#include <span>
-#include <stop_token>
+#include <type_traits>
 #include <utility>
 
-namespace Core::Queue {
+namespace Common::Queue {
 
 /**
  * @brief High-performance lockless Single-Producer Single-Consumer (SPSC) ring buffer.
@@ -19,7 +21,7 @@ namespace Core::Queue {
  * Utilizes cache-line aligned (alignas(64)) atomic head and tail pointers with power-of-two
  * bitmask wrapping to eliminate false sharing.
  *
- * Employs C++20 atomic wait/notify semantics backed by monotonic version counters to guarantee
+ * Employs atomic wait/notify semantics backed by monotonic version counters to guarantee
  * instant wakeup during shutdown without spurious wait deadlocks across platforms.
  *
  * Producer synchronization mutex is provided for multi-producer serialized scenarios while
@@ -28,9 +30,11 @@ namespace Core::Queue {
  * @tparam T Element type stored in the ring buffer.
  * @tparam Capacity Power-of-two queue capacity.
  */
-template <typename T, std::size_t Capacity = 4096>
-    requires((Capacity & (Capacity - 1)) == 0 && Capacity >= 2)
-class SpscQueue {
+template <typename T, std::size_t Capacity = 4096, typename = void>
+class SpscQueue;
+
+template <typename T, std::size_t Capacity>
+class SpscQueue<T, Capacity, std::enable_if_t<((Capacity & (Capacity - 1)) == 0 && Capacity >= 2)>> {
 public:
     static constexpr std::size_t BufferCapacity = Capacity;
     static constexpr std::size_t Mask = Capacity - 1;
@@ -58,13 +62,13 @@ public:
      * @return true if elements were written, false if stopped before writing.
      */
     template <typename ProducerFn>
-    bool pushBatch(std::size_t count, ProducerFn&& producerFn, std::stop_token stoken = { })
+    bool pushBatch(std::size_t count, ProducerFn&& producerFn, Common::Compat::stop_token stoken = { })
     {
         if (count == 0 || count > Capacity) {
             return false;
         }
 
-        std::lock_guard lock(m_producerMutex);
+        std::lock_guard<std::mutex> lock(m_producerMutex);
 
         std::size_t currentTail = m_tail.load(std::memory_order_relaxed);
         while (!stoken.stop_requested()) {
@@ -75,7 +79,7 @@ public:
             std::uint32_t currentVer = m_headVersion.load(std::memory_order_acquire);
             currentHead = m_head.load(std::memory_order_acquire);
             if (currentTail - currentHead + count > Capacity) {
-                m_headVersion.wait(currentVer, std::memory_order_relaxed);
+                Common::Compat::atomic_wait(m_headVersion, currentVer, std::memory_order_relaxed);
             }
         }
 
@@ -89,7 +93,7 @@ public:
 
         m_tail.store(currentTail + count, std::memory_order_release);
         m_tailVersion.fetch_add(1, std::memory_order_release);
-        m_tailVersion.notify_one();
+        Common::Compat::atomic_notify_one(m_tailVersion);
         return true;
     }
 
@@ -100,16 +104,16 @@ public:
      * maxCount contiguous slots (bounded by free space and the physical end of the ring) and
      * returns how many of them it actually populated; only that many are published.
      *
-     * @tparam FillFn Callable invoked as `std::size_t fn(std::span<T> slots)`.
+     * @tparam FillFn Callable invoked as `std::size_t fn(Common::Compat::span<T> slots)`.
      * @param maxCount Maximum number of slots to expose.
      * @param fillFn Function writing directly into ring slots.
      * @param stoken Cooperative cancellation token.
      * @return Number of elements published (0 if stopped or nothing filled).
      */
     template <typename FillFn>
-    std::size_t pushInPlace(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken = { })
+    std::size_t pushInPlace(std::size_t maxCount, FillFn&& fillFn, Common::Compat::stop_token stoken = { })
     {
-        std::unique_lock lock(m_producerMutex);
+        std::unique_lock<std::mutex> lock(m_producerMutex);
         return pushInPlaceLocked(maxCount, std::forward<FillFn>(fillFn), stoken);
     }
 
@@ -120,9 +124,9 @@ public:
      * allowing callers to try a different queue instead of stalling.
      */
     template <typename FillFn>
-    std::optional<std::size_t> tryPushInPlace(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken = { })
+    std::optional<std::size_t> tryPushInPlace(std::size_t maxCount, FillFn&& fillFn, Common::Compat::stop_token stoken = { })
     {
-        std::unique_lock lock(m_producerMutex, std::try_to_lock);
+        std::unique_lock<std::mutex> lock(m_producerMutex, std::try_to_lock);
         if (!lock.owns_lock()) {
             return std::nullopt;
         }
@@ -132,17 +136,17 @@ public:
     /**
      * @brief Drains up to maxCount elements from the ring buffer into a consumer callback.
      *
-     * The callback is passed a contiguous std::span of elements directly inside the ring buffer.
+     * The callback is passed a contiguous Common::Compat::span of elements directly inside the ring buffer.
      * Completely lock-free.
      *
-     * @tparam ConsumerFn Callable invoked as `fn(std::span<const T> slice)`.
+     * @tparam ConsumerFn Callable invoked as `fn(Common::Compat::span<const T> slice)`.
      * @param maxCount Maximum number of elements to process.
      * @param consumerFn Function to process contiguous elements.
      * @param stoken Cooperative cancellation token.
      * @return Number of elements drained, or 0 if empty / stopped.
      */
     template <typename ConsumerFn>
-    std::size_t drainContiguous(std::size_t maxCount, ConsumerFn&& consumerFn, std::stop_token stoken = { })
+    std::size_t drainContiguous(std::size_t maxCount, ConsumerFn&& consumerFn, Common::Compat::stop_token stoken = { })
     {
         std::size_t currentHead = m_head.load(std::memory_order_relaxed);
         std::size_t currentTail = m_tail.load(std::memory_order_acquire);
@@ -154,7 +158,7 @@ public:
             std::uint32_t currentVer = m_tailVersion.load(std::memory_order_acquire);
             currentTail = m_tail.load(std::memory_order_acquire);
             if (currentHead == currentTail) {
-                m_tailVersion.wait(currentVer, std::memory_order_relaxed);
+                Common::Compat::atomic_wait(m_tailVersion, currentVer, std::memory_order_relaxed);
                 currentTail = m_tail.load(std::memory_order_acquire);
                 if (currentHead == currentTail) {
                     return 0;
@@ -168,11 +172,11 @@ public:
         std::size_t ringIndex = currentHead & Mask;
         drainCount = std::min(drainCount, Capacity - ringIndex);
 
-        consumerFn(std::span<const T>(&m_ring[ringIndex], drainCount));
+        consumerFn(Common::Compat::span<const T>(&m_ring[ringIndex], drainCount));
 
         m_head.store(currentHead + drainCount, std::memory_order_release);
         m_headVersion.fetch_add(1, std::memory_order_release);
-        m_headVersion.notify_one();
+        Common::Compat::atomic_notify_one(m_headVersion);
         return drainCount;
     }
 
@@ -197,11 +201,11 @@ public:
         std::size_t ringIndex = currentHead & Mask;
         drainCount = std::min(drainCount, Capacity - ringIndex);
 
-        consumerFn(std::span<const T>(&m_ring[ringIndex], drainCount));
+        consumerFn(Common::Compat::span<const T>(&m_ring[ringIndex], drainCount));
 
         m_head.store(currentHead + drainCount, std::memory_order_release);
         m_headVersion.fetch_add(1, std::memory_order_release);
-        m_headVersion.notify_one();
+        Common::Compat::atomic_notify_one(m_headVersion);
         return drainCount;
     }
 
@@ -211,9 +215,9 @@ public:
     void stop() noexcept
     {
         m_tailVersion.fetch_add(1, std::memory_order_release);
-        m_tailVersion.notify_all();
+        Common::Compat::atomic_notify_all(m_tailVersion);
         m_headVersion.fetch_add(1, std::memory_order_release);
-        m_headVersion.notify_all();
+        Common::Compat::atomic_notify_all(m_headVersion);
     }
 
     /**
@@ -236,7 +240,7 @@ public:
 
 private:
     template <typename FillFn>
-    std::size_t pushInPlaceLocked(std::size_t maxCount, FillFn&& fillFn, std::stop_token stoken)
+    std::size_t pushInPlaceLocked(std::size_t maxCount, FillFn&& fillFn, Common::Compat::stop_token stoken)
     {
         if (maxCount == 0) {
             return 0;
@@ -251,7 +255,7 @@ private:
             }
             std::uint32_t currentVer = m_headVersion.load(std::memory_order_acquire);
             if (Capacity - (currentTail - m_head.load(std::memory_order_acquire)) == 0) {
-                m_headVersion.wait(currentVer, std::memory_order_relaxed);
+                Common::Compat::atomic_wait(m_headVersion, currentVer, std::memory_order_relaxed);
             }
         }
         if (stoken.stop_requested() || freeSlots == 0) {
@@ -261,7 +265,7 @@ private:
         const std::size_t ringIndex = currentTail & Mask;
         const std::size_t span = std::min({ maxCount, freeSlots, Capacity - ringIndex });
 
-        std::size_t filled = fillFn(std::span<T>(&m_ring[ringIndex], span));
+        std::size_t filled = fillFn(Common::Compat::span<T>(&m_ring[ringIndex], span));
         filled = std::min(filled, span);
         if (filled == 0) {
             return 0;
@@ -269,7 +273,7 @@ private:
 
         m_tail.store(currentTail + filled, std::memory_order_release);
         m_tailVersion.fetch_add(1, std::memory_order_release);
-        m_tailVersion.notify_one();
+        Common::Compat::atomic_notify_one(m_tailVersion);
         return filled;
     }
 
@@ -281,4 +285,4 @@ private:
     alignas(64) std::array<T, Capacity> m_ring;
 };
 
-} // namespace Core::Queue
+} // namespace Common::Queue

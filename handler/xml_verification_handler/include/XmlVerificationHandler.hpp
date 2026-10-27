@@ -1,9 +1,9 @@
 #pragma once
 
+#include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include <filesystem>
 #include <memory>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,8 +63,8 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        std::span<const Core::Message::MessageView> messages,
-        std::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Core::Message::MessageView> messages,
+        Common::Compat::span<Core::Message::MessageResult> outResults) override;
 
     /**
      * @brief Validates an XML byte buffer against the loaded schema.
@@ -72,7 +72,7 @@ public:
      * @param xmlData Non-owning span of the XML document.
      * @return true If valid according to the schema, false otherwise.
      */
-    [[nodiscard]] bool validate(std::span<const std::byte> xmlData) const;
+    [[nodiscard]] bool validate(Common::Compat::span<const std::byte> xmlData) const;
 
     /**
      * @brief Checks if the schema was successfully parsed and loaded.
@@ -81,7 +81,7 @@ public:
      */
     [[nodiscard]] bool isSchemaLoaded() const noexcept;
 
-    void setOutputChannel(Core::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
+    void setOutputChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> outChannel) noexcept
     {
         m_outputChannel = outChannel;
     }
@@ -89,7 +89,7 @@ public:
 private:
     std::filesystem::path m_schemaPath;
     std::unique_ptr<XmlSchemaValidator> m_validator;
-    Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
+    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;
 };
 
 } // namespace Proxy::Handler
