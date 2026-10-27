@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <fmt/core.h>
 #include <latch>
 #include <memory>
@@ -469,6 +470,45 @@ TEST_CASE("Execution model configuration enables serialized handler access", "[c
     const auto model = Core::Handler::parseExecutionModel(config);
     REQUIRE(std::holds_alternative<Core::Handler::ThreadPoolModel>(model));
     CHECK(std::get<Core::Handler::ThreadPoolModel>(model).serializeHandlerAccess);
+}
+
+TEST_CASE("HandlerRunner stops safely after SIGTERM", "[channel][core][signal]")
+{
+    struct sigaction previousAction { };
+    REQUIRE(sigaction(SIGTERM, nullptr, &previousAction) == 0);
+
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler handler(backend);
+    Core::Handler::HandlerRunner runner(handler);
+    runner.setExecutionModel(Core::Handler::DedicatedThreadModel { });
+
+    runner.startAsync();
+    REQUIRE(runner.isRunning());
+    REQUIRE(std::raise(SIGTERM) == 0);
+    runner.wait();
+
+    struct sigaction restoredAction { };
+    REQUIRE(sigaction(SIGTERM, nullptr, &restoredAction) == 0);
+    CHECK(restoredAction.sa_handler == previousAction.sa_handler);
+    CHECK_FALSE(runner.isRunning());
+}
+
+TEST_CASE("Only one HandlerRunner owns process signal handling", "[channel][core][signal]")
+{
+    Core::Simulation::SimulationBackend backend;
+    TestChainedHandler activeHandler(backend);
+    TestChainedHandler secondHandler(backend);
+    Core::Handler::HandlerRunner activeRunner(activeHandler);
+    Core::Handler::HandlerRunner secondRunner(secondHandler);
+    activeRunner.setExecutionModel(Core::Handler::DedicatedThreadModel { });
+
+    activeRunner.startAsync();
+    REQUIRE(activeRunner.isRunning());
+    CHECK_THROWS_AS(secondRunner.startAsync(), std::logic_error);
+    REQUIRE(std::raise(SIGINT) == 0);
+    activeRunner.wait();
+
+    CHECK_FALSE(activeRunner.isRunning());
 }
 
 TEST_CASE("Direct output channel multi-dispatch", "[channel][core]")

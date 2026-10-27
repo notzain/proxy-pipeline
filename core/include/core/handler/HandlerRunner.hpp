@@ -5,7 +5,9 @@
 #include "core/handler/IHandler.hpp"
 #include "core/telemetry/StatsDExporter.hpp"
 #include "core/threading/IExecutionStrategy.hpp"
+#include <atomic>
 #include <memory>
+#include <thread>
 
 namespace Core::Handler {
 
@@ -80,6 +82,8 @@ public:
 
     /**
      * @brief Signals the execution strategy to terminate.
+     *
+     * Shutdown is requested asynchronously and applied by the runner coordinator.
      */
     void stop();
 
@@ -92,6 +96,8 @@ private:
     IHandler& m_handler;
     std::unique_ptr<Threading::IExecutionStrategy> m_strategy;
     std::unique_ptr<Telemetry::StatsDExporter> m_telemetryExporter;
+    std::atomic<bool> m_stopRequested { false };
+    std::jthread m_shutdownThread;
 
     void registerSignalHandler();
     void unregisterSignalHandler();

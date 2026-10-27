@@ -20,10 +20,10 @@ This roadmap captures architectural findings from a representative review of the
   - **Action**: Documented each execution model's concurrency guarantees. Parallel handlers must protect shared state by default; `execution.serialize_handler_access = true` serializes `processBatch()` and `step()` without adding mutex acquisition to the default parallel path. Each registered input channel is polled by one strategy thread; shared output channels must support concurrent sends or be synchronized by callers.
   - **Evidence**: `docs/handler-channel-thread-safety.md`; `core/include/core/handler/IHandler.hpp`; `backend/interface/include/backend/IInputChannel.hpp`; `backend/interface/include/backend/IOutputChannel.hpp`; `core/src/threading/DedicatedThreadStrategy.cpp`; `core/src/threading/ThreadPoolStrategy.cpp`.
 
-- [ ] **Make signal-triggered shutdown safe**
+- [x] **Make signal-triggered shutdown safe**
   - **Issue**: The POSIX signal callback calls `HandlerRunner::stop()` directly. The resulting C++ strategy and thread-stop operations are not guaranteed to be async-signal-safe, and the global active-runner pointer effectively imposes a single-runner signal ownership model.
-  - **Action**: Restrict the signal callback to a signal-safe notification and perform shutdown from normal thread context. Clarify or redesign signal ownership if multiple runners must be supported.
-  - **Evidence**: `core/src/handler/HandlerRunner.cpp`.
+  - **Action**: The signal callback now sets a lock-free notification flag. A coordinator thread performs strategy shutdown and waiting in normal context. Only one runner may own process signal handling at a time; a conflicting start fails explicitly, and prior signal dispositions are restored.
+  - **Evidence**: `docs/handler-signal-safe-shutdown.md`; `core/src/handler/HandlerRunner.cpp`; `test/TestChannels.cpp`.
 
 ## 2. Dispatch and Observability
 
