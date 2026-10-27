@@ -1,3 +1,4 @@
+#include "backend/ISocketPoller.hpp"
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
@@ -17,10 +18,14 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
 namespace {
+
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
 
 class MockInputChannel : public Backend::IInputChannel {
 public:
@@ -36,25 +41,25 @@ public:
         }
     }
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
     {
         std::lock_guard lock(m_mutex);
         if (m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
             const auto bytesToCopy = std::min(destination.size(), msg.size());
             std::memcpy(destination.data(), msg.data(), bytesToCopy);
-            return bytesToCopy;
+            return BytesResult::success(bytesToCopy);
         }
-        return 0;
+        return BytesResult::failure(Backend::receiveTimeout());
     }
 
-    std::size_t receiveBatch(
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout) override
     {
         std::lock_guard lock(m_mutex);
         if (slots.empty()) {
-            return 0;
+            return BatchResult::failure({ 0, Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
         }
         std::size_t count = 0;
         while (count < slots.size() && m_index < m_messages.size()) {
@@ -64,13 +69,47 @@ public:
             slots[count].size = bytesToCopy;
             ++count;
         }
-        return count;
+        return count > 0
+            ? BatchResult::success(count)
+            : BatchResult::failure({ 0, Backend::receiveTimeout() });
     }
 
 private:
     std::mutex m_mutex;
     std::vector<std::string> m_messages;
     std::size_t m_index { 0 };
+};
+
+class StatusInputChannel : public Backend::IInputChannel {
+public:
+    explicit StatusInputChannel(Backend::ReceiveError error)
+        : m_error(std::move(error))
+    {
+    }
+
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    {
+        return BytesResult::failure(m_error);
+    }
+
+private:
+    Backend::ReceiveError m_error;
+};
+
+class PartialFailureInputChannel : public Backend::IInputChannel {
+public:
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
+    {
+        if (m_received) {
+            return BytesResult::failure(Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
+        }
+        destination[0] = std::byte { 0x2a };
+        m_received = true;
+        return BytesResult::success(1);
+    }
+
+private:
+    bool m_received { false };
 };
 
 class StepWaitingInputChannel : public MockInputChannel {
@@ -81,7 +120,7 @@ public:
     {
     }
 
-    std::size_t receiveBatch(
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override
     {
@@ -96,6 +135,63 @@ private:
     std::latch& m_stepStarted;
     bool m_waited { false };
 };
+
+TEST_CASE("Input channel receive results distinguish data, timeout, closure, and errors", "[channel][receive]")
+{
+    std::array<std::byte, 8> buffer { };
+
+    auto successfulResult = Backend::Result<int, std::string>::success(42);
+    REQUIRE(successfulResult.hasValue());
+    CHECK(successfulResult.value() == 42);
+    auto failedResult = Backend::Result<int, std::string>::failure("failure");
+    REQUIRE_FALSE(failedResult.hasValue());
+    CHECK(failedResult.error() == "failure");
+
+    StatusInputChannel timeoutChannel(Backend::receiveTimeout());
+    auto timeout = timeoutChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(timeout.hasValue());
+    CHECK(Backend::isReceiveTimeout(timeout.error()));
+
+    StatusInputChannel closedChannel(Backend::receiveClosed());
+    auto closed = closedChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(closed.hasValue());
+    CHECK(Backend::isReceiveClosed(closed.error()));
+
+    StatusInputChannel errorChannel(Backend::receiveFailure(std::make_error_code(std::errc::permission_denied)));
+    auto error = errorChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(error.hasValue());
+    const auto* receiveFailure = std::get_if<Backend::ReceiveFailure>(&error.error());
+    REQUIRE(receiveFailure != nullptr);
+    CHECK(receiveFailure->code == std::make_error_code(std::errc::permission_denied));
+
+    auto poller = Backend::createSocketPoller();
+    auto closedPoller = poller->receive(-1, buffer, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(closedPoller.hasValue());
+    CHECK(Backend::isReceiveClosed(closedPoller.error()));
+
+    ::Backend::BufferSlot slot { buffer, 0 };
+    auto batchTimeout = timeoutChannel.receiveBatch(std::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
+    REQUIRE_FALSE(batchTimeout.hasValue());
+    CHECK(Backend::isReceiveTimeout(batchTimeout.error().cause));
+    auto batchError = errorChannel.receiveBatch(std::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
+    REQUIRE_FALSE(batchError.hasValue());
+    const auto* batchReceiveFailure = std::get_if<Backend::ReceiveFailure>(&batchError.error().cause);
+    REQUIRE(batchReceiveFailure != nullptr);
+    CHECK(batchReceiveFailure->code == std::make_error_code(std::errc::permission_denied));
+
+    PartialFailureInputChannel partialFailure;
+    std::array<::Backend::BufferSlot, 2> slots {
+        ::Backend::BufferSlot { buffer, 0 },
+        ::Backend::BufferSlot { buffer, 0 },
+    };
+    auto partialResult = partialFailure.receiveBatch(slots, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(partialResult.hasValue());
+    CHECK(partialResult.error().receivedCount == 1);
+    const auto* partialReceiveFailure = std::get_if<Backend::ReceiveFailure>(&partialResult.error().cause);
+    REQUIRE(partialReceiveFailure != nullptr);
+    CHECK(partialReceiveFailure->code == std::make_error_code(std::errc::io_error));
+    CHECK(slots[0].size == 1);
+}
 
 class MockOutputChannel : public Backend::IOutputChannel {
 public:
@@ -682,13 +778,18 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
     std::string testMsg = "Hello UDS IPC!";
     std::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
 
+    std::array<std::byte, 128> recvBuf { };
+    auto timeoutResult = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(0));
+    REQUIRE_FALSE(timeoutResult.hasValue());
+    CHECK(Backend::isReceiveTimeout(timeoutResult.error()));
+
     REQUIRE(outChannel.send(sendSpan));
 
-    std::array<std::byte, 128> recvBuf { };
-    std::size_t received = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(500));
-    REQUIRE(received == testMsg.size());
+    auto result = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(500));
+    REQUIRE(result.hasValue());
+    REQUIRE(result.value() == testMsg.size());
 
-    std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), received);
+    std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), result.value());
     CHECK(receivedStr == testMsg);
 }
 
@@ -713,11 +814,12 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
         slots[i] = ::Backend::BufferSlot { std::span<std::byte>(buffers[i].data(), buffers[i].size()), 0 };
     }
 
-    std::size_t drained = inChannel.receiveBatch(
+    auto result = inChannel.receiveBatch(
         slots,
         std::chrono::milliseconds(500));
 
-    REQUIRE(drained == numMessages);
+    REQUIRE(result.hasValue());
+    REQUIRE(result.value() == numMessages);
     for (std::size_t i = 0; i < numMessages; ++i) {
         REQUIRE(slots[i].size == sentMessages[i].size());
         std::string receivedStr(reinterpret_cast<const char*>(buffers[i].data()), slots[i].size);
@@ -847,11 +949,12 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
         slots[i] = ::Backend::BufferSlot { std::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size()), 0 };
     }
 
-    std::size_t received = inChannel.receiveBatch(
+    auto result = inChannel.receiveBatch(
         slots,
         std::chrono::milliseconds(500));
 
-    REQUIRE(received == messages.size());
+    REQUIRE(result.hasValue());
+    REQUIRE(result.value() == messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
         std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), slots[i].size);
         CHECK(recStr == messages[i]);

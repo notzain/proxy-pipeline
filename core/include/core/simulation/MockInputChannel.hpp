@@ -1,16 +1,19 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
-#include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Core::Simulation {
+
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
 
 class SimulationClock;
 
@@ -64,8 +67,8 @@ public:
     [[nodiscard]] std::size_t pendingCount() const;
 
     // Backend::IInputChannel interface implementation
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
-    std::size_t receiveBatch(
+    ::Backend::BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

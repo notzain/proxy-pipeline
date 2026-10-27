@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/BufferSlot.hpp"
+#include "backend/ReceiveResult.hpp"
 #include <chrono>
 #include <cstddef>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -40,20 +40,20 @@ public:
      * Core zero-copy reception primitive implemented by transport channels.
      *
      * @param destination Non-owning pre-allocated memory span to receive data into.
-     * @param timeout Maximum duration to wait before returning 0.
-     * @return std::size_t Number of bytes written into destination, or 0 on timeout/no message.
+     * @param timeout Maximum duration to wait for data.
+     * @return A typed result distinguishing data, timeout, closure, and channel errors.
      */
-    virtual std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) = 0;
+    virtual BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) = 0;
 
     /**
      * @brief Polls the input channel for the next available message, returning an allocated buffer.
      *
      * Non-virtual convenience wrapper that delegates to receiveInto().
      *
-     * @param timeout Maximum duration to wait before returning std::nullopt.
-     * @return std::optional<Buffer> Buffer containing received data, or std::nullopt on timeout.
+     * @param timeout Maximum duration to wait for data.
+     * @return A typed result containing the received buffer or the reason no data was received.
      */
-    std::optional<Buffer> receive(Timeout timeout);
+    ReceiveMessageResult receive(Timeout timeout);
 
     /**
      * @brief Drains a batch of incoming messages into pre-allocated destination buffer slots.
@@ -62,9 +62,9 @@ public:
      *
      * @param slots Target buffer slots to populate. Each slot contains a target buffer and tracks received byte count.
      * @param timeout Timeout for the initial message wait if no data is currently ready.
-     * @return std::size_t Number of datagrams read into slots (0 to slots.size()).
+     * @return A typed result containing the number of datagrams or the reason no data was received.
      */
-    virtual std::size_t receiveBatch(
+    virtual BatchResult receiveBatch(
         std::span<BufferSlot> slots,
         Timeout timeout);
 

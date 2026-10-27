@@ -2,12 +2,11 @@
 #include "backend/ISocketPoller.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
-#include <array>
 #include <cerrno>
 #include <cstring>
 #include <netinet/in.h>
-#include <poll.h>
 #include <sys/socket.h>
+#include <system_error>
 #include <unistd.h>
 #include <utility>
 
@@ -70,12 +69,12 @@ void SocketInputChannel::openAndBindSocket()
     Proxy::Log::info("[SocketInputChannel] Listening on UDP {}:{}", m_host, m_port);
 }
 
-std::size_t SocketInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult SocketInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return 0;
+            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
         }
     }
 
@@ -83,17 +82,17 @@ std::size_t SocketInputChannel::receiveInto(std::span<std::byte> destination, Ti
         return m_poller->receive(m_socketFd, destination, timeout);
     }
 
-    return 0;
+    return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
 }
 
-std::size_t SocketInputChannel::receiveBatch(
+BatchResult SocketInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return 0;
+            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
         }
     }
 
@@ -101,7 +100,7 @@ std::size_t SocketInputChannel::receiveBatch(
         return m_poller->receiveBatch(m_socketFd, slots, timeout);
     }
 
-    return 0;
+    return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
 }
 
 } // namespace Proxy::Backend::Socket

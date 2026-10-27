@@ -2,13 +2,30 @@
 
 #include "KqueueSocketPoller.hpp"
 
+#include <cerrno>
 #include <chrono>
 #include <sys/event.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <system_error>
 #include <unistd.h>
 
 namespace Backend {
+
+namespace {
+
+    BytesResult receiveError(int error)
+    {
+        if (error == EBADF || error == ENOTSOCK) {
+            return BytesResult::failure(receiveClosed());
+        }
+        if (error == EAGAIN || error == EWOULDBLOCK) {
+            return BytesResult::failure(receiveTimeout());
+        }
+        return BytesResult::failure(receiveFailure(std::error_code(error, std::generic_category())));
+    }
+
+} // namespace
 
 KqueueSocketPoller::KqueueSocketPoller()
 {
@@ -23,171 +40,103 @@ KqueueSocketPoller::~KqueueSocketPoller()
     }
 }
 
-void KqueueSocketPoller::registerSocket(int socketFd)
+bool KqueueSocketPoller::registerSocket(int socketFd)
 {
-    if (m_kqueueFd < 0 || socketFd == m_registeredSocketFd) {
-        return;
+    if (m_kqueueFd < 0) {
+        return false;
+    }
+    if (socketFd == m_registeredSocketFd) {
+        return true;
     }
 
     struct kevent change { };
     EV_SET(&change, socketFd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, nullptr);
-
-    if (::kevent(m_kqueueFd, &change, 1, nullptr, 0, nullptr) >= 0) {
-        m_registeredSocketFd = socketFd;
+    if (::kevent(m_kqueueFd, &change, 1, nullptr, 0, nullptr) < 0) {
+        return false;
     }
+    m_registeredSocketFd = socketFd;
+    return true;
 }
 
-std::size_t KqueueSocketPoller::receive(
+BytesResult KqueueSocketPoller::receive(
     int socketFd,
     std::span<std::byte> destination,
     Timeout timeout,
     SocketAddress* outSourceAddress)
 {
-    if (m_kqueueFd < 0 || socketFd < 0 || destination.empty()) {
-        return 0;
+    if (m_kqueueFd < 0 || socketFd < 0) {
+        return BytesResult::failure(receiveClosed());
+    }
+    if (destination.empty()) {
+        return BytesResult::failure(receiveFailure(std::make_error_code(std::errc::invalid_argument)));
     }
 
-    sockaddr_storage ss { };
-    socklen_t addrLen = sizeof(ss);
-    sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-    socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
-
-    // Fast-path: speculative non-blocking read avoids kevent kernel roundtrip when socket buffer has data
-    ssize_t directBytes = ::recvfrom(
-        socketFd,
-        reinterpret_cast<char*>(destination.data()),
-        destination.size(),
-        MSG_DONTWAIT,
-        saPtr,
-        saLenPtr);
-
-    if (directBytes > 0) {
-        if (outSourceAddress) {
-            outSourceAddress->setFromNative(&ss, addrLen);
-        }
-        return static_cast<std::size_t>(directBytes);
-    }
-
-    if (timeout.count() == 0) {
-        return 0;
-    }
-
-    registerSocket(socketFd);
-
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
-    struct timespec ts { };
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (ms % 1000) * 1000000L;
-
-    struct kevent events[8] { };
-    int nEvents = ::kevent(m_kqueueFd, nullptr, 0, events, 8, &ts);
-
-    for (int i = 0; i < nEvents; ++i) {
-        if (events[i].ident == static_cast<uintptr_t>(socketFd) && events[i].filter == EVFILT_READ) {
-            addrLen = sizeof(ss);
-            ssize_t bytesRead = ::recvfrom(
-                socketFd,
-                reinterpret_cast<char*>(destination.data()),
-                destination.size(),
-                MSG_DONTWAIT,
-                saPtr,
-                saLenPtr);
-
-            if (bytesRead > 0) {
-                if (outSourceAddress) {
-                    outSourceAddress->setFromNative(&ss, addrLen);
-                }
-                return static_cast<std::size_t>(bytesRead);
+    sockaddr_storage address { };
+    socklen_t addressLength = sizeof(address);
+    sockaddr* addressPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&address) : nullptr;
+    socklen_t* addressLengthPtr = outSourceAddress ? &addressLength : nullptr;
+    auto readDatagram = [&]() -> BytesResult {
+        ssize_t bytes = ::recvfrom(
+            socketFd,
+            reinterpret_cast<char*>(destination.data()),
+            destination.size(),
+            MSG_DONTWAIT,
+            addressPtr,
+            addressLengthPtr);
+        if (bytes >= 0) {
+            if (outSourceAddress) {
+                outSourceAddress->setFromNative(&address, addressLength);
             }
+            return BytesResult::success(static_cast<std::size_t>(bytes));
         }
+        return receiveError(errno);
+    };
+
+    auto result = readDatagram();
+    if (result.hasValue() || !isReceiveTimeout(result.error()) || timeout.count() <= 0) {
+        return result;
+    }
+    if (!registerSocket(socketFd)) {
+        return BytesResult::failure(receiveFailure(std::error_code(errno, std::generic_category())));
     }
 
-    return 0;
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
+    struct timespec waitTime { milliseconds / 1000, (milliseconds % 1000) * 1000000L };
+    struct kevent events[8] { };
+    int eventCount = ::kevent(m_kqueueFd, nullptr, 0, events, 8, &waitTime);
+    if (eventCount < 0) {
+        return receiveError(errno);
+    }
+    if (eventCount == 0) {
+        return BytesResult::failure(receiveTimeout());
+    }
+
+    for (int i = 0; i < eventCount; ++i) {
+        if (events[i].ident != static_cast<uintptr_t>(socketFd) || events[i].filter != EVFILT_READ) {
+            continue;
+        }
+        if (events[i].flags & EV_EOF) {
+            return BytesResult::failure(receiveClosed());
+        }
+        if (events[i].flags & EV_ERROR) {
+            return receiveError(static_cast<int>(events[i].data));
+        }
+        return readDatagram();
+    }
+
+    return BytesResult::failure(receiveTimeout());
 }
 
-std::size_t KqueueSocketPoller::receiveBatch(
+BatchResult KqueueSocketPoller::receiveBatch(
     int socketFd,
     std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
-    if (m_kqueueFd < 0 || socketFd < 0 || slots.empty()) {
-        return 0;
+    if (socketFd < 0) {
+        return BatchResult::failure({ 0, receiveClosed() });
     }
-
-    std::size_t count = 0;
-    const std::size_t maxBatch = slots.size();
-
-    // Speculatively drain ready datagrams non-blocking without kevent syscall
-    while (count < maxBatch) {
-        sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
-
-        if (bytes > 0) {
-            if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
-            }
-            slots[count++].size = static_cast<std::size_t>(bytes);
-        } else {
-            break;
-        }
-    }
-
-    if (count > 0 || timeout.count() == 0) {
-        return count;
-    }
-
-    // Wait via kevent for readability
-    registerSocket(socketFd);
-
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
-    struct timespec ts { };
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (ms % 1000) * 1000000L;
-
-    struct kevent events[8] { };
-    int nEvents = ::kevent(m_kqueueFd, nullptr, 0, events, 8, &ts);
-
-    if (nEvents <= 0) {
-        return 0;
-    }
-
-    // Drain ready datagrams now that socket is readable
-    while (count < maxBatch) {
-        sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
-
-        if (bytes > 0) {
-            if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
-            }
-            slots[count++].size = static_cast<std::size_t>(bytes);
-        } else {
-            break;
-        }
-    }
-
-    return count;
+    return ISocketPoller::receiveBatch(socketFd, slots, timeout, outSourceAddresses);
 }
 
 } // namespace Backend

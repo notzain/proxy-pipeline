@@ -34,7 +34,7 @@ This roadmap captures architectural findings from a representative review of the
 
 ## 3. Backend Interface Evolution
 
-- [ ] **Distinguish receive timeouts from channel errors**
+- [x] **Distinguish receive timeouts from channel errors**
   - **Issue**: `IInputChannel::receiveInto()` uses zero to indicate timeout/no message, while implementations may also return zero when socket setup or another receive operation fails. Callers cannot reliably distinguish idle channels from failed channels.
   - **Action**: Design a typed receive result that distinguishes data, timeout, closure, and error. Update channels and strategies together, and add tests for each result state.
   - **Evidence**: `backend/interface/include/backend/IInputChannel.hpp`; `core/src/net/UdpInputChannel.cpp`.

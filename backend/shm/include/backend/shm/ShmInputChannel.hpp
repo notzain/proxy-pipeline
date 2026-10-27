@@ -6,6 +6,9 @@
 
 namespace Proxy::Backend::Shm {
 
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
+
 class ShmRingBuffer;
 
 /**
@@ -23,8 +26,8 @@ public:
     ShmInputChannel(std::string name, std::string path, std::size_t capacity = 1024);
     ~ShmInputChannel() override;
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
-    std::size_t receiveBatch(
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

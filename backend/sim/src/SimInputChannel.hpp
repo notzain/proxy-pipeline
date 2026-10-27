@@ -1,10 +1,12 @@
 #pragma once
 
 #include "backend/IInputChannel.hpp"
-#include <cstdint>
 #include <string>
 
 namespace Proxy::Backend::Sim {
+
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
 
 /**
  * @brief Simulation input channel supporting IPC ingestion and event emission.
@@ -20,8 +22,8 @@ public:
 
     ~SimInputChannel() override;
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
-    std::size_t receiveBatch(
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

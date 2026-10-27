@@ -7,10 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <condition_variable>
 #include <cstring>
 #include <mutex>
-#include <queue>
 #include <span>
 
 namespace Core::Threading {
@@ -80,10 +78,31 @@ namespace {
     using QueueType = Core::Queue::SpscQueue<MessageTask, 1024>;
     using SharedQueueType = Core::Queue::MpmcQueue<MessageTask, 4096>;
 
+    bool channelFailed(std::string_view channelName, const ::Backend::ReceiveError& error)
+    {
+        if (::Backend::isReceiveTimeout(error)) {
+            return false;
+        }
+        if (::Backend::isReceiveClosed(error)) {
+            Proxy::Log::error("[ThreadPoolStrategy] Input channel '{}' is closed", channelName);
+            return true;
+        }
+        {
+            Proxy::Log::error("[ThreadPoolStrategy] Input channel '{}' failed: {}",
+                channelName, ::Backend::receiveErrorMessage(error));
+            return true;
+        }
+    }
+
+    bool channelFailed(std::string_view channelName, const ::Backend::BatchResult& result)
+    {
+        return !result.hasValue() && channelFailed(channelName, result.error().cause);
+    }
+
     /**
      * @brief Ingests datagrams directly into worker queue slot memory (zero-copy) for maximum throughput.
      */
-    void pollUnconstrained(
+    bool pollUnconstrained(
         std::string_view channelName,
         ::Backend::IInputChannel& channel,
         SharedQueueType* sharedQueue,
@@ -101,9 +120,14 @@ namespace {
                 batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
             }
 
-            const std::size_t received = channel.receiveBatch(
+            auto result = channel.receiveBatch(
                 std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
                 timeout);
+            const bool failed = channelFailed(channelName, result);
+            const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+            if (failed && received == 0) {
+                return false;
+            }
 
             for (std::size_t i = 0; i < received; ++i) {
                 MessageTask task;
@@ -123,11 +147,12 @@ namespace {
                     sharedQueue->push(std::move(task), stoken);
                 }
             }
-            return;
+            return !failed;
         }
 
         constexpr std::size_t maxBatch = 16;
         bool hasOversized = false;
+        bool receiveFailed = false;
 
         auto fillSlots = [&](std::span<MessageTask> slots) -> std::size_t {
             std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
@@ -135,9 +160,11 @@ namespace {
             for (std::size_t i = 0; i < n; ++i) {
                 inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
             }
-            const std::size_t nReceived = channel.receiveBatch(
+            auto result = channel.receiveBatch(
                 std::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
                 timeout);
+            receiveFailed = channelFailed(channelName, result) || receiveFailed;
+            const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
             for (std::size_t i = 0; i < nReceived; ++i) {
                 slots[i].commitInline(inPlaceSlots[i].size);
                 if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
@@ -157,15 +184,25 @@ namespace {
                 break;
             }
         }
+        if (receiveFailed) {
+            return false;
+        }
         if (!targetQueue) {
             targetQueue = queues[start % numWorkers].get();
             targetQueue->pushInPlace(maxBatch, fillSlots, stoken);
+        }
+        if (receiveFailed) {
+            return false;
         }
 
         if (hasOversized && targetQueue) {
             std::array<std::byte, 65535> jumboBuf;
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
-            std::size_t jumboBytes = channel.receiveInto(jumboBuf, zeroTimeout);
+            auto jumboResult = channel.receiveInto(jumboBuf, zeroTimeout);
+            if (!jumboResult.hasValue() && channelFailed(channelName, jumboResult.error())) {
+                return false;
+            }
+            std::size_t jumboBytes = jumboResult.hasValue() ? jumboResult.value() : 0;
             if (jumboBytes > 0) {
                 targetQueue->pushBatch(
                     1,
@@ -182,12 +219,13 @@ namespace {
                     stoken);
             }
         }
+        return true;
     }
 
     /**
      * @brief Ingests datagrams and groups them by client flow / channel to guarantee strict FIFO ordering.
      */
-    void pollStrictFifo(
+    bool pollStrictFifo(
         std::string_view channelName,
         ::Backend::IInputChannel& channel,
         std::size_t channelIdx,
@@ -207,12 +245,17 @@ namespace {
             batchSlots[i] = ::Backend::BufferSlot { std::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
         }
 
-        const std::size_t received = channel.receiveBatch(
+        auto result = channel.receiveBatch(
             std::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
             timeout);
 
+        const bool failed = channelFailed(channelName, result);
+        const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+        if (failed && received == 0) {
+            return false;
+        }
         if (received == 0) {
-            return;
+            return !failed;
         }
 
         const std::size_t numWorkers = queues.size();
@@ -249,6 +292,7 @@ namespace {
 
             runStart = runEnd;
         }
+        return !failed;
     }
 
 } // namespace
@@ -354,9 +398,13 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
         m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](std::stop_token stoken) {
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!enforceFifo) {
-                    pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken);
+                    if (!pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken)) {
+                        break;
+                    }
                 } else {
-                    pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken);
+                    if (!pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken)) {
+                        break;
+                    }
                 }
             }
         });

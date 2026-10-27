@@ -2,6 +2,7 @@
 #include "core/simulation/SimulationClock.hpp"
 #include <algorithm>
 #include <cstring>
+#include <system_error>
 #include <thread>
 
 namespace Core::Simulation {
@@ -59,7 +60,7 @@ bool MockInputChannel::isReady(const TimedMessage& msg) const
     return m_clock->nowNs() >= msg.scheduledTimeNs;
 }
 
-std::size_t MockInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult MockInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     auto startTime = std::chrono::steady_clock::now();
 
@@ -71,7 +72,7 @@ std::size_t MockInputChannel::receiveInto(std::span<std::byte> destination, Time
                 std::size_t copyLen = std::min(destination.size(), data.size());
                 std::memcpy(destination.data(), data.data(), copyLen);
                 m_queue.pop_front();
-                return copyLen;
+                return BytesResult::success(copyLen);
             }
         }
 
@@ -87,15 +88,15 @@ std::size_t MockInputChannel::receiveInto(std::span<std::byte> destination, Time
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    return 0;
+    return BytesResult::failure(::Backend::receiveTimeout());
 }
 
-std::size_t MockInputChannel::receiveBatch(
+Backend::BatchResult MockInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {
-        return 0;
+        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
     }
 
     auto startTime = std::chrono::steady_clock::now();
@@ -126,7 +127,9 @@ std::size_t MockInputChannel::receiveBatch(
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    return drained;
+    return drained > 0
+        ? BatchResult::success(drained)
+        : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
 }
 
 } // namespace Core::Simulation

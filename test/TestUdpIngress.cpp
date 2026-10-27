@@ -28,6 +28,9 @@
 
 namespace {
 
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
+
 void sendTestUdpDatagram(const std::string& host, std::uint16_t port, std::string_view payload)
 {
     int clientFd = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -94,32 +97,36 @@ public:
     {
     }
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout) override
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout) override
     {
         if (m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
             std::size_t count = std::min(destination.size(), msg.size());
             std::memcpy(destination.data(), msg.data(), count);
-            return count;
+            return BytesResult::success(count);
         }
-        return 0;
+        return BytesResult::failure(::Backend::receiveTimeout());
     }
 
-    std::size_t receiveBatch(
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override
     {
         std::size_t count = 0;
         while (count < slots.size()) {
-            std::size_t bytes = receiveInto(slots[count].buffer, timeout);
-            if (bytes > 0) {
-                slots[count].size = bytes;
+            BytesResult result = receiveInto(slots[count].buffer, timeout);
+            if (result.hasValue()) {
+                slots[count].size = result.value();
                 count++;
-            } else {
+            } else if (::Backend::isReceiveTimeout(result.error())) {
                 break;
+            } else {
+                return BatchResult::failure({ count, result.error() });
             }
         }
-        return count;
+        return count > 0
+            ? BatchResult::success(count)
+            : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
     }
 
 private:
@@ -243,10 +250,11 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         sendTestUdpDatagram("127.0.0.1", testPort, expectedPayload);
 
         std::array<std::byte, 2048> buffer;
-        std::size_t received = channel.receiveInto(buffer, std::chrono::milliseconds(500));
+        auto receiveResult = channel.receiveInto(buffer, std::chrono::milliseconds(500));
 
-        REQUIRE(received > expectedPayload.size());
-        auto view = Core::Message::MessageView::from(std::span<const std::byte>(buffer.data(), received));
+        REQUIRE(receiveResult.hasValue());
+        REQUIRE(receiveResult.value() > expectedPayload.size());
+        auto view = Core::Message::MessageView::from(std::span<const std::byte>(buffer.data(), receiveResult.value()));
         REQUIRE(view.has_value());
         CHECK(view->protocol() == Core::Message::ProtocolId::Udp);
 

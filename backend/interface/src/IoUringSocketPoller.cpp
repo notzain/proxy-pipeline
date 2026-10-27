@@ -1,10 +1,13 @@
 #if defined(__linux__)
 
 #include "IoUringSocketPoller.hpp"
+#include "PosixSocketPoller.hpp"
 
+#include <cerrno>
 #include <chrono>
 #include <liburing.h>
 #include <sys/socket.h>
+#include <system_error>
 
 namespace Backend {
 
@@ -36,14 +39,21 @@ IoUringSocketPoller::~IoUringSocketPoller()
     }
 }
 
-std::size_t IoUringSocketPoller::receive(
+BytesResult IoUringSocketPoller::receive(
     int socketFd,
     std::span<std::byte> destination,
     Timeout timeout,
     SocketAddress* outSourceAddress)
 {
     if (!m_impl || !m_impl->initialized || socketFd < 0 || destination.empty()) {
-        return 0;
+        if (socketFd < 0) {
+            return BytesResult::failure(receiveClosed());
+        }
+        if (destination.empty()) {
+            return BytesResult::failure(receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+        }
+        PosixSocketPoller fallback;
+        return fallback.receive(socketFd, destination, timeout, outSourceAddress);
     }
 
     // Fast-path: speculative non-blocking read avoids ring submission when data is ready
@@ -61,21 +71,28 @@ std::size_t IoUringSocketPoller::receive(
             saPtr,
             saLenPtr);
 
-        if (directBytes > 0) {
+        if (directBytes >= 0) {
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&directSs, addrLen);
             }
-            return static_cast<std::size_t>(directBytes);
+            return BytesResult::success(static_cast<std::size_t>(directBytes));
+        }
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            if (errno == EBADF || errno == ENOTSOCK) {
+                return BytesResult::failure(receiveClosed());
+            }
+            return BytesResult::failure(receiveFailure(std::error_code(errno, std::generic_category())));
         }
     }
 
     if (timeout.count() == 0) {
-        return 0;
+        return BytesResult::failure(receiveTimeout());
     }
 
     struct io_uring_sqe* sqe = io_uring_get_sqe(&m_impl->ring);
     if (!sqe) {
-        return 0;
+        return BytesResult::failure(
+            receiveFailure(std::make_error_code(std::errc::resource_unavailable_try_again)));
     }
 
     constexpr std::uint64_t kRecvUserData = 1;
@@ -99,7 +116,7 @@ std::size_t IoUringSocketPoller::receive(
 
     int ret = io_uring_submit(&m_impl->ring);
     if (ret < 0) {
-        return 0;
+        return BytesResult::failure(receiveFailure(std::error_code(-ret, std::generic_category())));
     }
 
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -110,7 +127,7 @@ std::size_t IoUringSocketPoller::receive(
     struct io_uring_cqe* cqe = nullptr;
     ret = io_uring_wait_cqe_timeout(&m_impl->ring, &cqe, &ts);
 
-    std::size_t bytesRead = 0;
+    BytesResult receiveResult = BytesResult::failure(receiveTimeout());
 
     if (ret < 0) {
         // Timeout or interruption: cancel the in-flight recvmsg SQE and reap all CQEs
@@ -132,11 +149,16 @@ std::size_t IoUringSocketPoller::receive(
             }
             const auto tag = io_uring_cqe_get_data64(drainCqe);
             if (tag == kRecvUserData) {
-                if (drainCqe->res > 0) {
-                    bytesRead = static_cast<std::size_t>(drainCqe->res);
+                if (drainCqe->res >= 0) {
+                    receiveResult = BytesResult::success(static_cast<std::size_t>(drainCqe->res));
                     if (outSourceAddress) {
                         outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
                     }
+                } else if (-drainCqe->res != ECANCELED && -drainCqe->res != EAGAIN) {
+                    receiveResult = BytesResult::failure(
+                        (-drainCqe->res == EBADF || -drainCqe->res == ENOTSOCK)
+                            ? receiveClosed()
+                            : receiveFailure(std::error_code(-drainCqe->res, std::generic_category())));
                 }
                 recvReaped = true;
             } else if (tag == kCancelUserData) {
@@ -144,100 +166,37 @@ std::size_t IoUringSocketPoller::receive(
             }
             io_uring_cqe_seen(&m_impl->ring, drainCqe);
         }
-        return bytesRead;
+        if (!receiveResult.hasValue() && !isReceiveTimeout(receiveResult.error()) && ret != -ETIME) {
+            return BytesResult::failure(receiveFailure(std::error_code(-ret, std::generic_category())));
+        }
+        return receiveResult;
     }
 
     if (cqe) {
-        if (cqe->res > 0) {
-            bytesRead = static_cast<std::size_t>(cqe->res);
+        if (cqe->res >= 0) {
+            receiveResult = BytesResult::success(static_cast<std::size_t>(cqe->res));
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
             }
+        } else if (-cqe->res != ECANCELED && -cqe->res != EAGAIN) {
+            receiveResult = BytesResult::failure(
+                (-cqe->res == EBADF || -cqe->res == ENOTSOCK)
+                    ? receiveClosed()
+                    : receiveFailure(std::error_code(-cqe->res, std::generic_category())));
         }
         io_uring_cqe_seen(&m_impl->ring, cqe);
     }
 
-    return bytesRead;
+    return receiveResult;
 }
 
-std::size_t IoUringSocketPoller::receiveBatch(
+BatchResult IoUringSocketPoller::receiveBatch(
     int socketFd,
     std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
-    if (socketFd < 0 || slots.empty()) {
-        return 0;
-    }
-
-    std::size_t count = 0;
-    const std::size_t maxBatch = slots.size();
-
-    // Speculative non-blocking drain
-    while (count < maxBatch) {
-        sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
-
-        if (bytes > 0) {
-            if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
-            }
-            slots[count++].size = static_cast<std::size_t>(bytes);
-        } else {
-            break;
-        }
-    }
-
-    if (count > 0 || timeout.count() == 0) {
-        return count;
-    }
-
-    // Wait for the first packet via io_uring
-    SocketAddress* firstAddr = (!outSourceAddresses.empty()) ? &outSourceAddresses[0] : nullptr;
-    std::size_t firstBytes = receive(socketFd, slots[0].buffer, timeout, firstAddr);
-    if (firstBytes == 0) {
-        slots[0].size = 0;
-        return 0;
-    }
-    slots[0].size = firstBytes;
-    count = 1;
-
-    // Drain remaining ready datagrams
-    while (count < maxBatch) {
-        sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
-
-        if (bytes > 0) {
-            if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
-            }
-            slots[count++].size = static_cast<std::size_t>(bytes);
-        } else {
-            break;
-        }
-    }
-
-    return count;
+    return ISocketPoller::receiveBatch(socketFd, slots, timeout, outSourceAddresses);
 }
 
 } // namespace Backend

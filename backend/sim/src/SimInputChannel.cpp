@@ -2,12 +2,14 @@
 #include "log/Log.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <fmt/core.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 
@@ -131,19 +133,24 @@ void SimInputChannel::emitEvent(std::span<const std::byte> payload, std::string_
     ::sendto(m_eventFd, json.data(), json.size(), 0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
-std::size_t SimInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult SimInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     std::array<::Backend::BufferSlot, 1> slots { ::Backend::BufferSlot { destination, 0 } };
-    std::size_t drained = receiveBatch(slots, timeout);
-    return drained > 0 ? slots[0].size : 0;
+    BatchResult result = receiveBatch(slots, timeout);
+    if (!result.hasValue()) {
+        return BytesResult::failure(result.error().cause);
+    }
+    return BytesResult::success(slots[0].size);
 }
 
-std::size_t SimInputChannel::receiveBatch(
+BatchResult SimInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty() || m_serverFd < 0) {
-        return 0;
+        return slots.empty()
+            ? BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) })
+            : BatchResult::failure({ 0, ::Backend::receiveClosed() });
     }
 
     std::size_t count = 0;
@@ -158,11 +165,18 @@ std::size_t SimInputChannel::receiveBatch(
             nullptr,
             nullptr);
 
-        if (n > 0) {
+        if (n >= 0) {
             slots[count].size = static_cast<std::size_t>(n);
             emitEvent(slots[count].filledSpan(), "channel_received");
             count++;
             continue;
+        }
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            if (errno == EBADF || errno == ENOTSOCK) {
+                return BatchResult::failure({ count, ::Backend::receiveClosed() });
+            }
+            return BatchResult::failure({ count, ::Backend::receiveFailure(std::error_code(errno, std::generic_category())) });
         }
 
         if (count > 0 || timeout.count() <= 0) {
@@ -177,7 +191,9 @@ std::size_t SimInputChannel::receiveBatch(
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    return count;
+    return count > 0
+        ? BatchResult::success(count)
+        : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
 }
 
 } // namespace Proxy::Backend::Sim

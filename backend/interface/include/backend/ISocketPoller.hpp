@@ -3,8 +3,6 @@
 #include "backend/BufferSlot.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/SocketAddress.hpp"
-#include <chrono>
-#include <cstddef>
 #include <memory>
 #include <span>
 
@@ -26,9 +24,9 @@ public:
      * @param destination Target buffer.
      * @param timeout Maximum wait duration.
      * @param outSourceAddress Optional pointer to record sender's address.
-     * @return std::size_t Number of bytes received (0 on timeout or error).
+     * @return Typed result distinguishing received data, timeout, closure, and errors.
      */
-    virtual std::size_t receive(
+    virtual BytesResult receive(
         int socketFd,
         std::span<std::byte> destination,
         Timeout timeout,
@@ -43,9 +41,9 @@ public:
      * @param slots Target buffer slots to populate. Each slot contains a target buffer and tracks received byte count.
      * @param timeout Maximum wait duration for the first packet.
      * @param outSourceAddresses Optional span to record sender addresses.
-     * @return std::size_t Number of packets received.
+     * @return Typed result containing the packet count or the receive status.
      */
-    virtual std::size_t receiveBatch(
+    virtual BatchResult receiveBatch(
         int socketFd,
         std::span<BufferSlot> slots,
         Timeout timeout,

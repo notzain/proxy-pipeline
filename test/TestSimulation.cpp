@@ -116,13 +116,14 @@ TEST_CASE("Core::Simulation::MockInputChannel and MockOutputChannel pipeline sim
 
     // At time 1'000'000ULL, only Message 1 is ready
     auto msg1 = inChannel.receive(std::chrono::milliseconds(0));
-    REQUIRE(msg1.has_value());
-    std::string text1(reinterpret_cast<const char*>(msg1->data()), msg1->size());
+    REQUIRE(msg1.hasValue());
+    std::string text1(reinterpret_cast<const char*>(msg1.value().data()), msg1.value().size());
     REQUIRE(text1 == "Message 1");
 
     // Message 2 should not be returned yet because clock has not advanced
     auto msg2Pending = inChannel.receive(std::chrono::milliseconds(0));
-    REQUIRE(!msg2Pending.has_value());
+    REQUIRE_FALSE(msg2Pending.hasValue());
+    CHECK(Backend::isReceiveTimeout(msg2Pending.error()));
 
     // Advance clock by 50 microseconds
     clock.advance(std::chrono::microseconds(50));
@@ -130,8 +131,8 @@ TEST_CASE("Core::Simulation::MockInputChannel and MockOutputChannel pipeline sim
 
     // Now Message 2 is visible
     auto msg2 = inChannel.receive(std::chrono::milliseconds(0));
-    REQUIRE(msg2.has_value());
-    std::string text2(reinterpret_cast<const char*>(msg2->data()), msg2->size());
+    REQUIRE(msg2.hasValue());
+    std::string text2(reinterpret_cast<const char*>(msg2.value().data()), msg2.value().size());
     REQUIRE(text2 == "Message 2");
 
     // Test MockOutputChannel recording

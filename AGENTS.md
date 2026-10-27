@@ -76,6 +76,7 @@ Guidelines and conventions for AI agents and developers working on this project.
 - **Tooling Constraint**: Never invoke `clangd` directly in background scripts or commands. Rely on compiler diagnostics and `clang-format` for code layout.
 - **Coding Conventions & Control Flow**:
   - Prefer early returns, `break`, and `continue` statements over deep nesting to keep indentation flat, readable, and focused on the happy path.
+  - After touching a header or source file, remove any unused includes from that file.
 - **Git Workflow & Branching Policy**:
   - **Feature Branches**: All new features and non-trivial modifications must be developed inside dedicated feature branches (e.g. `feat/<feature-name>`) and merged back into the base branch (`master` / `main`) only when completed and verified. Never work directly on `master` for feature development.
   - **Explicit Approval Required**: Never create a git commit without the user's explicit prior approval. Always ask for permission and get confirmation before executing `git commit`.
@@ -232,4 +233,3 @@ public:
   - **Overview**: High-level problem statement and objectives.
   - **Design Decisions**: Rationale and architectural agreements reached.
   - **Tasks / Checklist**: Interactive markdown checklist (`- [ ]` / `- [x]`) broken down into concrete actionable implementation steps that can be tracked and ticked off as work progresses.
-

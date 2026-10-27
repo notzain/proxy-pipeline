@@ -1,6 +1,5 @@
 #include "backend/IInputChannel.hpp"
-#include <algorithm>
-#include <cstring>
+#include <system_error>
 #include <utility>
 
 namespace Backend {
@@ -15,44 +14,47 @@ std::string_view IInputChannel::name() const noexcept
     return m_name;
 }
 
-std::optional<IInputChannel::Buffer> IInputChannel::receive(Timeout timeout)
+ReceiveMessageResult IInputChannel::receive(Timeout timeout)
 {
     Buffer buffer(65535);
-    std::size_t bytes = receiveInto(std::span<std::byte>(buffer.data(), buffer.size()), timeout);
-    if (bytes == 0) {
-        return std::nullopt;
+    BytesResult result = receiveInto(std::span<std::byte>(buffer.data(), buffer.size()), timeout);
+    if (!result.hasValue()) {
+        return ReceiveMessageResult::failure(result.error());
     }
-    buffer.resize(bytes);
-    return buffer;
+    buffer.resize(result.value());
+    return ReceiveMessageResult::success(std::move(buffer));
 }
 
-std::size_t IInputChannel::receiveBatch(
+BatchResult IInputChannel::receiveBatch(
     std::span<BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {
-        return 0;
+        return BatchResult::failure({ 0, receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
     }
 
-    std::size_t firstBytes = receiveInto(slots[0].buffer, timeout);
-    if (firstBytes == 0) {
+    BytesResult firstResult = receiveInto(slots[0].buffer, timeout);
+    if (!firstResult.hasValue()) {
         slots[0].size = 0;
-        return 0;
+        return BatchResult::failure({ 0, firstResult.error() });
     }
-    slots[0].size = firstBytes;
+    slots[0].size = firstResult.value();
     std::size_t count = 1;
 
     constexpr Timeout zeroTimeout { 0 };
     while (count < slots.size()) {
-        std::size_t nextBytes = receiveInto(slots[count].buffer, zeroTimeout);
-        if (nextBytes == 0) {
+        BytesResult nextResult = receiveInto(slots[count].buffer, zeroTimeout);
+        if (!nextResult.hasValue()) {
             slots[count].size = 0;
+            if (!isReceiveTimeout(nextResult.error())) {
+                return BatchResult::failure({ count, nextResult.error() });
+            }
             break;
         }
-        slots[count].size = nextBytes;
+        slots[count].size = nextResult.value();
         ++count;
     }
-    return count;
+    return BatchResult::success(count);
 }
 
 } // namespace Backend

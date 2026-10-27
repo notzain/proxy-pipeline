@@ -43,23 +43,33 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
-                std::size_t batchCount = channel.receiveBatch(
+                auto result = channel.receiveBatch(
                     std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
-                if (batchCount == 0) {
-                    return;
+                const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
+                if (batchCount > 0) {
+                    for (std::size_t i = 0; i < batchCount; ++i) {
+                        rawMessages[i] = std::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
+                    }
+                    Detail::dispatchReceivedBatch(
+                        handler,
+                        channel.name(),
+                        std::span<const std::span<const std::byte>>(rawMessages.data(), batchCount),
+                        invalidEnvelopeCount,
+                        nullptr);
                 }
 
-                for (std::size_t i = 0; i < batchCount; ++i) {
-                    rawMessages[i] = std::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
+                if (result.hasValue() || ::Backend::isReceiveTimeout(result.error().cause)) {
+                    return;
                 }
-                Detail::dispatchReceivedBatch(
-                    handler,
-                    channel.name(),
-                    std::span<const std::span<const std::byte>>(rawMessages.data(), batchCount),
-                    invalidEnvelopeCount,
-                    nullptr);
+                if (::Backend::isReceiveClosed(result.error().cause)) {
+                    Proxy::Log::error("[SequentialStrategy] Input channel '{}' is closed", channel.name());
+                } else {
+                    Proxy::Log::error("[SequentialStrategy] Input channel '{}' failed: {}",
+                        channel.name(), ::Backend::receiveErrorMessage(result.error().cause));
+                }
+                m_running.store(false, std::memory_order_release);
             });
 
             if (channelCount == 0) {

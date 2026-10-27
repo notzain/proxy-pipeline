@@ -12,12 +12,12 @@ public:
     PosixSocketPoller() = default;
     ~PosixSocketPoller() override = default;
 
-    std::size_t receive(
+    BytesResult receive(
         int socketFd,
         std::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    std::size_t receiveBatch(
+    BatchResult receiveBatch(
         int socketFd,
         std::span<BufferSlot> slots,
         Timeout timeout,

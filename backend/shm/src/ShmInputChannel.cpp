@@ -1,6 +1,8 @@
 #include "backend/shm/ShmInputChannel.hpp"
 #include "backend/shm/ShmRingBuffer.hpp"
+#include <algorithm>
 #include <chrono>
+#include <system_error>
 #include <thread>
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -45,10 +47,10 @@ void ShmInputChannel::reset()
     }
 }
 
-std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (!isValid()) {
-        return 0;
+        return BytesResult::failure(::Backend::receiveClosed());
     }
 
     // Fast-path: non-blocking immediate dequeue
@@ -57,8 +59,11 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
     if (wasFull && bytes > 0) {
         ShmSignaler::notifyOne(m_ring->notFullSync());
     }
-    if (bytes > 0 || timeout.count() == 0) {
-        return bytes;
+    if (bytes > 0) {
+        return BytesResult::success(bytes);
+    }
+    if (timeout.count() == 0) {
+        return BytesResult::failure(::Backend::receiveTimeout());
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -72,7 +77,7 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return bytes;
+            return BytesResult::success(bytes);
         }
     }
 
@@ -90,19 +95,21 @@ std::size_t ShmInputChannel::receiveInto(std::span<std::byte> destination, Timeo
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return bytes;
+            return BytesResult::success(bytes);
         }
     }
 
-    return 0;
+    return BytesResult::failure(::Backend::receiveTimeout());
 }
 
-std::size_t ShmInputChannel::receiveBatch(
+BatchResult ShmInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!isValid() || slots.empty()) {
-        return 0;
+        return slots.empty()
+            ? BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) })
+            : BatchResult::failure({ 0, ::Backend::receiveClosed() });
     }
 
     // Fast-path: speculative burst dequeue
@@ -111,8 +118,11 @@ std::size_t ShmInputChannel::receiveBatch(
     if (wasFull && count > 0) {
         ShmSignaler::notifyOne(m_ring->notFullSync());
     }
-    if (count > 0 || timeout.count() == 0) {
-        return count;
+    if (count > 0) {
+        return BatchResult::success(count);
+    }
+    if (timeout.count() == 0) {
+        return BatchResult::failure({ 0, ::Backend::receiveTimeout() });
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -126,7 +136,7 @@ std::size_t ShmInputChannel::receiveBatch(
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return count;
+            return BatchResult::success(count);
         }
     }
 
@@ -144,11 +154,11 @@ std::size_t ShmInputChannel::receiveBatch(
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return count;
+            return BatchResult::success(count);
         }
     }
 
-    return 0;
+    return BatchResult::failure({ 0, ::Backend::receiveTimeout() });
 }
 
 } // namespace Proxy::Backend::Shm

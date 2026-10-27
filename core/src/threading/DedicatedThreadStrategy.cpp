@@ -44,10 +44,11 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
             std::size_t invalidEnvelopeCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-                std::size_t batchCount = channelPtr->receiveBatch(
+                auto result = channelPtr->receiveBatch(
                     std::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
+                const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
                     for (std::size_t i = 0; i < batchCount; ++i) {
                         rawMessages[i] = std::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
@@ -59,6 +60,16 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                         invalidEnvelopeCount,
                         m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }
+                if (result.hasValue() || ::Backend::isReceiveTimeout(result.error().cause)) {
+                    continue;
+                }
+                if (::Backend::isReceiveClosed(result.error().cause)) {
+                    Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' is closed", channelName);
+                    break;
+                }
+                Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' failed: {}",
+                    channelName, ::Backend::receiveErrorMessage(result.error().cause));
+                break;
             }
 
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread exited for channel '{}'", channelName);

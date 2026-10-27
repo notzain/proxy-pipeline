@@ -4,10 +4,12 @@
 #include "backend/ISocketPoller.hpp"
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace Proxy::Backend::Socket {
+
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
 
 /**
  * @brief Input channel for receiving UDP datagrams on a bound host and port.
@@ -17,8 +19,8 @@ public:
     SocketInputChannel(std::string name, std::string host, std::uint16_t port);
     ~SocketInputChannel() override;
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
-    std::size_t receiveBatch(
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

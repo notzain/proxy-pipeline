@@ -1,38 +1,42 @@
 #include "backend/ISocketPoller.hpp"
+#include <system_error>
 
 namespace Backend {
 
-std::size_t ISocketPoller::receiveBatch(
+BatchResult ISocketPoller::receiveBatch(
     int socketFd,
     std::span<BufferSlot> slots,
     Timeout timeout,
     std::span<SocketAddress> outSourceAddresses)
 {
     if (slots.empty()) {
-        return 0;
+        return BatchResult::failure({ 0, receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
     }
 
     SocketAddress* firstAddr = (!outSourceAddresses.empty()) ? &outSourceAddresses[0] : nullptr;
-    std::size_t firstBytes = receive(socketFd, slots[0].buffer, timeout, firstAddr);
-    if (firstBytes == 0) {
+    BytesResult firstResult = receive(socketFd, slots[0].buffer, timeout, firstAddr);
+    if (!firstResult.hasValue()) {
         slots[0].size = 0;
-        return 0;
+        return BatchResult::failure({ 0, firstResult.error() });
     }
-    slots[0].size = firstBytes;
+    slots[0].size = firstResult.value();
     std::size_t count = 1;
 
     constexpr Timeout zeroTimeout { 0 };
     while (count < slots.size()) {
         SocketAddress* nextAddr = (count < outSourceAddresses.size()) ? &outSourceAddresses[count] : nullptr;
-        std::size_t nextBytes = receive(socketFd, slots[count].buffer, zeroTimeout, nextAddr);
-        if (nextBytes == 0) {
+        BytesResult nextResult = receive(socketFd, slots[count].buffer, zeroTimeout, nextAddr);
+        if (!nextResult.hasValue()) {
             slots[count].size = 0;
+            if (!isReceiveTimeout(nextResult.error())) {
+                return BatchResult::failure({ count, nextResult.error() });
+            }
             break;
         }
-        slots[count].size = nextBytes;
+        slots[count].size = nextResult.value();
         ++count;
     }
-    return count;
+    return BatchResult::success(count);
 }
 
 } // namespace Backend

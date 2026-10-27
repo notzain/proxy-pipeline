@@ -11,6 +11,7 @@
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <system_error>
 #include <unistd.h>
 #include <utility>
 
@@ -151,47 +152,53 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-std::size_t UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult UdpInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return 0;
+            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
         }
     }
 
-    if (destination.size() <= EnvelopePreambleSize || !m_poller) {
-        return 0;
+    if (destination.size() <= EnvelopePreambleSize) {
+        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+    }
+    if (!m_poller) {
+        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
     }
 
     Backend::SocketAddress clientAddr;
-    std::size_t payloadBytes = m_poller->receive(
+    BytesResult receiveResult = m_poller->receive(
         m_socketFd.get(),
         destination.subspan(EnvelopePreambleSize),
         timeout,
         &clientAddr);
 
-    if (payloadBytes == 0) {
-        return 0;
+    if (!receiveResult.hasValue()) {
+        return BytesResult::failure(receiveResult.error());
     }
 
-    writeEnvelopePreamble(destination, payloadBytes, clientAddr, m_boundAddr);
-    return EnvelopePreambleSize + payloadBytes;
+    writeEnvelopePreamble(destination, receiveResult.value(), clientAddr, m_boundAddr);
+    return BytesResult::success(EnvelopePreambleSize + receiveResult.value());
 }
 
-std::size_t UdpInputChannel::receiveBatch(
+Backend::BatchResult UdpInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return 0;
+            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
         }
     }
 
-    if (slots.empty() || !m_poller) {
-        return 0;
+    if (slots.empty()) {
+        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+    }
+    if (!m_poller) {
+        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
     }
 
     constexpr std::size_t MaxBatch = 32;
@@ -202,23 +209,24 @@ std::size_t UdpInputChannel::receiveBatch(
 
     for (std::size_t i = 0; i < batchSize; ++i) {
         if (slots[i].buffer.size() <= EnvelopePreambleSize) {
-            return 0;
+            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
         }
         payloadSlots[i] = ::Backend::BufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
     }
 
-    std::size_t count = m_poller->receiveBatch(
+    BatchResult result = m_poller->receiveBatch(
         m_socketFd.get(),
         std::span<::Backend::BufferSlot>(payloadSlots.data(), batchSize),
         timeout,
         std::span<Backend::SocketAddress>(clientAddrs.data(), batchSize));
 
-    for (std::size_t i = 0; i < count; ++i) {
+    const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
+    for (std::size_t i = 0; i < receivedCount; ++i) {
         writeEnvelopePreamble(slots[i].buffer, payloadSlots[i].size, clientAddrs[i], m_boundAddr);
         slots[i].size = EnvelopePreambleSize + payloadSlots[i].size;
     }
 
-    return count;
+    return result;
 }
 
 int UdpInputChannel::getNativeSocket() const noexcept

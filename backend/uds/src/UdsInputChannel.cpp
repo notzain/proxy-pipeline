@@ -2,12 +2,12 @@
 #include "backend/ISocketPoller.hpp"
 #include "log/Log.hpp"
 
-#include <array>
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <system_error>
 #include <unistd.h>
 #include <utility>
 
@@ -80,12 +80,12 @@ void UdsInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdsInputChannel] Listening on UDS path {}", m_socketPath);
 }
 
-std::size_t UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
+BytesResult UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return 0;
+            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
         }
     }
 
@@ -93,17 +93,17 @@ std::size_t UdsInputChannel::receiveInto(std::span<std::byte> destination, Timeo
         return m_poller->receive(m_socketFd, destination, timeout);
     }
 
-    return 0;
+    return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
 }
 
-std::size_t UdsInputChannel::receiveBatch(
+BatchResult UdsInputChannel::receiveBatch(
     std::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return 0;
+            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
         }
     }
 
@@ -111,7 +111,7 @@ std::size_t UdsInputChannel::receiveBatch(
         return m_poller->receiveBatch(m_socketFd, slots, timeout);
     }
 
-    return 0;
+    return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
 }
 
 } // namespace Proxy::Backend::Uds

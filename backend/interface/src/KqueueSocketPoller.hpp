@@ -14,12 +14,12 @@ public:
     KqueueSocketPoller();
     ~KqueueSocketPoller() override;
 
-    std::size_t receive(
+    BytesResult receive(
         int socketFd,
         std::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    std::size_t receiveBatch(
+    BatchResult receiveBatch(
         int socketFd,
         std::span<BufferSlot> slots,
         Timeout timeout,
@@ -29,7 +29,7 @@ private:
     int m_kqueueFd { -1 };
     int m_registeredSocketFd { -1 };
 
-    void registerSocket(int socketFd);
+    bool registerSocket(int socketFd);
 };
 
 } // namespace Backend

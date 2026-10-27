@@ -150,9 +150,10 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         REQUIRE(out.send(sendSpan));
 
         std::array<std::byte, 256> rxBuf;
-        std::size_t bytes = in.receiveInto(rxBuf, std::chrono::milliseconds(50));
-        REQUIRE(bytes == payload.size());
-        std::string recovered(reinterpret_cast<char*>(rxBuf.data()), bytes);
+        auto receiveResult = in.receiveInto(rxBuf, std::chrono::milliseconds(50));
+        REQUIRE(receiveResult.hasValue());
+        REQUIRE(receiveResult.value() == payload.size());
+        std::string recovered(reinterpret_cast<char*>(rxBuf.data()), receiveResult.value());
         REQUIRE(recovered == payload);
 
         // Vectorized batch send and receiveBatch
@@ -171,9 +172,10 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
             slots[i] = ::Backend::BufferSlot { batchDestBufs[i], 0 };
         }
 
-        std::size_t rxCount = in.receiveBatch(slots, std::chrono::milliseconds(50));
-        REQUIRE(rxCount == batchMsgs.size());
-        for (std::size_t i = 0; i < rxCount; ++i) {
+        auto batchResult = in.receiveBatch(slots, std::chrono::milliseconds(50));
+        REQUIRE(batchResult.hasValue());
+        REQUIRE(batchResult.value() == batchMsgs.size());
+        for (std::size_t i = 0; i < batchResult.value(); ++i) {
             std::string rec(reinterpret_cast<char*>(batchDestBufs[i].data()), slots[i].size);
             REQUIRE(rec == batchMsgs[i]);
         }

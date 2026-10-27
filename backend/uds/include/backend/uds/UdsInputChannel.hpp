@@ -3,10 +3,12 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/ISocketPoller.hpp"
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace Proxy::Backend::Uds {
+
+using ::Backend::BatchResult;
+using ::Backend::BytesResult;
 
 /**
  * @brief Input channel for receiving datagrams on a bound Unix Domain Socket.
@@ -16,8 +18,8 @@ public:
     UdsInputChannel(std::string name, std::string socketPath);
     ~UdsInputChannel() override;
 
-    std::size_t receiveInto(std::span<std::byte> destination, Timeout timeout) override;
-    std::size_t receiveBatch(
+    BytesResult receiveInto(std::span<std::byte> destination, Timeout timeout) override;
+    BatchResult receiveBatch(
         std::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
