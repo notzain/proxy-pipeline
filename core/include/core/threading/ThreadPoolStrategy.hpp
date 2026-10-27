@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -18,7 +19,8 @@ namespace Core::Threading {
  *
  * Dedicated polling threads read messages from input channels and enqueue message tasks
  * onto a shared work queue. A fixed-size pool of worker threads consumes and processes
- * the messages concurrently via IMessageReceiver.
+ * the messages concurrently. Handler access serialization can be enabled when callbacks
+ * and step() must not overlap.
  */
 class ThreadPoolStrategy : public IExecutionStrategy {
 public:
@@ -27,8 +29,12 @@ public:
      *
      * @param numWorkerThreads Number of pool workers. Defaults to hardware concurrency.
      * @param strictFifo When true (default), messages from the same client flow/channel are pinned to the same worker to guarantee strict FIFO ordering. When false, batches are distributed round-robin across worker queues for unconstrained parallel throughput.
+     * @param serializeHandlerAccess When true, processBatch() and step() calls are serialized.
      */
-    explicit ThreadPoolStrategy(std::size_t numWorkerThreads = 0, bool strictFifo = true);
+    explicit ThreadPoolStrategy(
+        std::size_t numWorkerThreads = 0,
+        bool strictFifo = true,
+        bool serializeHandlerAccess = false);
     ~ThreadPoolStrategy() override;
 
     /**
@@ -49,6 +55,8 @@ public:
 private:
     std::size_t m_numWorkerThreads;
     bool m_strictFifo { true };
+    const bool m_serializeHandlerAccess;
+    std::mutex m_handlerMutex;
     std::atomic<bool> m_running { false };
 
     using QueueType = Queue::SpscQueue<MessageTask, 1024>;

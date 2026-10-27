@@ -15,10 +15,10 @@ This roadmap captures architectural findings from a representative review of the
   - **Action**: Added protected base-interface move operations and invoked them in both UDP gateway channel move constructors and assignments. Tests verify `name()` survives move construction and assignment.
   - **Evidence**: `core/src/net/UdpInputChannel.cpp`; `core/src/net/UdpOutputChannel.cpp`.
 
-- [ ] **Define handler and channel thread-safety requirements**
+- [x] **Define handler and channel thread-safety requirements**
   - **Issue**: Dedicated-thread and thread-pool execution can invoke handler callbacks concurrently, and `step()` runs on a separate thread. The handler and channel interfaces do not clearly state the required thread-safety guarantees.
-  - **Action**: Document whether handlers and channels must be thread-safe under each execution model. Add tests for the promised behavior. If serialized callbacks are needed, provide an explicit execution option rather than relying on implicit assumptions.
-  - **Evidence**: `core/include/core/handler/IHandler.hpp`; `core/src/threading/DedicatedThreadStrategy.cpp`; `core/src/threading/ThreadPoolStrategy.cpp`.
+  - **Action**: Documented each execution model's concurrency guarantees. Parallel handlers must protect shared state by default; `execution.serialize_handler_access = true` serializes `processBatch()` and `step()` without adding mutex acquisition to the default parallel path. Each registered input channel is polled by one strategy thread; shared output channels must support concurrent sends or be synchronized by callers.
+  - **Evidence**: `docs/handler-channel-thread-safety.md`; `core/include/core/handler/IHandler.hpp`; `backend/interface/include/backend/IInputChannel.hpp`; `backend/interface/include/backend/IOutputChannel.hpp`; `core/src/threading/DedicatedThreadStrategy.cpp`; `core/src/threading/ThreadPoolStrategy.cpp`.
 
 - [ ] **Make signal-triggered shutdown safe**
   - **Issue**: The POSIX signal callback calls `HandlerRunner::stop()` directly. The resulting C++ strategy and thread-stop operations are not guaranteed to be async-signal-safe, and the global active-runner pointer effectively imposes a single-runner signal ownership model.

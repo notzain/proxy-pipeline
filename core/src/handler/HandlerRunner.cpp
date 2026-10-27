@@ -68,9 +68,10 @@ void HandlerRunner::setExecutionModel(const ExecutionModel& model)
         if constexpr (std::is_same_v<T, SequentialModel>) {
             m_strategy = std::make_unique<Threading::SequentialStrategy>();
         } else if constexpr (std::is_same_v<T, ThreadPoolModel>) {
-            m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(m.poolSize, m.strictFifo);
+            m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(
+                m.poolSize, m.strictFifo, m.serializeHandlerAccess);
         } else {
-            m_strategy = std::make_unique<Threading::DedicatedThreadStrategy>();
+            m_strategy = std::make_unique<Threading::DedicatedThreadStrategy>(m.serializeHandlerAccess);
         }
     },
         model);

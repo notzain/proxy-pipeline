@@ -16,6 +16,8 @@ namespace Backend {
  *
  * An input channel provides message ingestion from an underlying transport endpoint
  * (e.g. watching a specific directory or listening on a specific UDP port).
+ * Built-in execution strategies poll each registered input channel from a single thread.
+ * Callers that invoke receive methods from other threads must provide their own synchronization.
  */
 class IInputChannel {
 public:

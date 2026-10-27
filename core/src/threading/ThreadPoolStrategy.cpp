@@ -51,7 +51,8 @@ namespace {
     void drainWorkerTasks(
         Handler::IHandler& handler,
         std::span<const MessageTask> tasks,
-        std::size_t& invalidEnvelopeCount)
+        std::size_t& invalidEnvelopeCount,
+        std::mutex* handlerMutex)
     {
         static auto& s_msgCounter = Telemetry::MetricsRegistry::instance().counter("messages_ingress_total", "Total messages received at ingress");
         static auto& s_bytesCounter = Telemetry::MetricsRegistry::instance().counter("bytes_ingress_total", "Total bytes received at ingress");
@@ -102,7 +103,12 @@ namespace {
 
                 s_msgCounter.increment(validViews);
                 s_bytesCounter.increment(batchBytes);
-                handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                if (handlerMutex) {
+                    std::lock_guard lock(*handlerMutex);
+                    handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                } else {
+                    handler.processBatch(chName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+                }
             }
             batchStart = batchEnd;
         }
@@ -284,9 +290,13 @@ namespace {
 
 } // namespace
 
-ThreadPoolStrategy::ThreadPoolStrategy(std::size_t numWorkerThreads, bool strictFifo)
+ThreadPoolStrategy::ThreadPoolStrategy(
+    std::size_t numWorkerThreads,
+    bool strictFifo,
+    bool serializeHandlerAccess)
     : m_numWorkerThreads(numWorkerThreads)
     , m_strictFifo(strictFifo)
+    , m_serializeHandlerAccess(serializeHandlerAccess)
 {
     if (m_numWorkerThreads == 0) {
         m_numWorkerThreads = std::max(2UL, static_cast<std::size_t>(std::thread::hardware_concurrency()));
@@ -345,7 +355,11 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
                         batchTasks[loaded++] = std::move(task);
                     });
                     if (count > 0) {
-                        drainWorkerTasks(handler, std::span<const MessageTask>(batchTasks.data(), count), invalidEnvelopeCount);
+                        drainWorkerTasks(
+                            handler,
+                            std::span<const MessageTask>(batchTasks.data(), count),
+                            invalidEnvelopeCount,
+                            m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                     } else {
                         std::this_thread::yield();
                     }
@@ -354,7 +368,16 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
             }
 
             while (!stoken.stop_requested()) {
-                myQueue.drainContiguous(16, [&handler, &invalidEnvelopeCount](std::span<const MessageTask> tasks) { drainWorkerTasks(handler, tasks, invalidEnvelopeCount); }, stoken);
+                myQueue.drainContiguous(
+                    16,
+                    [this, &handler, &invalidEnvelopeCount](std::span<const MessageTask> tasks) {
+                        drainWorkerTasks(
+                            handler,
+                            tasks,
+                            invalidEnvelopeCount,
+                            m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
+                    },
+                    stoken);
             }
         });
     }
@@ -379,7 +402,12 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     // 3. Launch background periodic step() thread
     m_stepThread = std::jthread([this, &handler](std::stop_token stoken) {
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-            handler.step();
+            if (m_serializeHandlerAccess) {
+                std::lock_guard lock(m_handlerMutex);
+                handler.step();
+            } else {
+                handler.step();
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     });

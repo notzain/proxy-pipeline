@@ -22,7 +22,8 @@ namespace {
         std::span<const std::array<std::byte, 65535>> buffers,
         std::span<const std::size_t> sizes,
         std::size_t count,
-        std::size_t& invalidEnvelopeCount)
+        std::size_t& invalidEnvelopeCount,
+        std::mutex* handlerMutex)
     {
         static auto& s_msgCounter = Telemetry::MetricsRegistry::instance().counter("messages_ingress_total", "Total messages received at ingress");
         static auto& s_bytesCounter = Telemetry::MetricsRegistry::instance().counter("bytes_ingress_total", "Total bytes received at ingress");
@@ -66,13 +67,21 @@ namespace {
 
             s_msgCounter.increment(validViews);
             s_bytesCounter.increment(batchBytes);
-            handler.processBatch(channelName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+            if (handlerMutex) {
+                std::lock_guard lock(*handlerMutex);
+                handler.processBatch(channelName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+            } else {
+                handler.processBatch(channelName, std::span<const Core::Message::MessageView>(views.data(), validViews));
+            }
         }
     }
 
 } // namespace
 
-DedicatedThreadStrategy::DedicatedThreadStrategy() = default;
+DedicatedThreadStrategy::DedicatedThreadStrategy(bool serializeHandlerAccess)
+    : m_serializeHandlerAccess(serializeHandlerAccess)
+{
+}
 
 DedicatedThreadStrategy::~DedicatedThreadStrategy()
 {
@@ -119,7 +128,8 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                         std::span<const std::array<std::byte, 65535>>(batchBuffers->data(), batchCount),
                         std::span<const std::size_t>(batchSizes.data(), batchCount),
                         batchCount,
-                        invalidEnvelopeCount);
+                        invalidEnvelopeCount,
+                        m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }
             }
 
@@ -129,7 +139,12 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
 
     m_workerThreads.emplace_back([this, &handler](std::stop_token stoken) {
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-            handler.step();
+            if (m_serializeHandlerAccess) {
+                std::lock_guard lock(m_handlerMutex);
+                handler.step();
+            } else {
+                handler.step();
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     });

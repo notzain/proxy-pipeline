@@ -12,6 +12,8 @@ namespace Backend {
  *
  * An output channel provides message transmission to an underlying transport endpoint
  * (e.g. writing files to a specific directory or sending UDP datagrams to a specific destination).
+ * Parallel execution can call send() or sendBatch() concurrently on a shared output channel.
+ * Implementations must support concurrent calls or callers must synchronize access.
  */
 class IOutputChannel {
 public:

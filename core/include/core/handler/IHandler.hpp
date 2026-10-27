@@ -35,8 +35,13 @@ namespace Core::Handler {
  * IHandler provides:
  * - Configuration & Channel Binding: configure() creates and binds backend channels.
  * - Ingress: Registers IInputChannel instances, dispatches received messages via onMessageReceived().
- * - Egress: Thread-safe registration of IOutputChannel instances returning non-owning pointers for direct sending.
+ * - Egress: Registration of IOutputChannel instances returning non-owning pointers for direct sending.
  * - Background work: Periodic step() hook.
+ *
+ * Sequential execution invokes handler callbacks and step() serially. Dedicated-thread and
+ * thread-pool execution may invoke callbacks concurrently and run step() concurrently with
+ * callbacks. Handlers using those modes must synchronize shared state unless
+ * execution.serialize_handler_access is enabled.
  */
 class IHandler {
 public:
@@ -163,6 +168,8 @@ public:
      * @brief Periodic step callback executed on each iteration of the event loop.
      *
      * Handlers that need to perform background work, periodic sending, etc., can override this.
+     * In parallel execution models this may overlap message callbacks unless handler access
+     * serialization is enabled.
      */
     virtual void step();
 

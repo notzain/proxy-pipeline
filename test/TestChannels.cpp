@@ -1,14 +1,21 @@
+#include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
+#include <array>
+#include <atomic>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <condition_variable>
 #include <fmt/core.h>
+#include <latch>
 #include <memory>
 #include <mutex>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -59,6 +66,30 @@ private:
     std::mutex m_mutex;
     std::vector<std::string> m_messages;
     std::size_t m_index { 0 };
+};
+
+class StepWaitingInputChannel : public MockInputChannel {
+public:
+    StepWaitingInputChannel(std::string name, std::vector<std::string> messages, std::latch& stepStarted)
+        : MockInputChannel(std::move(name), std::move(messages))
+        , m_stepStarted(stepStarted)
+    {
+    }
+
+    std::size_t receiveBatch(
+        std::span<::Backend::BufferSlot> slots,
+        Timeout timeout) override
+    {
+        if (!m_waited) {
+            m_waited = true;
+            m_stepStarted.wait();
+        }
+        return MockInputChannel::receiveBatch(slots, timeout);
+    }
+
+private:
+    std::latch& m_stepStarted;
+    bool m_waited { false };
 };
 
 class MockOutputChannel : public Backend::IOutputChannel {
@@ -119,6 +150,131 @@ private:
     Core::Handler::HandlerRunner* m_runner { nullptr };
     Core::Memory::ObserverPtr<::Backend::IOutputChannel> m_outChannel;
     int m_count { 0 };
+};
+
+class SerializedAccessHandler : public Core::Handler::IHandler {
+public:
+    explicit SerializedAccessHandler(::Backend::IBackend& backend)
+        : Core::Handler::IHandler(backend)
+    {
+    }
+
+    void setRunner(Core::Handler::HandlerRunner* runner)
+    {
+        m_runner = runner;
+    }
+
+    void setStepStarted(std::latch* stepStarted)
+    {
+        m_stepStarted = stepStarted;
+    }
+
+    Core::Message::MessageResult onMessageReceived(
+        std::string_view,
+        const Core::Message::MessageView&) override
+    {
+        recordWork(std::chrono::milliseconds(2));
+        if (m_received.fetch_add(1, std::memory_order_relaxed) + 1 == 2 && m_runner) {
+            m_runner->stop();
+        }
+        return Core::Message::Consumed { };
+    }
+
+    void step() override
+    {
+        if (m_stepStarted && m_firstStep.exchange(false, std::memory_order_relaxed)) {
+            recordWork(std::chrono::milliseconds(20), m_stepStarted);
+            return;
+        }
+        recordWork(std::chrono::milliseconds(1));
+    }
+
+    [[nodiscard]] std::size_t maxConcurrentCalls() const noexcept
+    {
+        return m_maxConcurrentCalls.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::size_t receivedCount() const noexcept
+    {
+        return m_received.load(std::memory_order_relaxed);
+    }
+
+private:
+    void recordWork(std::chrono::milliseconds duration, std::latch* stepStarted = nullptr)
+    {
+        const auto active = m_activeCalls.fetch_add(1, std::memory_order_acq_rel) + 1;
+        auto maxActive = m_maxConcurrentCalls.load(std::memory_order_relaxed);
+        while (active > maxActive
+            && !m_maxConcurrentCalls.compare_exchange_weak(
+                maxActive, active, std::memory_order_relaxed)) {
+        }
+        if (stepStarted) {
+            stepStarted->count_down();
+        }
+        std::this_thread::sleep_for(duration);
+        m_activeCalls.fetch_sub(1, std::memory_order_release);
+    }
+
+    Core::Handler::HandlerRunner* m_runner { nullptr };
+    std::latch* m_stepStarted { nullptr };
+    std::atomic<bool> m_firstStep { true };
+    std::atomic<std::size_t> m_activeCalls { 0 };
+    std::atomic<std::size_t> m_maxConcurrentCalls { 0 };
+    std::atomic<std::size_t> m_received { 0 };
+};
+
+class ParallelCallbacksHandler : public Core::Handler::IHandler {
+public:
+    explicit ParallelCallbacksHandler(::Backend::IBackend& backend)
+        : Core::Handler::IHandler(backend)
+    {
+    }
+
+    void setRunner(Core::Handler::HandlerRunner* runner)
+    {
+        m_runner = runner;
+    }
+
+    Core::Message::MessageResult onMessageReceived(
+        std::string_view,
+        const Core::Message::MessageView&) override
+    {
+        const auto active = m_activeCalls.fetch_add(1, std::memory_order_acq_rel) + 1;
+        auto maxActive = m_maxConcurrentCalls.load(std::memory_order_relaxed);
+        while (active > maxActive
+            && !m_maxConcurrentCalls.compare_exchange_weak(
+                maxActive, active, std::memory_order_relaxed)) {
+        }
+
+        {
+            std::unique_lock lock(m_mutex);
+            ++m_arrived;
+            m_condition.notify_all();
+            m_condition.wait_for(lock, std::chrono::seconds(1), [this] {
+                return m_arrived == 2;
+            });
+        }
+
+        m_activeCalls.fetch_sub(1, std::memory_order_release);
+        if (m_received.fetch_add(1, std::memory_order_relaxed) + 1 == 2 && m_runner) {
+            m_runner->stop();
+        }
+        return Core::Message::Consumed { };
+    }
+
+    [[nodiscard]] std::size_t maxConcurrentCalls() const noexcept
+    {
+        return m_maxConcurrentCalls.load(std::memory_order_relaxed);
+    }
+
+private:
+    Core::Handler::HandlerRunner* m_runner { nullptr };
+    std::atomic<std::size_t> m_activeCalls { 0 };
+    std::atomic<std::size_t> m_maxConcurrentCalls { 0 };
+    std::atomic<std::size_t> m_received { 0 };
+    std::mutex m_mutex;
+    std::condition_variable m_condition;
+    std::size_t m_arrived { 0 };
 };
 
 } // namespace
@@ -246,6 +402,73 @@ TEST_CASE("IHandler ThreadPool execution model", "[channel][core]")
 
     REQUIRE(handler.receivedMessages.size() == 2);
     REQUIRE(rawOutChan->sentMessages.size() == 2);
+}
+
+TEST_CASE("Parallel execution models can serialize handler callbacks and step", "[channel][core]")
+{
+    const std::array<Core::Handler::ExecutionModel, 2> models {
+        Core::Handler::DedicatedThreadModel { .serializeHandlerAccess = true },
+        Core::Handler::ThreadPoolModel {
+            .poolSize = 2,
+            .strictFifo = true,
+            .serializeHandlerAccess = true }
+    };
+
+    for (const auto& model : models) {
+        Core::Simulation::SimulationBackend backend;
+        SerializedAccessHandler handler(backend);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(model);
+        handler.setRunner(&runner);
+        std::latch stepStarted(1);
+        handler.setStepStarted(&stepStarted);
+        handler.registerInputChannel(std::make_unique<StepWaitingInputChannel>(
+            "first", std::vector<std::string> { "one" }, stepStarted));
+        handler.registerInputChannel(std::make_unique<StepWaitingInputChannel>(
+            "second", std::vector<std::string> { "two" }, stepStarted));
+
+        runner.startAsync();
+        runner.wait();
+
+        CHECK(handler.receivedCount() == 2);
+        CHECK(handler.maxConcurrentCalls() == 1);
+    }
+}
+
+TEST_CASE("Parallel execution models remain concurrent by default", "[channel][core]")
+{
+    const std::array<Core::Handler::ExecutionModel, 2> models {
+        Core::Handler::DedicatedThreadModel { },
+        Core::Handler::ThreadPoolModel { .poolSize = 2 }
+    };
+
+    for (const auto& model : models) {
+        Core::Simulation::SimulationBackend backend;
+        ParallelCallbacksHandler handler(backend);
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionModel(model);
+        handler.setRunner(&runner);
+        handler.registerInputChannel(std::make_unique<MockInputChannel>(
+            "first", std::vector<std::string> { "one" }));
+        handler.registerInputChannel(std::make_unique<MockInputChannel>(
+            "second", std::vector<std::string> { "two" }));
+
+        runner.startAsync();
+        runner.wait();
+
+        CHECK(handler.maxConcurrentCalls() == 2);
+    }
+}
+
+TEST_CASE("Execution model configuration enables serialized handler access", "[channel][core]")
+{
+    Core::Config::Configuration config;
+    config.set("execution.model", "thread_pool");
+    config.set("execution.serialize_handler_access", "true");
+
+    const auto model = Core::Handler::parseExecutionModel(config);
+    REQUIRE(std::holds_alternative<Core::Handler::ThreadPoolModel>(model));
+    CHECK(std::get<Core::Handler::ThreadPoolModel>(model).serializeHandlerAccess);
 }
 
 TEST_CASE("Direct output channel multi-dispatch", "[channel][core]")

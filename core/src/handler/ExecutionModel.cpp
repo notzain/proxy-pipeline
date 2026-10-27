@@ -13,10 +13,16 @@ ExecutionModel parseExecutionModel(const ::Backend::IConfig& config)
     if (modelName == "thread_pool" || modelName == "pool") {
         std::size_t poolSize = static_cast<std::size_t>(config.getOr<int>("execution.pool_size", config.getOr<int>("execution.threads", 0)));
         bool strictFifo = config.getOr<bool>("execution.strict_fifo", true);
-        return ThreadPoolModel { .poolSize = poolSize, .strictFifo = strictFifo };
+        bool serializeHandlerAccess = config.getOr<bool>("execution.serialize_handler_access", false);
+        return ThreadPoolModel {
+            .poolSize = poolSize,
+            .strictFifo = strictFifo,
+            .serializeHandlerAccess = serializeHandlerAccess
+        };
     }
 
-    return DedicatedThreadModel { };
+    bool serializeHandlerAccess = config.getOr<bool>("execution.serialize_handler_access", false);
+    return DedicatedThreadModel { .serializeHandlerAccess = serializeHandlerAccess };
 }
 
 } // namespace Core::Handler
