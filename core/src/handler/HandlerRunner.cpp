@@ -151,7 +151,7 @@ void HandlerRunner::start()
     wait();
 }
 
-void HandlerRunner::startAsync()
+void HandlerRunner::startAsync(bool registerSignals)
 {
     ensureStrategy();
     m_stopRequested.store(false, std::memory_order_release);
@@ -167,15 +167,17 @@ void HandlerRunner::startAsync()
         }
     }
 
-    registerSignalHandler();
+    if (registerSignals) {
+        registerSignalHandler();
+    }
     try {
         Proxy::Log::info("[HandlerRunner] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...",
             m_handler.inputChannelCount());
         m_strategy->start(m_handler);
-        m_shutdownThread = std::jthread([this](std::stop_token stopToken) {
+        m_shutdownThread = std::jthread([this, registerSignals](std::stop_token stopToken) {
             while (!stopToken.stop_requested()) {
                 if (m_stopRequested.load(std::memory_order_acquire)
-                    || g_shutdownRequested.load(std::memory_order_relaxed)) {
+                    || (registerSignals && g_shutdownRequested.load(std::memory_order_relaxed))) {
                     m_strategy->stop();
                     break;
                 }
@@ -189,7 +191,9 @@ void HandlerRunner::startAsync()
     } catch (...) {
         m_strategy->stop();
         m_strategy->wait();
-        unregisterSignalHandler();
+        if (registerSignals) {
+            unregisterSignalHandler();
+        }
         throw;
     }
 

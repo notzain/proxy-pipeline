@@ -1,6 +1,7 @@
 #include "BenchmarkRunner.hpp"
 #include "XmlVerificationHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/inproc/InProcBackend.hpp"
 #include "backend/shm/ShmBackend.hpp"
 #include "backend/socket/SocketBackend.hpp"
 #include "backend/uds/UdsBackend.hpp"
@@ -48,15 +49,15 @@ void createTempXsd(const std::filesystem::path& path)
 void printResultTable(const std::vector<Proxy::Benchmark::BenchmarkResult>& results)
 {
     fmt::print("\n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "========================================================================================\n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "                XML VERIFICATION CHAIN END-TO-END BENCHMARK RESULTS                     \n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "========================================================================================\n");
-    fmt::print("{:<18} | {:<10} | {:<16} | {:<17} | {:<12} | {:<10}\n",
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "====================================================================================================\n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "                        XML VERIFICATION CHAIN END-TO-END BENCHMARK RESULTS                         \n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "====================================================================================================\n");
+    fmt::print("{:<22} | {:<10} | {:<16} | {:<17} | {:<12} | {:<10}\n",
         "Strategy", "Messages", "Throughput (m/s)", "Throughput (MB/s)", "Avg Lat (µs)", "p99 (µs)");
-    fmt::print("------------------------------------------------------------------------------------------\n");
+    fmt::print("----------------------------------------------------------------------------------------------------\n");
 
     for (const auto& res : results) {
-        fmt::print(fmt::emphasis::bold, "{:<18}", res.backendName);
+        fmt::print(fmt::emphasis::bold, "{:<22}", res.backendName);
         fmt::print(" | {:<10} | {:<16.2f} | {:<17.2f} | {:<12.2f} | {:<10.2f}\n",
             res.verifiedMessages,
             res.messagesPerSecond,
@@ -64,7 +65,7 @@ void printResultTable(const std::vector<Proxy::Benchmark::BenchmarkResult>& resu
             res.averageLatencyUs,
             res.p99LatencyUs);
     }
-    fmt::print("========================================================================================\n\n");
+    fmt::print("====================================================================================================\n\n");
 }
 
 } // namespace
@@ -212,8 +213,8 @@ int main(int argc, char* argv[])
         auto senderOut = backend->createOutputChannel("udp_raw", config);
 
         // Start verifier and receiver concurrently
-        verifierRunner.startAsync();
-        receiverRunner.startAsync();
+        verifierRunner.startAsync(true);
+        receiverRunner.startAsync(false);
 
         // Brief delay to allow UDP socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -319,8 +320,8 @@ int main(int argc, char* argv[])
         auto senderOut = backend->createOutputChannel("uds_raw", config);
 
         // Start verifier and receiver concurrently
-        verifierRunner.startAsync();
-        receiverRunner.startAsync();
+        verifierRunner.startAsync(true);
+        receiverRunner.startAsync(false);
 
         // Brief delay to allow UDS socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -428,8 +429,8 @@ int main(int argc, char* argv[])
 
         auto senderOut = backend->createOutputChannel("shm_raw", config);
 
-        verifierRunner.startAsync();
-        receiverRunner.startAsync();
+        verifierRunner.startAsync(true);
+        receiverRunner.startAsync(false);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
@@ -505,6 +506,105 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     };
 
+    // Helper lambda to run In-Process Pipeline benchmark
+    auto runInProcBenchmark = [&](const Core::Handler::ExecutionModel& model, std::string_view strategyName) {
+        std::size_t inprocMessages = numMessages;
+        fmt::print(fg(fmt::color::green), "[Benchmark] Running In-Process Pipeline chain ({}) with {} messages...\n", strategyName, inprocMessages);
+
+        Core::Config::Configuration config;
+        Proxy::Backend::InProc::InProcBackend backend;
+        backend.configure(config);
+
+        auto receiverIn = backend.createInputChannel("inproc_verified", config);
+        Proxy::Benchmark::BenchmarkReceiver receiver(backend, inprocMessages);
+        Core::Handler::HandlerRunner receiverRunner(receiver);
+        receiverRunner.setExecutionModel(model);
+        receiver.registerInputChannel(std::move(receiverIn));
+
+        auto verifierIn = backend.createInputChannel("inproc_raw", config);
+        auto verifierOut = backend.createOutputChannel("inproc_verified", config);
+        Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath);
+        Core::Handler::HandlerRunner verifierRunner(verifier);
+        verifierRunner.setExecutionModel(model);
+        verifier.registerInputChannel(std::move(verifierIn));
+        verifier.setOutputChannel(verifier.registerOutputChannel(std::move(verifierOut)));
+
+        auto senderOut = backend.createOutputChannel("inproc_raw", config);
+
+        verifierRunner.startAsync(true);
+        receiverRunner.startAsync(false);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        std::span<const std::byte> rawXmlSpan(reinterpret_cast<const std::byte*>(validXmlMsg.data()), validXmlMsg.size());
+        auto envelope = Core::Message::MessageEnvelope::packRaw(rawXmlSpan);
+        std::span<const std::byte> msgSpan(envelope.data(), envelope.size());
+
+        auto startAll = std::chrono::steady_clock::now();
+        std::vector<std::chrono::steady_clock::time_point> sendTimestamps;
+        sendTimestamps.reserve(inprocMessages);
+
+        std::size_t sentCount = 0;
+        for (std::size_t i = 0; i < inprocMessages; ++i) {
+            sendTimestamps.push_back(std::chrono::steady_clock::now());
+            if (senderOut->send(msgSpan)) {
+                ++sentCount;
+            }
+            if ((i & 0x1FF) == 0) {
+                std::this_thread::yield();
+            }
+        }
+        if (sentCount < inprocMessages) {
+            fmt::print(fg(fmt::color::yellow), "[Benchmark] Warning: only {}/{} messages sent successfully\n", sentCount, inprocMessages);
+        }
+
+        receiver.waitForCompletion(
+            std::chrono::seconds(std::max<long>(5, static_cast<long>(numMessages / 5000 + 5))),
+            std::chrono::milliseconds(500));
+        receiverRunner.stop();
+        receiverRunner.wait();
+
+        auto endAll = std::chrono::steady_clock::now();
+        verifierRunner.stop();
+        verifierRunner.wait();
+
+        const auto& recvTimestamps = receiver.getReceiveTimestamps();
+        auto totalDuration = (!recvTimestamps.empty() && recvTimestamps.size() < numMessages)
+            ? (recvTimestamps.back() - startAll)
+            : (endAll - startAll);
+        if (totalDuration.count() <= 0) {
+            totalDuration = endAll - startAll;
+        }
+        double sec = std::chrono::duration<double>(totalDuration).count();
+
+        std::vector<double> latenciesUs;
+        std::size_t count = std::min(sendTimestamps.size(), recvTimestamps.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            latenciesUs.push_back(std::chrono::duration<double, std::micro>(recvTimestamps[i] - sendTimestamps[i]).count());
+        }
+        std::sort(latenciesUs.begin(), latenciesUs.end());
+
+        double totalLat = 0;
+        for (double l : latenciesUs) {
+            totalLat += l;
+        }
+
+        Proxy::Benchmark::BenchmarkResult res;
+        res.backendName = std::string(strategyName);
+        res.totalMessages = inprocMessages;
+        res.verifiedMessages = count;
+        res.totalDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(totalDuration);
+        res.messagesPerSecond = count / sec;
+        res.averageLatencyUs = latenciesUs.empty() ? 0 : totalLat / latenciesUs.size();
+        res.medianLatencyUs = latenciesUs.empty() ? 0 : latenciesUs[latenciesUs.size() / 2];
+        res.p95LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.95)];
+        res.p99LatencyUs = latenciesUs.empty() ? 0 : latenciesUs[static_cast<std::size_t>(latenciesUs.size() * 0.99)];
+        res.throughputMBps = (count * validXmlMsg.size()) / (sec * 1024.0 * 1024.0);
+
+        results.push_back(res);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    };
+
     auto runSelected = [&](std::string_view strategy) {
         if (strategy == "all" || strategy == "direct") {
             runDirectBenchmark();
@@ -544,6 +644,18 @@ int main(int argc, char* argv[])
         }
         if (strategy == "all" || strategy == "shm-threadpool8" || strategy == "shm") {
             runShmBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 8, .strictFifo = strictFifo }, "SHM (ThreadPool 8)");
+        }
+        if (strategy == "all" || strategy == "inproc" || strategy == "inproc-dedicated") {
+            runInProcBenchmark(Core::Handler::DedicatedThreadModel { }, "InProc (Dedicated)");
+        }
+        if (strategy == "all" || strategy == "inproc" || strategy == "inproc-sequential") {
+            runInProcBenchmark(Core::Handler::SequentialModel { }, "InProc (Sequential)");
+        }
+        if (strategy == "all" || strategy == "inproc" || strategy == "inproc-threadpool4") {
+            runInProcBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 4, .strictFifo = strictFifo }, "InProc (ThreadPool 4)");
+        }
+        if (strategy == "all" || strategy == "inproc" || strategy == "inproc-threadpool8") {
+            runInProcBenchmark(Core::Handler::ThreadPoolModel { .poolSize = 8, .strictFifo = strictFifo }, "InProc (ThreadPool 8)");
         }
     };
 
