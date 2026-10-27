@@ -3,6 +3,7 @@
 #include "backend/SocketAddress.hpp"
 #include "core/message/EnvelopeHeader.hpp"
 #include "core/message/UdpMetadata.hpp"
+#include "core/message/WireFormat.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -35,13 +36,13 @@ namespace {
         const Backend::SocketAddress& clientAddr,
         const Backend::SocketAddress& boundAddr)
     {
-        Message::EnvelopeHeader header { };
-        header.magic = Message::EnvelopeMagic;
-        header.version = Message::EnvelopeVersion;
-        header.protocol = Message::ProtocolId::Udp;
-        header.metadataLength = sizeof(Message::UdpMetadata);
-        header.payloadLength = static_cast<std::uint32_t>(payloadSize);
-        header.timestampNs = getCurrentTimeNs();
+        std::byte* dst = destination.data();
+        Message::Wire::writeUint16Be(dst, Message::EnvelopeMagic);
+        dst[2] = static_cast<std::byte>(Message::EnvelopeVersion);
+        dst[3] = static_cast<std::byte>(Message::ProtocolId::Udp);
+        Message::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(sizeof(Message::UdpMetadata)));
+        Message::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payloadSize));
+        Message::Wire::writeUint64Be(dst + 10, getCurrentTimeNs());
 
         Message::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();
@@ -59,8 +60,7 @@ namespace {
             meta.dstIp = boundAddr.ipv4Net();
         }
 
-        std::memcpy(destination.data(), &header, sizeof(Message::EnvelopeHeader));
-        std::memcpy(destination.data() + sizeof(Message::EnvelopeHeader), &meta, sizeof(Message::UdpMetadata));
+        std::memcpy(dst + sizeof(Message::EnvelopeHeader), &meta, sizeof(Message::UdpMetadata));
     }
 
 } // namespace

@@ -4,22 +4,22 @@
 #include "core/message/ProtocolId.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <optional>
 #include <span>
 
 namespace Core::Message {
 
 /**
- * @brief Zero-copy, non-owning view representing an in-flight enveloped message.
+ * @brief Zero-copy, non-owning view representing an in-flight message.
  *
- * Provides safe, branchless access to the envelope header, transport metadata,
- * and application payload slices without heap allocation or copying.
+ * Exposes the application payload as its primary field to users and handlers.
+ * Can be constructed from native Proxy envelope wire buffers or directly by
+ * custom backend protocols.
  */
 class MessageView {
 public:
     /**
-     * @brief Parses and validates an envelope from a raw memory buffer.
+     * @brief Parses and validates an envelope from a raw Proxy binary envelope buffer.
      *
      * @param buffer Non-owning view of raw bytes received from an IPC channel.
      * @return std::optional<MessageView> Valid view if the header and lengths match, or std::nullopt.
@@ -32,19 +32,35 @@ public:
     constexpr MessageView() noexcept = default;
 
     /**
-     * @brief Constructs a view from explicit pointers and sizes.
+     * @brief Constructs a view from a parsed native envelope header and slices.
      */
-    MessageView(std::span<const std::byte> rawBuffer, const EnvelopeHeader* header) noexcept;
+    MessageView(std::span<const std::byte> rawBuffer,
+        std::span<const std::byte> metadata,
+        std::span<const std::byte> payload,
+        ProtocolId protocol,
+        std::uint64_t timestampNs) noexcept;
 
     /**
-     * @brief Returns the entire raw wire buffer (including EnvelopeHeader, metadata, and payload).
+     * @brief Constructs a view from explicit payload, raw buffer, and optional metadata/attributes.
+     *
+     * Enables backends with proprietary protocols or alternate framing to construct
+     * valid views exposing their decoded payload to handlers.
      */
-    [[nodiscard]] std::span<const std::byte> rawBuffer() const noexcept;
+    explicit MessageView(std::span<const std::byte> payload,
+        std::span<const std::byte> rawBuffer = { },
+        std::uint64_t timestampNs = 0,
+        ProtocolId protocol = ProtocolId::Raw,
+        std::span<const std::byte> metadata = { }) noexcept;
 
     /**
      * @brief Returns a view of the application payload body.
      */
     [[nodiscard]] std::span<const std::byte> payload() const noexcept;
+
+    /**
+     * @brief Returns the entire raw wire buffer (including any transport framing/header).
+     */
+    [[nodiscard]] std::span<const std::byte> rawBuffer() const noexcept;
 
     /**
      * @brief Returns a view of the transport metadata section.
@@ -80,7 +96,8 @@ private:
     std::span<const std::byte> m_rawBuffer { };
     std::span<const std::byte> m_metadata { };
     std::span<const std::byte> m_payload { };
-    const EnvelopeHeader* m_header { nullptr };
+    std::uint64_t m_timestampNs { 0 };
+    ProtocolId m_protocol { ProtocolId::Raw };
 };
 
 } // namespace Core::Message
