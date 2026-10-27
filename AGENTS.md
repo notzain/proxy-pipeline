@@ -218,13 +218,13 @@ they must be included in source files(`.cpp`) only.
 ## 9. Containerization & OCI Distribution (Pattern 2)
 
 - **Decoupled OCI Packaging**:
-  - A single parameterized multi-stage [`Dockerfile`](file:///Users/zainahmad/Workspace/Proxy/Dockerfile) builds Linux binaries inside a `builder` stage and packages stripped binaries into lightweight distroless runtime images (`gcr.io/distroless/cc-debian12:nonroot`).
+  - A single parameterized multi-stage [`Dockerfile`](Dockerfile) builds Linux binaries inside a `builder` stage and packages stripped binaries into lightweight distroless runtime images (`gcr.io/distroless/cc-debian12:nonroot`).
   - **Zero Maintenance on Adding Handlers**: CMake outputs `${CMAKE_BINARY_DIR}/manifest.json` and `${CMAKE_BINARY_DIR}/child-pipeline.yml`. Neither the `Dockerfile`, CI pipelines, nor local scripts require manual updates when new handlers or backends are created.
 - **Local Testing**:
   - Run `./scripts/build-oci.sh` to compile and package all discovered handlers locally into OCI images (e.g. `proxy/print_handler_file:latest`).
   - Or package a single handler: `./scripts/build-oci.sh print_handler_socket`.
 - **CI/CD Automation (GitLab CI)**:
-  - Automated via [`.gitlab-ci.yml`](file:///Users/zainahmad/Workspace/Proxy/.gitlab-ci.yml) using dynamic child pipeline generation driven by `manifest.json` and `child-pipeline.yml`.
+  - Automated via [`.gitlab-ci.yml`](.gitlab-ci.yml) using dynamic child pipeline generation driven by `manifest.json` and `child-pipeline.yml`.
 
 ---
 
@@ -245,10 +245,18 @@ they must be included in source files(`.cpp`) only.
 
 ---
 
-## 11. Feature Documentation & Task Tracking (`docs/`)
+## 11. Documentation Architecture & Standards (`docs/`)
 
-- **Rule**: Whenever adding new features or making substantial changes to an existing feature, create/update a dedicated markdown file in the `docs/` directory named after the feature (e.g., `docs/<feature-name>.md`).
-- **Required Structure**:
-  - **Overview**: High-level problem statement and objectives.
-  - **Design Decisions**: Rationale and architectural agreements reached.
+The `docs/` tree is divided into two distinct subdirectories:
+- **`docs/architecture/`**: System-wide architectural specifications, high-level design principles, foundational layer definitions, and overarching technical decisions.
+- **`docs/features/`**: Specific feature specifications, task tracking, and implementation records for one-off features, refactors, or fixes.
+
+### Feature Documentation Rules (`docs/features/`)
+- Whenever adding new features or making substantial changes to an existing feature, create/update a dedicated markdown file in `docs/features/` named after the feature (e.g. `docs/features/<feature-name>.md`).
+- **Required Structure & Detail Level**:
+  - **Overview & Problem Statement**: Detailed high-level overview explaining **why** the feature is needed and the specific problems it solves.
+  - **Architecture & How It Works**: Detailed explanation of **how** the system/feature works under the hood, illustrated with clear diagrams (using **Mermaid** or PlantUML).
+  - **Design Decisions**: Rationale and architectural agreements reached, explaining trade-offs and alternatives considered.
+  - **Concrete Examples**: Actionable code and/or configuration examples demonstrating practical usage (e.g. C++ snippets, TOML/JSON configs, CLI invocations).
+  - **Path Conventions**: Never use absolute filesystem paths in markdown documentation. Always use clean relative paths from the repository root (e.g. `core/include/...`, `docs/...`).
   - **Tasks / Checklist**: Interactive markdown checklist (`- [ ]` / `- [x]`) broken down into concrete actionable implementation steps that can be tracked and ticked off as work progresses.

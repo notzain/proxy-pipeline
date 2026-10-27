@@ -344,7 +344,7 @@ This table tracks performance from initial unoptimized Baseline in Debug mode th
 ## 12. Optimization Phase 10: Thread-Local XML Parser Context Reuse & Compact DOM
 
 ### Rationale & Architectural Design
-- **Problem**: In previous phases, [`XmlSchemaValidator::validate(std::span<const std::byte>)`](file:///Users/zainahmad/Workspace/Proxy/handler/xml_verification_handler/src/XmlSchemaValidator.cpp) invoked `xmlReadMemory()`, which internally allocated and freed an entire `xmlParserCtxtPtr` along with internal hash tables and dict pools for **every single document validated**. In an end-to-end benchmark processing 20,000 messages, this incurred 20,000 heap context allocations and destructions on the critical path.
+- **Problem**: In previous phases, [`XmlSchemaValidator::validate(std::span<const std::byte>)`](handler/xml_verification_handler/src/XmlSchemaValidator.cpp) invoked `xmlReadMemory()`, which internally allocated and freed an entire `xmlParserCtxtPtr` along with internal hash tables and dict pools for **every single document validated**. In an end-to-end benchmark processing 20,000 messages, this incurred 20,000 heap context allocations and destructions on the critical path.
 - **Solution**:
   - Replaced per-document allocation with a **`thread_local xmlParserCtxtPtr`**.
   - On each message:
@@ -471,7 +471,7 @@ if (std::size_t bytes = namedChannel.channel->receiveInto(rxBuffer, channelTimeo
 ### Rationale & Architectural Design
 - **Problem**: In UDP and datagram UDS sockets, transmitting messages via `::sendto(fd, buf, len, 0, &destAddr, addrlen)` forces the OS kernel to perform routing table lookups, security policy checks, and socket binding state verification on **every single message sent**. Across a 20,000 to 100,000 packet benchmark run, this creates massive duplicate kernel routing overhead.
 - **Solution**:
-  - In [`SocketOutputChannel`](file:///Users/zainahmad/Workspace/Proxy/backend/socket/src/SocketOutputChannel.cpp) and [`UdsOutputChannel`](file:///Users/zainahmad/Workspace/Proxy/backend/uds/src/UdsOutputChannel.cpp), invoked `::connect(m_socketFd, ...)` once during target configuration.
+  - In [`SocketOutputChannel`](backend/socket/src/SocketOutputChannel.cpp) and [`UdsOutputChannel`](backend/uds/src/UdsOutputChannel.cpp), invoked `::connect(m_socketFd, ...)` once during target configuration.
   - Calling `connect()` on a datagram socket associates it with the peer in the kernel transport layer, locking in the routing entry without establishing a TCP handshake.
   - Replaced the critical egress path with `::send(m_socketFd, message.data(), message.size(), 0)`, with automatic graceful fallback to `::sendto()` if connection was deferred:
     ```cpp
