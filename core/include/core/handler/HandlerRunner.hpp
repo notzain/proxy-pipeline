@@ -72,8 +72,10 @@ public:
 
     /**
      * @brief Starts the message polling loop asynchronously without blocking the caller.
+     *
+     * @param registerSignals When true (default), registers POSIX signal handlers (SIGINT/SIGTERM) exclusively.
      */
-    void startAsync();
+    void startAsync(bool registerSignals = true);
 
     /**
      * @brief Blocks until the execution strategy finishes running.

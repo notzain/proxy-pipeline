@@ -25,6 +25,7 @@ target_link_libraries(proxy_benchmark PRIVATE
     backend-socket
     backend-uds
     backend-shm
+    backend-inproc
     proxylog::proxylog
     LibXml2::LibXml2
     fmt::fmt

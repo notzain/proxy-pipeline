@@ -25,6 +25,9 @@ add_subdirectory(backend/interface)
 # Core domain library (depends on backend-interface and proxylog)
 add_subdirectory(core)
 
+# In-process transport backend (in-tree)
+add_subdirectory(backend/inproc)
+
 # Discover backends through Conan dependency graph
 proxy_discover_backends()
 

@@ -177,6 +177,35 @@ public:
     }
 
     /**
+     * @brief Drains up to maxCount elements from the ring buffer into a consumer callback without blocking.
+     *
+     * Returns 0 immediately if the queue is empty. Completely lock-free and non-blocking.
+     */
+    template <typename ConsumerFn>
+    std::size_t tryDrainContiguous(std::size_t maxCount, ConsumerFn&& consumerFn)
+    {
+        std::size_t currentHead = m_head.load(std::memory_order_relaxed);
+        std::size_t currentTail = m_tail.load(std::memory_order_acquire);
+
+        if (currentHead == currentTail) {
+            return 0;
+        }
+
+        std::size_t available = currentTail - currentHead;
+        std::size_t drainCount = std::min(available, maxCount);
+
+        std::size_t ringIndex = currentHead & Mask;
+        drainCount = std::min(drainCount, Capacity - ringIndex);
+
+        consumerFn(std::span<const T>(&m_ring[ringIndex], drainCount));
+
+        m_head.store(currentHead + drainCount, std::memory_order_release);
+        m_headVersion.fetch_add(1, std::memory_order_release);
+        m_headVersion.notify_one();
+        return drainCount;
+    }
+
+    /**
      * @brief Signals waiting threads and cancels blocking atomic waits.
      */
     void stop() noexcept
