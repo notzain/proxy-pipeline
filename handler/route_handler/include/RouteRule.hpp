@@ -4,9 +4,9 @@
 #include "backend/MessageView.hpp"
 #include "backend/ProtocolId.hpp"
 #include "common/memory/ObserverPtr.hpp"
+#include "common/types/Variant.hpp"
 #include <cstdint>
 #include <string>
-#include <variant>
 
 namespace Proxy::Handler {
 
@@ -49,9 +49,9 @@ namespace MatchCriteria {
 
 /**
  * @brief Type-safe sum type (tagged union) representing pattern matching criteria,
- * modeling Rust-style pattern matching via std::variant and std::visit.
+ * modeling Rust-style pattern matching via Common::Types::Variant and match().
  */
-using RoutePattern = std::variant<
+using RoutePattern = Common::Types::Variant<
     MatchCriteria::Protocol,
     MatchCriteria::PayloadContains,
     MatchCriteria::PayloadPrefix,

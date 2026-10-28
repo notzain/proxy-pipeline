@@ -72,7 +72,7 @@ RouteRule::RouteRule(RoutePattern pattern, std::string targetChannelName)
 
 bool RouteRule::matches(const Backend::MessageView& message) const noexcept
 {
-    return std::visit(PatternMatcher { message }, m_pattern);
+    return m_pattern.match(PatternMatcher { message });
 }
 
 const std::string& RouteRule::targetChannelName() const noexcept

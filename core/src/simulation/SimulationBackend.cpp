@@ -47,21 +47,19 @@ void SimulationBackend::onMessageResult(
     entry.inputChannel = std::string(inputChannel);
     entry.recordedTimeNs = m_clock ? m_clock->nowNs() : 0;
 
-    std::visit(
-        [&](const auto& outcome) {
-            using T = std::decay_t<decltype(outcome)>;
-            if constexpr (std::is_same_v<T, ::Backend::Forwarded>) {
-                entry.resultType = "Forwarded";
-                entry.outputChannel = std::string(outcome.channel);
-            } else if constexpr (std::is_same_v<T, ::Backend::Consumed>) {
-                entry.resultType = "Consumed";
-            } else if constexpr (std::is_same_v<T, ::Backend::Dropped>) {
-                entry.resultType = "Dropped";
-                entry.dropReason = std::string(outcome.reason);
-                entry.errorCode = outcome.errorCode;
-            }
+    result.match(
+        [&](const ::Backend::Forwarded& outcome) {
+            entry.resultType = "Forwarded";
+            entry.outputChannel = std::string(outcome.channel);
         },
-        result);
+        [&](const ::Backend::Consumed&) {
+            entry.resultType = "Consumed";
+        },
+        [&](const ::Backend::Dropped& outcome) {
+            entry.resultType = "Dropped";
+            entry.dropReason = std::string(outcome.reason);
+            entry.errorCode = outcome.errorCode;
+        });
 
     std::lock_guard lock(m_resultsMutex);
     m_recordedResults.push_back(std::move(entry));

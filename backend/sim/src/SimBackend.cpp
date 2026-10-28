@@ -154,24 +154,22 @@ void SimBackend::onMessageResult(
     std::string_view reason;
     int errorCode = 0;
 
-    std::visit(
-        [&](const auto& outcome) {
-            using T = std::decay_t<decltype(outcome)>;
-            if constexpr (std::is_same_v<T, ::Backend::Forwarded>) {
-                resultType = "Forwarded";
-                status = "forwarded";
-                outputChannel = outcome.channel;
-            } else if constexpr (std::is_same_v<T, ::Backend::Consumed>) {
-                resultType = "Consumed";
-                status = "consumed";
-            } else if constexpr (std::is_same_v<T, ::Backend::Dropped>) {
-                resultType = "Dropped";
-                status = "dropped";
-                reason = outcome.reason;
-                errorCode = outcome.errorCode;
-            }
+    result.match(
+        [&](const ::Backend::Forwarded& outcome) {
+            resultType = "Forwarded";
+            status = "forwarded";
+            outputChannel = outcome.channel;
         },
-        result);
+        [&](const ::Backend::Consumed&) {
+            resultType = "Consumed";
+            status = "consumed";
+        },
+        [&](const ::Backend::Dropped& outcome) {
+            resultType = "Dropped";
+            status = "dropped";
+            reason = outcome.reason;
+            errorCode = outcome.errorCode;
+        });
 
     auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch())

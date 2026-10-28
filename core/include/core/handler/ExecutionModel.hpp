@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/types/Variant.hpp"
 #include <cstddef>
-#include <variant>
 
 namespace Backend {
 class IConfig;
@@ -43,7 +43,7 @@ struct ThreadPoolModel {
 /**
  * @brief Discriminated union of supported execution models and their parameters.
  */
-using ExecutionModel = std::variant<SimpleModel, SequentialModel, DedicatedThreadModel, ThreadPoolModel>;
+using ExecutionModel = Common::Types::Variant<SimpleModel, SequentialModel, DedicatedThreadModel, ThreadPoolModel>;
 
 /**
  * @brief Parses an ExecutionModel directly from a configuration object.

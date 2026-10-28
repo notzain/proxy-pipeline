@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/types/Variant.hpp"
 #include <utility>
-#include <variant>
 
 namespace Backend {
 
@@ -33,37 +33,37 @@ public:
 
     [[nodiscard]] bool hasValue() const noexcept
     {
-        return std::holds_alternative<Value>(m_storage);
+        return m_storage.template is<Value>();
     }
 
     [[nodiscard]] T& value() &
     {
-        return std::get<Value>(m_storage).value;
+        return m_storage.template get<Value>()->get().value;
     }
 
     [[nodiscard]] const T& value() const&
     {
-        return std::get<Value>(m_storage).value;
+        return m_storage.template get<Value>()->get().value;
     }
 
     [[nodiscard]] T&& value() &&
     {
-        return std::move(std::get<Value>(m_storage).value);
+        return std::move(std::move(m_storage).template get<Value>()->value);
     }
 
     [[nodiscard]] E& error() &
     {
-        return std::get<Error>(m_storage).error;
+        return m_storage.template get<Error>()->get().error;
     }
 
     [[nodiscard]] const E& error() const&
     {
-        return std::get<Error>(m_storage).error;
+        return m_storage.template get<Error>()->get().error;
     }
 
     [[nodiscard]] E&& error() &&
     {
-        return std::move(std::get<Error>(m_storage).error);
+        return std::move(std::move(m_storage).template get<Error>()->error);
     }
 
 private:
@@ -77,7 +77,7 @@ private:
     {
     }
 
-    std::variant<Value, Error> m_storage;
+    Common::Types::Variant<Value, Error> m_storage;
 };
 
 } // namespace Backend

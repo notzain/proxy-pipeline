@@ -71,20 +71,20 @@ void HandlerRunner::configureTelemetry(const Config::Configuration& config)
 
 void HandlerRunner::setExecutionModel(const ExecutionModel& model)
 {
-    std::visit([this](const auto& m) {
-        using T = std::decay_t<decltype(m)>;
-        if constexpr (std::is_same_v<T, SimpleModel>) {
+    model.match(
+        [this](const SimpleModel&) {
             m_strategy = std::make_unique<Threading::SimpleExecutionStrategy>();
-        } else if constexpr (std::is_same_v<T, SequentialModel>) {
+        },
+        [this](const SequentialModel&) {
             m_strategy = std::make_unique<Threading::SequentialStrategy>();
-        } else if constexpr (std::is_same_v<T, ThreadPoolModel>) {
+        },
+        [this](const ThreadPoolModel& m) {
             m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(
                 m.poolSize, m.strictFifo, m.serializeHandlerAccess);
-        } else {
+        },
+        [this](const DedicatedThreadModel& m) {
             m_strategy = std::make_unique<Threading::DedicatedThreadStrategy>(m.serializeHandlerAccess);
-        }
-    },
-        model);
+        });
 }
 
 void HandlerRunner::setExecutionStrategy(std::unique_ptr<Threading::IExecutionStrategy> strategy)

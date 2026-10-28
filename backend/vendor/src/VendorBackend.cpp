@@ -66,7 +66,7 @@ void VendorBackend::onMessageResult(
         return;
     }
 
-    if (std::holds_alternative<::Backend::Dropped>(result)) {
+    if (result.is<::Backend::Dropped>()) {
         Proxy::Log::debug("[VendorBackend] Dropping message ID {} on channel '{}'", msgId, channelName);
         scopedMsg->drop();
     } else {

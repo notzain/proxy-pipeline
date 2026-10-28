@@ -1,11 +1,11 @@
 #pragma once
 
+#include "common/types/Variant.hpp"
 #include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 namespace Core::Serialization::Ir {
@@ -22,7 +22,7 @@ using AttributeMapType = std::map<std::string, std::string>;
  */
 class Value {
 public:
-    using VariantType = std::variant<
+    using VariantType = Common::Types::Variant<
         NullType,
         bool,
         std::int64_t,
@@ -113,15 +113,15 @@ public:
     {
     }
 
-    [[nodiscard]] bool isNull() const noexcept { return std::holds_alternative<NullType>(m_data); }
-    [[nodiscard]] bool isBool() const noexcept { return std::holds_alternative<bool>(m_data); }
-    [[nodiscard]] bool isInt() const noexcept { return std::holds_alternative<std::int64_t>(m_data); }
-    [[nodiscard]] bool isUInt() const noexcept { return std::holds_alternative<std::uint64_t>(m_data); }
-    [[nodiscard]] bool isDouble() const noexcept { return std::holds_alternative<double>(m_data); }
+    [[nodiscard]] bool isNull() const noexcept { return m_data.is<NullType>(); }
+    [[nodiscard]] bool isBool() const noexcept { return m_data.is<bool>(); }
+    [[nodiscard]] bool isInt() const noexcept { return m_data.is<std::int64_t>(); }
+    [[nodiscard]] bool isUInt() const noexcept { return m_data.is<std::uint64_t>(); }
+    [[nodiscard]] bool isDouble() const noexcept { return m_data.is<double>(); }
     [[nodiscard]] bool isNumber() const noexcept { return isInt() || isUInt() || isDouble(); }
-    [[nodiscard]] bool isString() const noexcept { return std::holds_alternative<std::string>(m_data) || std::holds_alternative<std::string_view>(m_data); }
-    [[nodiscard]] bool isArray() const noexcept { return std::holds_alternative<ArrayType>(m_data); }
-    [[nodiscard]] bool isObject() const noexcept { return std::holds_alternative<ObjectType>(m_data); }
+    [[nodiscard]] bool isString() const noexcept { return m_data.is<std::string>() || m_data.is<std::string_view>(); }
+    [[nodiscard]] bool isArray() const noexcept { return m_data.is<ArrayType>(); }
+    [[nodiscard]] bool isObject() const noexcept { return m_data.is<ObjectType>(); }
 
     [[nodiscard]] const VariantType& raw() const noexcept { return m_data; }
     [[nodiscard]] VariantType& raw() noexcept { return m_data; }

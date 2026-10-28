@@ -1,7 +1,7 @@
 #pragma once
 
+#include "common/types/Variant.hpp"
 #include <string_view>
-#include <variant>
 
 namespace Backend {
 
@@ -29,6 +29,6 @@ struct Dropped {
 /**
  * @brief Strongly-typed result of message processing in handlers.
  */
-using MessageResult = std::variant<Forwarded, Consumed, Dropped>;
+using MessageResult = Common::Types::Variant<Forwarded, Consumed, Dropped>;
 
 } // namespace Backend
