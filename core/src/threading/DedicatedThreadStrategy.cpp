@@ -1,6 +1,8 @@
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "MessageDispatcher.hpp"
 #include "common/compat/Span.hpp"
+#include "common/memory/ByteView.hpp"
+#include "common/memory/MutableByteView.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
@@ -38,7 +40,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
             auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
             std::array<::Backend::BufferSlot, 16> batchSlots;
             for (std::size_t i = 0; i < 16; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+                batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
             }
             std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
             std::size_t invalidEnvelopeCount = 0;
@@ -51,7 +53,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        rawMessages[i] = Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), batchSlots[i].size);
+                        rawMessages[i] = Common::Memory::ByteView((*batchBuffers)[i].data(), batchSlots[i].size);
                     }
                     Detail::dispatchReceivedBatch(
                         handler,

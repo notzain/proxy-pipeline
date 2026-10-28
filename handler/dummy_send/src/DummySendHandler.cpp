@@ -1,5 +1,6 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "log/Log.hpp"
@@ -31,11 +32,7 @@ void DummySendHandler::step()
     if (now - m_lastSendTime >= m_delay) {
         m_lastSendTime = now;
 
-        Common::Compat::span<const std::byte> byteSpan(
-            reinterpret_cast<const std::byte*>(m_messageText.data()),
-            m_messageText.size());
-
-        auto envelope = Core::Message::MessageEnvelope::packRaw(byteSpan);
+        auto envelope = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(m_messageText));
 
         if (m_outputChannel) {
             Proxy::Log::info("[DummySend] Sending message to channel '{}': {}", m_outputChannel->name(), m_messageText);

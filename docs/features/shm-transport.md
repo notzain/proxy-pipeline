@@ -81,10 +81,7 @@ auto outChannel = backend().createOutputChannel("verified_shm", config);
 
 // Producer sends a message:
 std::string msg = "ORD#10042,BUY,100,AAPL";
-Common::Compat::span<const std::byte> payload(
-    reinterpret_cast<const std::byte*>(msg.data()), msg.size());
-
-outChannel->send(payload);
+outChannel->send(Common::Memory::ByteView(msg));
 
 // Consumer receives a message into a local buffer:
 std::array<std::byte, 2048> buffer;

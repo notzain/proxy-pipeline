@@ -133,9 +133,7 @@ TEST_CASE("OrderValidationHandler rejects malformed orders", "[handler][order]")
 
     // Construct an invalid raw payload (negative price)
     std::string invalidXml = "<Order><orderId>1</orderId><price>-5.0</price><quantity>10</quantity><symbol>AAPL</symbol></Order>";
-    auto envelope = Core::Message::MessageEnvelope::packRaw(
-        Common::Compat::span<const std::byte>(
-            reinterpret_cast<const std::byte*>(invalidXml.data()), invalidXml.size()));
+    auto envelope = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(invalidXml));
 
     auto view = Core::Message::MessageView::from(envelope);
     REQUIRE(view.has_value());

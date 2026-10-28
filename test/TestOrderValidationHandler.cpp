@@ -1,4 +1,6 @@
 #include "OrderValidationHandler.hpp"
+#include "common/memory/ByteView.hpp"
+#include "common/memory/MutableByteView.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
@@ -50,7 +52,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
     SECTION("Valid order passes deserialization and validation")
     {
         std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
-        Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());
+        Common::Memory::ByteView span(validXml);
 
         auto parsed = handler.parseOrder(span);
         REQUIRE(parsed.has_value());
@@ -61,7 +63,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(handler.validateOrder(*parsed));
 
         std::string validXmlDirect = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
-        Common::Compat::span<std::byte> spanDirect(reinterpret_cast<std::byte*>(validXmlDirect.data()), validXmlDirect.size());
+        Common::Memory::MutableByteView spanDirect(validXmlDirect);
         auto parsedDirect = handler.parseOrderDirect(spanDirect);
         REQUIRE(parsedDirect.has_value());
         CHECK(parsedDirect->customer == "Alice Smith");
@@ -69,7 +71,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedDirect->quantity == 42);
 
         std::string validXmlInPlace = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
-        Common::Compat::span<std::byte> spanInPlace(reinterpret_cast<std::byte*>(validXmlInPlace.data()), validXmlInPlace.size());
+        Common::Memory::MutableByteView spanInPlace(validXmlInPlace);
         auto parsedInPlace = handler.parseOrderViewInPlace(spanInPlace);
         REQUIRE(parsedInPlace.has_value());
         CHECK(parsedInPlace->customer == "Alice Smith");
@@ -123,7 +125,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
     SECTION("Invalid XML syntax fails deserialization")
     {
         std::string malformedXml = "<order><customer>Alice<item></order>";
-        Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(malformedXml.data()), malformedXml.size());
+        Common::Memory::ByteView span(malformedXml);
 
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
@@ -137,7 +139,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
     SECTION("Empty payload is rejected")
     {
-        Common::Compat::span<const std::byte> span { };
+        Common::Memory::ByteView span { };
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
 
@@ -190,7 +192,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
     SECTION("Handler discards messages that fail domain criteria")
     {
         std::string invalidOrderXml = "<order><customer>A</customer><item>Widget</item><quantity>5</quantity></order>";
-        Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(invalidOrderXml.data()), invalidOrderXml.size());
+        Common::Memory::ByteView span(invalidOrderXml);
 
         auto env = Core::Message::MessageEnvelope::packRaw(span);
         auto view = Core::Message::MessageView::from(env);
@@ -199,7 +201,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(mockOutPtr->sentMessages().empty());
 
         std::string invalidOrderXmlDirect = invalidOrderXml;
-        Common::Compat::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(invalidOrderXmlDirect.data()), invalidOrderXmlDirect.size());
+        Common::Memory::MutableByteView mutableSpan(invalidOrderXmlDirect);
         handler.onMessageReceivedFast("input_ch", mutableSpan);
         CHECK(mockOutPtr->sentMessages().empty());
     }
@@ -207,7 +209,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
     SECTION("Handler forwards messages that pass on onMessageReceivedFast")
     {
         std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
-        Common::Compat::span<std::byte> span(reinterpret_cast<std::byte*>(validXml.data()), validXml.size());
+        Common::Memory::MutableByteView span(validXml);
 
         handler.onMessageReceivedFast("input_ch", span);
         CHECK(mockOutPtr->sentMessages().size() == 1);
@@ -222,7 +224,7 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     handler.setOutputChannel(handler.registerOutputChannel(std::move(mockOut)));
 
     std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
-    Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());
+    Common::Memory::ByteView span(validXml);
 
     Proxy::Model::Order preParsedOrder {
         .customer = "Alice Smith",
@@ -249,14 +251,14 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     BENCHMARK("Option 1b: OrderView XML Deserialization (In-Place IR Traits)")
     {
         std::string xmlCopy = validXml;
-        Common::Compat::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        Common::Memory::MutableByteView mutableSpan(xmlCopy);
         return handler.parseOrderViewInPlace(mutableSpan);
     };
 
     BENCHMARK("Option 3: OrderView Direct DOM XML Deserialization (pugixml direct)")
     {
         std::string xmlCopy = validXml;
-        Common::Compat::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        Common::Memory::MutableByteView mutableSpan(xmlCopy);
         return handler.parseOrderDirect(mutableSpan);
     };
 
@@ -315,7 +317,7 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     BENCHMARK("Option 4: Order Full Ingress Pipeline Fast (Cached Channel & In-Place Direct DOM)")
     {
         std::string xmlCopy = validXml;
-        Common::Compat::span<std::byte> mutableSpan(reinterpret_cast<std::byte*>(xmlCopy.data()), xmlCopy.size());
+        Common::Memory::MutableByteView mutableSpan(xmlCopy);
         handler.onMessageReceivedFast("bench_in", mutableSpan);
     };
 }

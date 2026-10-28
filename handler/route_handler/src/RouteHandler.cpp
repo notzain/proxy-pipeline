@@ -1,5 +1,6 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "common/memory/ByteView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/message/ProtocolId.hpp"
@@ -176,7 +177,7 @@ void RouteHandler::onBatchReceived(
         }
 
         if (destination) {
-            buckets[destination].push_back(msg.rawBuffer());
+            buckets[destination].push_back(Common::Memory::ByteView(msg.rawBuffer()));
             outResults[i] = Core::Message::Forwarded { .channel = destinationName };
         } else {
             Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);

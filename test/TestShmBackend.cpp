@@ -2,6 +2,7 @@
 #include "backend/shm/ShmInputChannel.hpp"
 #include "backend/shm/ShmOutputChannel.hpp"
 #include "backend/shm/ShmRingBuffer.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
@@ -23,8 +24,7 @@ TEST_CASE("ShmRingBuffer: Basic Operations and FIFO Invariants", "[shm]")
         REQUIRE(ring.size() == 0);
 
         std::string msg1 = "Hello Kernel Bypass";
-        Common::Compat::span<const std::byte> span1(reinterpret_cast<const std::byte*>(msg1.data()), msg1.size());
-        REQUIRE(ring.push(span1));
+        REQUIRE(ring.push(Common::Memory::ByteView(msg1)));
         REQUIRE(ring.size() == 1);
         REQUIRE(!ring.empty());
 
@@ -53,8 +53,7 @@ TEST_CASE("ShmRingBuffer: Ring Wrap-Around and Backpressure", "[shm]")
         // Fill capacity
         for (std::size_t i = 0; i < capacity; ++i) {
             std::string msg = "Item_" + std::to_string(i);
-            Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
-            REQUIRE(ring.push(span));
+            REQUIRE(ring.push(Common::Memory::ByteView(msg)));
         }
 
         REQUIRE(ring.full());
@@ -62,8 +61,7 @@ TEST_CASE("ShmRingBuffer: Ring Wrap-Around and Backpressure", "[shm]")
 
         // Additional push must be rejected when full
         std::string overflow = "Overflow";
-        Common::Compat::span<const std::byte> overflowSpan(reinterpret_cast<const std::byte*>(overflow.data()), overflow.size());
-        REQUIRE(!ring.push(overflowSpan));
+        REQUIRE(!ring.push(Common::Memory::ByteView(overflow)));
 
         // Pop all items and verify FIFO order
         for (std::size_t i = 0; i < capacity; ++i) {
@@ -77,8 +75,7 @@ TEST_CASE("ShmRingBuffer: Ring Wrap-Around and Backpressure", "[shm]")
         // Now push across wrap-around boundary
         for (std::size_t i = 0; i < 20; ++i) {
             std::string msg = "Wrapped_" + std::to_string(i);
-            Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
-            REQUIRE(ring.push(span));
+            REQUIRE(ring.push(Common::Memory::ByteView(msg)));
 
             std::array<std::byte, 64> rxBuf;
             std::size_t bytes = ring.popInto(rxBuf);
@@ -106,7 +103,7 @@ TEST_CASE("ShmRingBuffer: Vectorized Batch Operations", "[shm]")
 
         std::vector<Common::Compat::span<const std::byte>> messageSpans;
         for (const auto& msg : messages) {
-            messageSpans.emplace_back(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+            messageSpans.emplace_back(Common::Memory::ByteView(msg));
         }
 
         std::size_t pushed = ring.pushBatch(messageSpans);
@@ -146,8 +143,7 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
 
         // Single message send and receiveInto
         std::string payload = "<trade id=\"42\" symbol=\"AAPL\" qty=\"100\"/>";
-        Common::Compat::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
-        REQUIRE(out.send(sendSpan));
+        REQUIRE(out.send(Common::Memory::ByteView(payload)));
 
         std::array<std::byte, 256> rxBuf;
         auto receiveResult = in.receiveInto(rxBuf, std::chrono::milliseconds(50));
@@ -160,7 +156,7 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         std::vector<std::string> batchMsgs = { "MsgA", "MsgB", "MsgC", "MsgD" };
         std::vector<Common::Compat::span<const std::byte>> batchSpans;
         for (const auto& m : batchMsgs) {
-            batchSpans.emplace_back(reinterpret_cast<const std::byte*>(m.data()), m.size());
+            batchSpans.emplace_back(Common::Memory::ByteView(m));
         }
 
         std::size_t sentCount = out.sendBatch(batchSpans);

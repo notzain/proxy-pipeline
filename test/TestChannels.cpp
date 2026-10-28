@@ -1,6 +1,8 @@
 #include "backend/ISocketPoller.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
+#include "common/memory/ByteView.hpp"
+#include "common/memory/MutableByteView.hpp"
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
@@ -448,9 +450,7 @@ TEST_CASE("IHandler output channel registration and direct dispatch", "[channel]
     CHECK_THROWS_AS(handler.registerOutputChannel(nullptr), std::invalid_argument);
 
     std::string msg = "Hello Sender";
-    Common::Compat::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
-
-    CHECK(registered->send(byteSpan));
+    CHECK(registered->send(Common::Memory::ByteView(msg)));
 
     REQUIRE(rawChan->sentMessages.size() == 1);
     CHECK(rawChan->sentMessages[0] == "Hello Sender");
@@ -693,7 +693,7 @@ TEST_CASE("Direct output channel multi-dispatch", "[channel][core]")
     std::vector<::Backend::IOutputChannel*> channels = { rawA, rawB };
 
     std::string msg = "Broadcast Message";
-    Common::Compat::span<const std::byte> byteSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+    Common::Memory::ByteView byteSpan(msg);
 
     std::size_t sentCount = 0;
     for (auto* ch : channels) {
@@ -776,7 +776,7 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
     Proxy::Backend::Uds::UdsOutputChannel outChannel("uds_out", sockPath);
 
     std::string testMsg = "Hello UDS IPC!";
-    Common::Compat::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(testMsg.data()), testMsg.size());
+    Common::Memory::ByteView sendSpan(testMsg);
 
     std::array<std::byte, 128> recvBuf { };
     auto timeoutResult = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(0));
@@ -804,14 +804,13 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
     for (std::size_t i = 0; i < numMessages; ++i) {
         std::string msg = fmt::format("Batch Message #{}", i);
         sentMessages.push_back(msg);
-        Common::Compat::span<const std::byte> sendSpan(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
-        REQUIRE(outChannel.send(sendSpan));
+        REQUIRE(outChannel.send(Common::Memory::ByteView(msg)));
     }
 
     std::array<std::array<std::byte, 256>, numMessages> buffers;
     std::array<::Backend::BufferSlot, numMessages> slots;
     for (std::size_t i = 0; i < numMessages; ++i) {
-        slots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>(buffers[i].data(), buffers[i].size()), 0 };
+        slots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView(buffers[i]), 0 };
     }
 
     auto result = inChannel.receiveBatch(
@@ -936,7 +935,7 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
     std::vector<Common::Compat::span<const std::byte>> messageSpans;
     messageSpans.reserve(messages.size());
     for (const auto& msg : messages) {
-        messageSpans.emplace_back(reinterpret_cast<const std::byte*>(msg.data()), msg.size());
+        messageSpans.emplace_back(Common::Memory::ByteView(msg));
     }
 
     std::size_t sent = outChannel.sendBatch(
@@ -946,7 +945,7 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
     std::array<std::array<std::byte, 64>, 4> recvBuffers;
     std::array<::Backend::BufferSlot, 4> slots;
     for (std::size_t i = 0; i < 4; ++i) {
-        slots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>(recvBuffers[i].data(), recvBuffers[i].size()), 0 };
+        slots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView(recvBuffers[i]), 0 };
     }
 
     auto result = inChannel.receiveBatch(

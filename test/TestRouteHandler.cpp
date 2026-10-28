@@ -2,6 +2,7 @@
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/ProtocolId.hpp"
@@ -80,20 +81,17 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     SECTION("Single message routing")
     {
         std::string msg1 = "Hello VIP Customer";
-        auto env1 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg1.data()), msg1.size()));
+        auto env1 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg1));
         auto view1 = Core::Message::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
         std::string msg2 = "STD: Regular Customer";
-        auto env2 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg2.data()), msg2.size()));
+        auto env2 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg2));
         auto view2 = Core::Message::MessageView::from(env2);
         REQUIRE(view2.has_value());
 
         std::string msg3 = "Other message";
-        auto env3 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msg3.data()), msg3.size()));
+        auto env3 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg3));
         auto view3 = Core::Message::MessageView::from(env3);
         REQUIRE(view3.has_value());
 
@@ -118,14 +116,10 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string msgStd = "STD: Batch";
         std::string msgDef = "Default Fallback";
 
-        auto env1 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip1.data()), msgVip1.size()));
-        auto env2 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgStd.data()), msgStd.size()));
-        auto env3 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgVip2.data()), msgVip2.size()));
-        auto env4 = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(msgDef.data()), msgDef.size()));
+        auto env1 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip1));
+        auto env2 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgStd));
+        auto env3 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip2));
+        auto env4 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgDef));
 
         std::vector<Core::Message::MessageView> batch = {
             *Core::Message::MessageView::from(env1),
@@ -171,7 +165,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string payload = "Datagram from 9050";
         auto env = Core::Message::MessageEnvelope::packUdp(
             meta,
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(payload.data()), payload.size()));
+            Common::Memory::ByteView(payload));
         auto view = Core::Message::MessageView::from(env);
         REQUIRE(view.has_value());
 

@@ -1,4 +1,5 @@
 #include "core/message/MessageView.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/message/EnvelopeHeader.hpp"
 #include "core/message/WireFormat.hpp"
 
@@ -28,9 +29,9 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
     }
 
     const std::byte* base = data + sizeof(EnvelopeHeader);
-    Common::Compat::span<const std::byte> metadataSpan(base, metadataLength);
-    Common::Compat::span<const std::byte> payloadSpan(base + metadataLength, payloadLength);
-    Common::Compat::span<const std::byte> frameSpan = buffer.subspan(0, requiredSize);
+    Common::Memory::ByteView metadataSpan(base, metadataLength);
+    Common::Memory::ByteView payloadSpan(base + metadataLength, payloadLength);
+    Common::Memory::ByteView frameSpan = buffer.subspan(0, requiredSize);
 
     return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs);
 }

@@ -1,4 +1,5 @@
 #include "XmlVerificationHandler.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
@@ -65,12 +66,8 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
 
     std::string malformedXml = "<note><to>Incomplete";
 
-    Common::Compat::span<const std::byte> validSpan(reinterpret_cast<const std::byte*>(validXml.data()), validXml.size());
-    Common::Compat::span<const std::byte> invalidSpan(reinterpret_cast<const std::byte*>(invalidXml.data()), invalidXml.size());
-    Common::Compat::span<const std::byte> malformedSpan(reinterpret_cast<const std::byte*>(malformedXml.data()), malformedXml.size());
-
-    CHECK(handler.validate(validSpan));
-    CHECK_FALSE(handler.validate(invalidSpan));
-    CHECK_FALSE(handler.validate(malformedSpan));
+    CHECK(handler.validate(Common::Memory::ByteView(validXml)));
+    CHECK_FALSE(handler.validate(Common::Memory::ByteView(invalidXml)));
+    CHECK_FALSE(handler.validate(Common::Memory::ByteView(malformedXml)));
     CHECK_FALSE(handler.validate({ }));
 }

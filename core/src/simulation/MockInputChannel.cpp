@@ -1,4 +1,5 @@
 #include "core/simulation/MockInputChannel.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/simulation/SimulationClock.hpp"
 #include <algorithm>
 #include <cstring>
@@ -31,8 +32,7 @@ void MockInputChannel::pushMessage(Common::Compat::span<const std::byte> data, s
 
 void MockInputChannel::pushMessage(std::string_view text, std::uint64_t scheduledTimeNs)
 {
-    Common::Compat::span<const std::byte> dataSpan(reinterpret_cast<const std::byte*>(text.data()), text.size());
-    pushMessage(dataSpan, scheduledTimeNs);
+    pushMessage(Common::Memory::ByteView(text), scheduledTimeNs);
 }
 
 void MockInputChannel::clear()

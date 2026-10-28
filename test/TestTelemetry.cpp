@@ -1,3 +1,4 @@
+#include "common/memory/ByteView.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageEnvelope.hpp"
 #include "core/message/MessageView.hpp"
@@ -157,13 +158,12 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
 
     // Create a mock envelope with ingress timestamp
     std::string payload = "Hello Telemetry";
-    Common::Compat::span<const std::byte> payloadSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
     uint64_t pastNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                           std::chrono::system_clock::now().time_since_epoch())
                               .count())
         - 50000; // 50 microseconds ago
 
-    auto env = Core::Message::MessageEnvelope::packRaw(payloadSpan, pastNs);
+    auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), pastNs);
     auto optView = Core::Message::MessageView::from(env);
     REQUIRE(optView.has_value());
 

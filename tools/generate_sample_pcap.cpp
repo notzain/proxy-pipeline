@@ -1,4 +1,4 @@
-#include "common/compat/Span.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/simulation/PcapWriter.hpp"
 #include <arpa/inet.h>
 #include <chrono>
@@ -40,10 +40,9 @@ int main(int argc, char* argv[])
             payload = fmt::format("<order><customer>Customer_{}</customer><item>Widget-{}</item><quantity>{}</quantity></order>", i, i, i * 10);
         }
 
-        Common::Compat::span<const std::byte> span(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
         std::uint64_t packetTimeNs = baseTimeNs + (i * 20'000'000ULL); // 20ms apart
 
-        writer.writeUdpPacket(clientIp, proxyIp, clientPort, proxyPort, span, packetTimeNs);
+        writer.writeUdpPacket(clientIp, proxyIp, clientPort, proxyPort, Common::Memory::ByteView(payload), packetTimeNs);
     }
 
     writer.close();

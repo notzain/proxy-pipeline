@@ -1,4 +1,5 @@
 #include "core/message/MessageEnvelope.hpp"
+#include "common/memory/ByteView.hpp"
 #include "core/message/WireFormat.hpp"
 #include <chrono>
 #include <cstring>
@@ -73,10 +74,7 @@ std::vector<std::byte> MessageEnvelope::packUdp(
     Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
-    Common::Compat::span<const std::byte> metaSpan(
-        reinterpret_cast<const std::byte*>(&meta),
-        sizeof(UdpMetadata));
-    return pack(ProtocolId::Udp, metaSpan, payload, timestampNs);
+    return pack(ProtocolId::Udp, Common::Memory::ByteView(meta), payload, timestampNs);
 }
 
 std::vector<std::byte> MessageEnvelope::withPayload(

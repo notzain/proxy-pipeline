@@ -307,6 +307,7 @@ Packages handlers into lightweight, stripped Distroless container images (`gcr.i
 - [Performance Tuning & Profiling Guide](docs/guides/performance-tuning-and-profiling.md): Linux kernel sysctl socket tuning, CPU affinity pinning, memory slab sizing, and perf flame graph profiling.
 
 ### Feature Specifications & Implementation Records (`docs/features/`)
+- [ByteView Convenience Value Type (`Common::Memory::ByteView`)](docs/features/byte-span-helper.md)
 - [Configuration Subsystem & Strongly-Typed Resolution](docs/features/configuration-subsystem.md)
 - [Logging Subsystem & Sinks (`proxylog`)](docs/features/logging-subsystem.md)
 - [Shared Memory Transport Architecture](docs/features/shm-transport.md)

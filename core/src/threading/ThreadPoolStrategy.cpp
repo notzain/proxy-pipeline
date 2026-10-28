@@ -1,6 +1,8 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "MessageDispatcher.hpp"
 #include "common/compat/Span.hpp"
+#include "common/memory/ByteView.hpp"
+#include "common/memory/MutableByteView.hpp"
 #include "core/handler/IHandler.hpp"
 #include "core/message/MessageView.hpp"
 #include "core/message/UdpMetadata.hpp"
@@ -63,7 +65,7 @@ namespace {
             std::size_t spanCount = batchEnd - batchStart;
             std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
             for (std::size_t k = 0; k < spanCount; ++k) {
-                rawMessages[k] = tasks[batchStart + k].payload();
+                rawMessages[k] = Common::Memory::ByteView(tasks[batchStart + k].payload());
             }
             Detail::dispatchReceivedBatch(
                 handler,
@@ -117,7 +119,7 @@ namespace {
             auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
             std::array<::Backend::BufferSlot, maxBatch> batchSlots;
             for (std::size_t i = 0; i < maxBatch; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+                batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
             }
 
             auto result = channel.receiveBatch(
@@ -242,7 +244,7 @@ namespace {
         auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
         std::array<::Backend::BufferSlot, maxBatch> batchSlots;
         for (std::size_t i = 0; i < maxBatch; ++i) {
-            batchSlots[i] = ::Backend::BufferSlot { Common::Compat::span<std::byte>((*batchBuffers)[i].data(), (*batchBuffers)[i].size()), 0 };
+            batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
         }
 
         auto result = channel.receiveBatch(
@@ -261,12 +263,12 @@ namespace {
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            Common::Compat::span<const std::byte> firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
+            Common::Memory::ByteView firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                Common::Compat::span<const std::byte> nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
+                Common::Memory::ByteView nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }

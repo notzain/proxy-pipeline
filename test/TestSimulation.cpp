@@ -1,3 +1,4 @@
+#include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
@@ -53,12 +54,10 @@ TEST_CASE("Core::Simulation::PcapWriter and PcapReader end-to-end round trip", "
         std::uint16_t serverPort = htons(9000);
 
         std::string payload1 = "<order><id>1</id><sym>AAPL</sym></order>";
-        Common::Compat::span<const std::byte> span1(reinterpret_cast<const std::byte*>(payload1.data()), payload1.size());
-        REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, span1, 1'700'000'000'100'000ULL));
+        REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, Common::Memory::ByteView(payload1), 1'700'000'000'100'000ULL));
 
         std::string payload2 = "<order><id>2</id><sym>MSFT</sym></order>";
-        Common::Compat::span<const std::byte> span2(reinterpret_cast<const std::byte*>(payload2.data()), payload2.size());
-        REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, span2, 1'700'000'000'250'000ULL));
+        REQUIRE(writer.writeUdpPacket(clientIp, serverIp, clientPort, serverPort, Common::Memory::ByteView(payload2), 1'700'000'000'250'000ULL));
 
         writer.close();
         REQUIRE(!writer.isOpen());
@@ -137,8 +136,7 @@ TEST_CASE("Core::Simulation::MockInputChannel and MockOutputChannel pipeline sim
 
     // Test MockOutputChannel recording
     std::string reply = "Ack Message 2";
-    Common::Compat::span<const std::byte> replySpan(reinterpret_cast<const std::byte*>(reply.data()), reply.size());
-    REQUIRE(outChannel.send(replySpan));
+    REQUIRE(outChannel.send(Common::Memory::ByteView(reply)));
 
     REQUIRE(outChannel.messageCount() == 1);
     REQUIRE(outChannel.containsPayload("Ack Message 2"));
@@ -192,8 +190,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
     // Push envelope into ingress
     std::string payload = "Deterministic Sim Payload";
-    Common::Compat::span<const std::byte> pSpan(reinterpret_cast<const std::byte*>(payload.data()), payload.size());
-    auto env = Core::Message::MessageEnvelope::packRaw(pSpan, 100'000ULL);
+    auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), 100'000ULL);
     inCh->pushMessage(env, 100'000ULL);
 
     // Run handler asynchronously to process message

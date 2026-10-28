@@ -169,9 +169,7 @@ TEST_CASE("FilterHandler drops forbidden messages and forwards valid ones", "[ha
 
     SECTION("Valid payload is forwarded") {
         std::string validText = "NORMAL_PACKET_CONTENT";
-        auto env = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(
-                reinterpret_cast<const std::byte*>(validText.data()), validText.size()));
+        auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(validText));
         auto view = Core::Message::MessageView::from(env);
 
         auto result = handler.onMessageReceived("test_in", *view);
@@ -180,9 +178,7 @@ TEST_CASE("FilterHandler drops forbidden messages and forwards valid ones", "[ha
 
     SECTION("Forbidden payload is dropped with errorCode 403") {
         std::string badText = "CONTAINS_BAD_PACKET_HERE";
-        auto env = Core::Message::MessageEnvelope::packRaw(
-            Common::Compat::span<const std::byte>(
-                reinterpret_cast<const std::byte*>(badText.data()), badText.size()));
+        auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(badText));
         auto view = Core::Message::MessageView::from(env);
 
         auto result = handler.onMessageReceived("test_in", *view);
