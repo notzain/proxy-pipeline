@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 4.0)
 
+if(NOT PROXY_ENABLE_LIBXML2)
+    message(STATUS "xml_verification_handler disabled because PROXY_ENABLE_LIBXML2 is OFF")
+    return()
+endif()
+
 find_package(libxml2 REQUIRED)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS

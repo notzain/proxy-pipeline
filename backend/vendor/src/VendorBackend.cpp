@@ -1,9 +1,9 @@
 #include "backend/vendor/VendorBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "backend/vendor/VendorInputChannel.hpp"
 #include "backend/vendor/VendorMetadata.hpp"
 #include "backend/vendor/VendorOutputChannel.hpp"
 #include "log/Log.hpp"
-#include <cstring>
 
 namespace Backend::Vendor {
 
@@ -51,14 +51,16 @@ void VendorBackend::onMessageResult(
     Common::Compat::span<const std::byte> rawMessage,
     const ::Backend::MessageResult& result)
 {
-    constexpr std::size_t EnvelopeHeaderSize = 18;
-    if (rawMessage.size() < EnvelopeHeaderSize + sizeof(VendorMetadata)) {
+    auto view = ::Backend::MessageView::from(rawMessage);
+    if (!view) {
         return;
     }
 
-    VendorMetadata meta;
-    std::memcpy(&meta, rawMessage.data() + EnvelopeHeaderSize, sizeof(meta));
-    const std::uint64_t msgId = meta.messageId;
+    const auto* meta = view->getMetadata<VendorMetadata>();
+    if (!meta) {
+        return;
+    }
+    const std::uint64_t msgId = meta->messageId;
 
     auto scopedMsg = unregisterInFlight(msgId);
     if (!scopedMsg) {
@@ -108,4 +110,3 @@ std::unique_ptr<IBackend> createBackend()
 }
 
 } // namespace Backend
-

@@ -17,6 +17,9 @@ class ProxyConan(ConanFile):
         "backend_uds": [True, False],
         "backend_shm": [True, False],
         "backend_sim": [True, False],
+        "with_pugixml": [True, False],
+        "with_libxml2": [True, False],
+        "with_xerces": [True, False],
     }
     default_options = {
         "backend_file": True,
@@ -24,6 +27,9 @@ class ProxyConan(ConanFile):
         "backend_uds": True,
         "backend_shm": True,
         "backend_sim": True,
+        "with_pugixml": True,
+        "with_libxml2": True,
+        "with_xerces": True,
         "spdlog/*:header_only": True,
         "xerces-c/*:network": False,
         "xerces-c/*:transcoder": "iconv",
@@ -37,9 +43,12 @@ class ProxyConan(ConanFile):
         self.requires("spdlog/1.17.0")
         self.requires("fmt/12.1.0")
         self.requires("nlohmann_json/3.11.3")
-        self.requires("pugixml/1.14")
-        self.requires("libxml2/2.13.6")
-        self.requires("xerces-c/3.3.0")
+        if self.options.with_pugixml:
+            self.requires("pugixml/1.14")
+        if self.options.with_libxml2:
+            self.requires("libxml2/2.13.6")
+        if self.options.with_xerces:
+            self.requires("xerces-c/3.3.0")
         self.requires("catch2/3.8.0")
 
         # Backends discovered / required via Conan
@@ -58,6 +67,9 @@ class ProxyConan(ConanFile):
         deps = CMakeDeps(self)
         deps.generate()
         tc = CMakeToolchain(self)
+        tc.variables["PROXY_ENABLE_PUGIXML"] = bool(self.options.with_pugixml)
+        tc.variables["PROXY_ENABLE_LIBXML2"] = bool(self.options.with_libxml2)
+        tc.variables["PROXY_ENABLE_XERCES"] = bool(self.options.with_xerces)
         tc.generate()
 
         # Discover backends from Conan dependency graph

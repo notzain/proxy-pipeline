@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 4.0)
 project(ProxyBenchmark LANGUAGES CXX)
 
+if(NOT PROXY_ENABLE_LIBXML2)
+    message(STATUS "proxy_benchmark disabled because PROXY_ENABLE_LIBXML2 is OFF")
+    return()
+endif()
+
 find_package(libxml2 REQUIRED)
 find_package(fmt REQUIRED)
 

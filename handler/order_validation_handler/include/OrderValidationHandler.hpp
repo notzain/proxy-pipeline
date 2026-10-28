@@ -81,6 +81,7 @@ public:
      */
     [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderViewInPlace(Common::Compat::span<std::byte> xmlData) const;
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     /**
      * @brief Direct zero-copy DOM parser (Option 3 optimization).
      * Parses XML directly in-place from pugixml nodes to OrderView, bypassing the intermediate Value IR tree.
@@ -89,7 +90,9 @@ public:
      * @return std::optional<Proxy::Model::OrderView> Parsed order view, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::OrderView> parseOrderDirect(Common::Compat::span<std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
     /**
      * @brief Parses XML buffer to Order using libxml2 DOM API.
      *
@@ -97,7 +100,9 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
     /**
      * @brief Parses XML buffer to Order using Apache Xerces-C DOM API.
      *
@@ -105,7 +110,9 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXerces(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
     /**
      * @brief Parses XML buffer to Order using libxml2 xmlReader streaming cursor API.
      *
@@ -113,7 +120,9 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reader(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
     /**
      * @brief Parses XML buffer to Order using Apache Xerces-C SAX2 parser.
      *
@@ -121,7 +130,9 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesSax(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
     /**
      * @brief Parses XML buffer to Order reusing a thread-local libxml2 parser context.
      *
@@ -129,7 +140,9 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderLibXml2Reused(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
     /**
      * @brief Parses XML buffer to Order reusing a thread-local Xerces DOM parser instance and document pool.
      *
@@ -137,6 +150,7 @@ public:
      * @return std::optional<Proxy::Model::Order> Parsed order, or std::nullopt on syntax/mapping error.
      */
     [[nodiscard]] std::optional<Proxy::Model::Order> parseOrderXercesReused(Common::Compat::span<const std::byte> xmlData) const;
+#endif
 
     /**
      * @brief Validates an Order instance against domain criteria.
@@ -168,6 +182,7 @@ public:
      */
     [[nodiscard]] bool validateOrderFast(const Proxy::Model::OrderView& order) const;
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     /**
      * @brief Fast ingress message processing (Option 4 optimization).
      * Integrates direct in-place DOM parsing (Option 3), bitmap table validation (Option 2),
@@ -177,6 +192,7 @@ public:
      * @param buffer Mutable byte buffer of the message payload for in-place parsing.
      */
     void onMessageReceivedFast(std::string_view channelName, Common::Compat::span<std::byte> buffer);
+#endif
 
 private:
     Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_cachedOutputChannel;

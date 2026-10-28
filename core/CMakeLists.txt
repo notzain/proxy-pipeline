@@ -6,7 +6,18 @@ if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
 endif()
 find_package(fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(pugixml REQUIRED)
+
+set(CORE_EXTRA_LIBS)
+
+if(PROXY_ENABLE_PUGIXML)
+    find_package(pugixml REQUIRED)
+    list(APPEND CORE_EXTRA_LIBS pugixml::pugixml)
+endif()
+
+if(PROXY_ENABLE_XERCES)
+    find_package(XercesC REQUIRED)
+    list(APPEND CORE_EXTRA_LIBS XercesC::XercesC)
+endif()
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -31,7 +42,7 @@ target_link_libraries(core
         proxylog::proxylog
         fmt::fmt
         nlohmann_json::nlohmann_json
-        pugixml::pugixml
+        ${CORE_EXTRA_LIBS}
 )
 
 target_compile_features(core PUBLIC cxx_std_${CMAKE_CXX_STANDARD})

@@ -62,6 +62,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
 
         CHECK(handler.validateOrder(*parsed));
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
         std::string validXmlDirect = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
         Common::Memory::MutableByteView spanDirect(validXmlDirect);
         auto parsedDirect = handler.parseOrderDirect(spanDirect);
@@ -77,7 +78,9 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedInPlace->customer == "Alice Smith");
         CHECK(parsedInPlace->item == "Widget-Pro");
         CHECK(parsedInPlace->quantity == 42);
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
         auto parsedLibXml2 = handler.parseOrderLibXml2(span);
         REQUIRE(parsedLibXml2.has_value());
         CHECK(parsedLibXml2->customer == "Alice Smith");
@@ -95,7 +98,9 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedLibXml2Reused->customer == "Alice Smith");
         CHECK(parsedLibXml2Reused->item == "Widget-Pro");
         CHECK(parsedLibXml2Reused->quantity == 42);
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
         auto parsedXerces = handler.parseOrderXerces(span);
         REQUIRE(parsedXerces.has_value());
         CHECK(parsedXerces->customer == "Alice Smith");
@@ -113,6 +118,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedXercesSax->customer == "Alice Smith");
         CHECK(parsedXercesSax->item == "Widget-Pro");
         CHECK(parsedXercesSax->quantity == 42);
+#endif
 
         auto env = Backend::MessageEnvelope::packRaw(span);
         auto view = Backend::MessageView::from(env);
@@ -200,12 +206,15 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         handler.onMessageReceived("input_ch", *view);
         CHECK(mockOutPtr->sentMessages().empty());
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
         std::string invalidOrderXmlDirect = invalidOrderXml;
         Common::Memory::MutableByteView mutableSpan(invalidOrderXmlDirect);
         handler.onMessageReceivedFast("input_ch", mutableSpan);
         CHECK(mockOutPtr->sentMessages().empty());
+#endif
     }
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     SECTION("Handler forwards messages that pass on onMessageReceivedFast")
     {
         std::string validXml = "<order><customer>Alice Smith</customer><item>Widget-Pro</item><quantity>42</quantity></order>";
@@ -214,6 +223,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         handler.onMessageReceivedFast("input_ch", span);
         CHECK(mockOutPtr->sentMessages().size() == 1);
     }
+#endif
 }
 
 TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_validation]")
@@ -255,13 +265,16 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
         return handler.parseOrderViewInPlace(mutableSpan);
     };
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     BENCHMARK("Option 3: OrderView Direct DOM XML Deserialization (pugixml direct)")
     {
         std::string xmlCopy = validXml;
         Common::Memory::MutableByteView mutableSpan(xmlCopy);
         return handler.parseOrderDirect(mutableSpan);
     };
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
     BENCHMARK("LibXml2: Order Direct DOM XML Deserialization (libxml2 direct)")
     {
         return handler.parseOrderLibXml2(span);
@@ -276,7 +289,9 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     {
         return handler.parseOrderLibXml2Reused(span);
     };
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
     BENCHMARK("Xerces-C: Order Direct DOM XML Deserialization (xerces-c direct)")
     {
         return handler.parseOrderXerces(span);
@@ -291,6 +306,7 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
     {
         return handler.parseOrderXercesSax(span);
     };
+#endif
 
     BENCHMARK("Baseline: Order Domain Validation (std::string)")
     {
@@ -314,10 +330,12 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
         handler.onMessageReceived("bench_in", view);
     };
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     BENCHMARK("Option 4: Order Full Ingress Pipeline Fast (Cached Channel & In-Place Direct DOM)")
     {
         std::string xmlCopy = validXml;
         Common::Memory::MutableByteView mutableSpan(xmlCopy);
         handler.onMessageReceivedFast("bench_in", mutableSpan);
     };
+#endif
 }

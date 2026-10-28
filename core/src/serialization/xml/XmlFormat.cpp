@@ -1,5 +1,7 @@
 #include "core/serialization/xml/XmlFormat.hpp"
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
+
 #include <pugixml.hpp>
 #include <sstream>
 
@@ -191,3 +193,5 @@ std::optional<Ir::Value> XmlFormat::decodeInPlace(void* data, std::size_t size, 
 }
 
 } // namespace Core::Serialization::Xml
+
+#endif // PROXY_HAS_PUGIXML

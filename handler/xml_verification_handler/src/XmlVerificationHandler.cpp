@@ -1,4 +1,7 @@
 #include "XmlVerificationHandler.hpp"
+
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
+
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
@@ -135,3 +138,5 @@ void XmlVerificationHandler::onBatchReceived(
 }
 
 } // namespace Proxy::Handler
+
+#endif // PROXY_HAS_LIBXML2

@@ -3,7 +3,15 @@
 #include "core/serialization/ir/Converter.hpp"
 #include "core/serialization/ir/Value.hpp"
 #include "core/serialization/json/JsonSerializer.hpp"
+
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 #include "core/serialization/xml/XmlSerializer.hpp"
+#endif
+
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+#include "core/serialization/xml/XercesFormat.hpp"
+#include "core/serialization/xml/XercesSerializer.hpp"
+#endif
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>
@@ -230,6 +238,7 @@ TEST_CASE("JsonDeserializer error handling on invalid input", "[serialization][j
     }
 }
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[serialization][xml]")
 {
     SECTION("Simple POD serialization and deserialization")
@@ -293,6 +302,70 @@ TEST_CASE("XmlSerializer and XmlDeserializer with elements and attributes", "[se
         CHECK_FALSE(restored.has_value());
     }
 }
+#endif
+
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+TEST_CASE("XercesSerializer and XercesDeserializer with elements and attributes", "[serialization][xml][xerces]")
+{
+    SECTION("Simple POD serialization and deserialization with Xerces-C")
+    {
+        Point p { .x = 42, .y = 84 };
+        std::string xml = Core::Serialization::Xml::XercesSerializer<Point>::serialize(p, { .rootName = "Point" });
+        REQUIRE(!xml.empty());
+        CHECK(xml.find("<Point") != std::string::npos);
+        CHECK(xml.find("<x>42</x>") != std::string::npos);
+        CHECK(xml.find("<y>84</y>") != std::string::npos);
+
+        auto restored = Core::Serialization::Xml::XercesDeserializer<Point>::deserialize(xml, { .rootName = "Point" });
+        REQUIRE(restored.has_value());
+        CHECK(restored->x == 42);
+        CHECK(restored->y == 84);
+        CHECK(*restored == p);
+    }
+
+    SECTION("Model with XML attributes and nested elements with Xerces-C")
+    {
+        UserProfile profile {
+            .id = 1337,
+            .role = "admin",
+            .active = true,
+            .username = "johndoe",
+            .email = "john@example.com",
+            .location = { .x = 10, .y = 20 }
+        };
+
+        std::string xml = Core::Serialization::Xml::XercesSerializer<UserProfile>::serialize(profile, { .rootName = "UserProfile" });
+        REQUIRE(!xml.empty());
+
+        CHECK(xml.find(R"(id="1337")") != std::string::npos);
+        CHECK(xml.find(R"(role="admin")") != std::string::npos);
+        CHECK(xml.find(R"(active="true")") != std::string::npos);
+
+        CHECK(xml.find("<username>johndoe</username>") != std::string::npos);
+        CHECK(xml.find("<email>john@example.com</email>") != std::string::npos);
+        CHECK(xml.find("<location>") != std::string::npos);
+        CHECK(xml.find("<x>10</x>") != std::string::npos);
+        CHECK(xml.find("<y>20</y>") != std::string::npos);
+
+        auto restored = Core::Serialization::Xml::XercesDeserializer<UserProfile>::deserialize(xml, { .rootName = "UserProfile" });
+        REQUIRE(restored.has_value());
+        CHECK(restored->id == 1337);
+        CHECK(restored->role == "admin");
+        CHECK(restored->active == true);
+        CHECK(restored->username == "johndoe");
+        CHECK(restored->email == "john@example.com");
+        CHECK(restored->location.x == 10);
+        CHECK(restored->location.y == 20);
+        CHECK(*restored == profile);
+    }
+
+    SECTION("Xerces XML error handling on invalid syntax")
+    {
+        auto restored = Core::Serialization::Xml::XercesDeserializer<Point>::deserialize("<Point><x>10</Point>");
+        CHECK_FALSE(restored.has_value());
+    }
+}
+#endif
 
 TEST_CASE("Intermediate representation (IR) value trees and generic facade", "[serialization][ir]")
 {
@@ -314,8 +387,17 @@ TEST_CASE("Intermediate representation (IR) value trees and generic facade", "[s
     REQUIRE(fromJson.has_value());
     CHECK(*fromJson == p);
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     std::string xml = Core::Serialization::serialize<Core::Serialization::Xml::XmlFormat>(p, { .rootName = "Point" });
     auto fromXml = Core::Serialization::deserialize<Core::Serialization::Xml::XmlFormat, Point>(xml, { .rootName = "Point" });
     REQUIRE(fromXml.has_value());
     CHECK(*fromXml == p);
+#endif
+
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+    std::string xercesXml = Core::Serialization::serialize<Core::Serialization::Xml::XercesFormat>(p, { .rootName = "Point" });
+    auto fromXerces = Core::Serialization::deserialize<Core::Serialization::Xml::XercesFormat, Point>(xercesXml, { .rootName = "Point" });
+    REQUIRE(fromXerces.has_value());
+    CHECK(*fromXerces == p);
+#endif
 }

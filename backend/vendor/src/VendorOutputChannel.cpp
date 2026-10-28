@@ -32,4 +32,3 @@ bool VendorOutputChannel::send(Common::Compat::span<const std::byte> message)
 }
 
 } // namespace Backend::Vendor
-
