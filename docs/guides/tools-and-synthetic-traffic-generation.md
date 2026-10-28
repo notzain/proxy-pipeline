@@ -71,11 +71,10 @@ Successfully wrote 500 packets to test_traffic.pcap (Capture ready for replay).
 ### Workflow 1: Feeding the Interactive Simulation Web UI
 ```bash
 # Launch interactive step-wise simulation using the generated PCAP
-python3 -m scripts.proxy_runner.server \
-  --chain chains/example_socket_chain.toml \
+./scripts/chain_runner.py chains/example_socket_chain.toml \
   --pcap test_traffic.pcap
 ```
-Navigate to `http://localhost:8080` to inspect the generated packets, step through C++ handler decisions, and verify that the corrupted 5th packets are dropped with the expected validation error reasons.
+Navigate to `http://localhost:8090` to inspect the generated packets, step through C++ handler decisions, and verify that the corrupted 5th packets are dropped with the expected validation error reasons.
 
 ### Workflow 2: Replaying Traffic over Live UDP (`send_ingress.py`)
 ```bash
@@ -86,4 +85,3 @@ Navigate to `http://localhost:8080` to inspect the generated packets, step throu
   --port 9123 \
   --rate 1000
 ```
-

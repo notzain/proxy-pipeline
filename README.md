@@ -249,9 +249,9 @@ Allows stepping packets through native compiled C++ handlers one step at a time,
 
 ```bash
 # Start simulation coordinator & server with a PCAP packet source
-python3 -m scripts.proxy_runner.server --chain chains/example_socket_chain.toml --pcap sample_orders.pcap
+./scripts/chain_runner.py chains/example_socket_chain.toml --pcap sample_orders.pcap
 ```
-Then navigate to `http://localhost:8080` to inspect packets, step execution, and observe branch decisions.
+Then navigate to `http://localhost:8090` to inspect packets, step execution, and observe branch decisions.
 
 ### 2. Live Telemetry & Dashboard (`read_telemetry.py`)
 Runs an embedded UDP StatsD metrics receiver alongside a built-in HTTP server (`http.server` on default port `8126`) that serves the live dashboard and exposes JSON REST endpoints (`/api/metrics` and `/api/topology`):
