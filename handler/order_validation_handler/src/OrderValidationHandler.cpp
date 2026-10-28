@@ -3,17 +3,27 @@
 #include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
+
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
+#include "core/serialization/xml/XmlSerializer.hpp"
+#include <pugixml.hpp>
+#elif defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+#include "core/serialization/xml/XercesSerializer.hpp"
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <cstring>
+
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xmlreader.h>
-#include <pugixml.hpp>
+#endif
+
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
 #include <xercesc/dom/DOM.hpp>
 #include <xercesc/framework/MemBufInputSource.hpp>
 #include <xercesc/parsers/XercesDOMParser.hpp>
@@ -23,6 +33,7 @@
 #include <xercesc/sax2/XMLReaderFactory.hpp>
 #include <xercesc/util/PlatformUtils.hpp>
 #include <xercesc/util/XMLString.hpp>
+#endif
 
 namespace Proxy::Handler {
 
@@ -57,7 +68,15 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrder(Common::Co
     }
 
     std::string_view xmlStr(reinterpret_cast<const char*>(xmlData.data()), xmlData.size());
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::Order>::deserialize(xmlStr, { .rootName = "order" });
+#elif defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+    return Core::Serialization::Xml::XercesDeserializer<Proxy::Model::Order>::deserialize(xmlStr, { .rootName = "order" });
+#elif defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
+    return parseOrderLibXml2Reused(xmlData);
+#else
+    return std::nullopt;
+#endif
 }
 
 std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(Common::Compat::span<const std::byte> xmlData) const
@@ -67,7 +86,12 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderView(Co
     }
 
     std::string_view xmlStr(reinterpret_cast<const char*>(xmlData.data()), xmlData.size());
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::OrderView>::deserialize(xmlStr, { .rootName = "order" });
+#else
+    (void)xmlStr;
+    return std::nullopt;
+#endif
 }
 
 std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInPlace(Common::Compat::span<std::byte> xmlData) const
@@ -76,12 +100,18 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderViewInP
         return std::nullopt;
     }
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
     return Core::Serialization::Xml::XmlDeserializer<Proxy::Model::OrderView>::deserializeInPlace(
         xmlData.data(),
         xmlData.size(),
         { .rootName = "order" });
+#else
+    (void)xmlData;
+    return std::nullopt;
+#endif
 }
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderDirect(Common::Compat::span<std::byte> xmlData) const
 {
     if (xmlData.empty()) {
@@ -126,7 +156,9 @@ std::optional<Proxy::Model::OrderView> OrderValidationHandler::parseOrderDirect(
         .quantity = qty
     };
 }
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
 std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
@@ -187,7 +219,9 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2(Com
         .quantity = quantity
     };
 }
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
 namespace {
     struct XercesInitGuard {
         XercesInitGuard()
@@ -308,7 +342,9 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXerces(Comm
         return std::nullopt;
     }
 }
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
 std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reader(Common::Compat::span<const std::byte> xmlData) const
 {
     if (xmlData.empty()) {
@@ -389,7 +425,9 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Read
         .quantity = quantity
     };
 }
+#endif
 
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
 namespace {
     class OrderSax2Handler : public xercesc::DefaultHandler {
     public:
@@ -546,7 +584,9 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesSax(C
         return std::nullopt;
     }
 }
+#endif
 
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
 namespace {
     struct ThreadLocalLibXml2Ctxt {
         xmlParserCtxtPtr ctxt { nullptr };
@@ -561,19 +601,6 @@ namespace {
             if (ctxt) {
                 xmlFreeParserCtxt(ctxt);
             }
-        }
-    };
-
-    struct ThreadLocalXercesParser {
-        std::unique_ptr<xercesc::XercesDOMParser> parser;
-
-        ThreadLocalXercesParser()
-        {
-            ensureXercesInitialized();
-            parser = std::make_unique<xercesc::XercesDOMParser>();
-            parser->setDoNamespaces(false);
-            parser->setDoSchema(false);
-            parser->setValidationScheme(xercesc::XercesDOMParser::Val_Never);
         }
     };
 } // namespace
@@ -644,6 +671,23 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderLibXml2Reus
         .quantity = quantity
     };
 }
+#endif
+
+#if defined(PROXY_HAS_XERCES) && PROXY_HAS_XERCES
+namespace {
+    struct ThreadLocalXercesParser {
+        std::unique_ptr<xercesc::XercesDOMParser> parser;
+
+        ThreadLocalXercesParser()
+        {
+            ensureXercesInitialized();
+            parser = std::make_unique<xercesc::XercesDOMParser>();
+            parser->setDoNamespaces(false);
+            parser->setDoSchema(false);
+            parser->setValidationScheme(xercesc::XercesDOMParser::Val_Never);
+        }
+    };
+} // namespace
 
 std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesReused(Common::Compat::span<const std::byte> xmlData) const
 {
@@ -740,6 +784,7 @@ std::optional<Proxy::Model::Order> OrderValidationHandler::parseOrderXercesReuse
         return std::nullopt;
     }
 }
+#endif
 
 bool OrderValidationHandler::validateOrder(const Proxy::Model::Order& order) const
 {
@@ -986,6 +1031,7 @@ void OrderValidationHandler::onBatchReceived(
     }
 }
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName, Common::Compat::span<std::byte> buffer)
 {
     auto order = parseOrderDirect(buffer);
@@ -1009,5 +1055,6 @@ void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName,
         Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
     }
 }
+#endif
 
 } // namespace Proxy::Handler

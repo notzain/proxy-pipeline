@@ -1,3 +1,5 @@
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
+
 #include "XmlVerificationHandler.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
@@ -71,3 +73,5 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
     CHECK_FALSE(handler.validate(Common::Memory::ByteView(malformedXml)));
     CHECK_FALSE(handler.validate({ }));
 }
+
+#endif // PROXY_HAS_LIBXML2

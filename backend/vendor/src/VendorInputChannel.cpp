@@ -58,8 +58,7 @@ void VendorInputChannel::setReceiver(std::shared_ptr<Sdk::VendorReceiver> receiv
         destination,
         ::Backend::ProtocolId::Raw,
         Common::Memory::ByteView(meta),
-        Common::Memory::ByteView(payload)
-    );
+        Common::Memory::ByteView(payload));
 
     if (written == 0) {
         Proxy::Log::error("[VendorInputChannel] Destination buffer too small for message ID {}", msgId);

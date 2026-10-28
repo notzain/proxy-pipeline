@@ -8,8 +8,18 @@ class CoreConan(ConanFile):
     package_type = "library"
 
     settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
+    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "with_pugixml": [True, False],
+        "with_xerces": [True, False],
+    }
+    default_options = {
+        "shared": False,
+        "fPIC": True,
+        "with_pugixml": True,
+        "with_xerces": True,
+    }
 
     exports_sources = "CMakeLists.txt", "src/*", "include/*"
 
@@ -34,7 +44,10 @@ class CoreConan(ConanFile):
         self.requires(
             "nlohmann_json/3.11.3", transitive_headers=True, transitive_libs=True
         )
-        self.requires("pugixml/1.14", transitive_headers=True, transitive_libs=True)
+        if self.options.with_pugixml:
+            self.requires("pugixml/1.14", transitive_headers=True, transitive_libs=True)
+        if self.options.with_xerces:
+            self.requires("xerces-c/3.3.0", transitive_headers=True, transitive_libs=True)
 
     def build_requirements(self):
         self.test_requires("catch2/3.8.0")
@@ -43,6 +56,8 @@ class CoreConan(ConanFile):
         deps = CMakeDeps(self)
         deps.generate()
         tc = CMakeToolchain(self)
+        tc.variables["PROXY_ENABLE_PUGIXML"] = bool(self.options.with_pugixml)
+        tc.variables["PROXY_ENABLE_XERCES"] = bool(self.options.with_xerces)
         tc.generate()
 
     def build(self):

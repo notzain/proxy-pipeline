@@ -12,6 +12,7 @@ struct XmlOptions {
     int indentSpaces = 2;
 };
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 /**
  * @brief XML serialization format policy using pugixml.
  *
@@ -50,5 +51,6 @@ public:
      */
     [[nodiscard]] static std::optional<Ir::Value> decodeInPlace(void* data, std::size_t size, const Options& options = { });
 };
+#endif // PROXY_HAS_PUGIXML
 
 } // namespace Core::Serialization::Xml

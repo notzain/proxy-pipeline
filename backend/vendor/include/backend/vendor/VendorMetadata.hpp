@@ -17,4 +17,3 @@ struct alignas(8) VendorMetadata {
 static_assert(sizeof(VendorMetadata) == 8, "VendorMetadata must be exactly 8 bytes");
 
 } // namespace Backend::Vendor
-

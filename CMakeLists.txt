@@ -19,6 +19,21 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Export compile commands for language servers and tooling (clangd, etc.)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# XML Library feature switches
+option(PROXY_ENABLE_PUGIXML "Enable pugixml XML library support" ON)
+option(PROXY_ENABLE_LIBXML2 "Enable libxml2 XML library support" ON)
+option(PROXY_ENABLE_XERCES  "Enable Xerces-C XML library support" ON)
+
+if(PROXY_ENABLE_PUGIXML)
+    add_compile_definitions(PROXY_HAS_PUGIXML=1)
+endif()
+if(PROXY_ENABLE_LIBXML2)
+    add_compile_definitions(PROXY_HAS_LIBXML2=1)
+endif()
+if(PROXY_ENABLE_XERCES)
+    add_compile_definitions(PROXY_HAS_XERCES=1)
+endif()
+
 # Ensure all executable binaries end up in a root bin folder
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 

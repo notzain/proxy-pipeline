@@ -1,5 +1,7 @@
 #pragma once
 
+#if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
+
 #include "core/serialization/ir/Converter.hpp"
 #include "core/serialization/ir/Value.hpp"
 #include "core/serialization/xml/XmlFormat.hpp"
@@ -95,3 +97,5 @@ public:
 };
 
 } // namespace Core::Serialization::Xml
+
+#endif // PROXY_HAS_PUGIXML

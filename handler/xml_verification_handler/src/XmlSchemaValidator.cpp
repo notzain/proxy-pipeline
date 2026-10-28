@@ -1,4 +1,7 @@
 #include "XmlSchemaValidator.hpp"
+
+#if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
+
 #include "log/Log.hpp"
 
 #include <libxml/parser.h>
@@ -162,3 +165,5 @@ bool XmlSchemaValidator::validate(Common::Compat::span<const std::byte> xmlData)
 }
 
 } // namespace Proxy::Handler
+
+#endif // PROXY_HAS_LIBXML2

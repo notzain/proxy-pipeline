@@ -73,4 +73,3 @@ public:
 };
 
 } // namespace Backend::Vendor::Sdk
-

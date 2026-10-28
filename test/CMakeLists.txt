@@ -7,8 +7,17 @@ if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
   find_package(proxylog REQUIRED)
 endif()
 
-find_package(libxml2 REQUIRED)
-find_package(XercesC REQUIRED)
+set(TEST_EXTRA_LIBS)
+
+if(PROXY_ENABLE_LIBXML2)
+    find_package(libxml2 REQUIRED)
+    list(APPEND TEST_EXTRA_LIBS LibXml2::LibXml2)
+endif()
+
+if(PROXY_ENABLE_XERCES)
+    find_package(XercesC REQUIRED)
+    list(APPEND TEST_EXTRA_LIBS XercesC::XercesC)
+endif()
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
@@ -42,9 +51,8 @@ target_link_libraries(proxy_tests PRIVATE
     backend-shm
     backend-vendor
     proxylog::proxylog
-    LibXml2::LibXml2
-    XercesC::XercesC
     Catch2::Catch2WithMain
+    ${TEST_EXTRA_LIBS}
 )
 
 target_compile_features(proxy_tests PRIVATE cxx_std_${CMAKE_CXX_STANDARD})
