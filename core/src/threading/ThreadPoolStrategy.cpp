@@ -1,11 +1,11 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "MessageDispatcher.hpp"
+#include "backend/MessageView.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
 #include "core/handler/IHandler.hpp"
-#include "core/message/MessageView.hpp"
-#include "core/message/UdpMetadata.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -25,9 +25,9 @@ namespace {
         if (numWorkers <= 1) {
             return 0;
         }
-        auto optView = Core::Message::MessageView::from(rawPacket);
-        if (optView && optView->protocol() == Core::Message::ProtocolId::Udp) {
-            const auto* meta = optView->getMetadata<Core::Message::UdpMetadata>();
+        auto optView = Backend::MessageView::from(rawPacket);
+        if (optView && optView->protocol() == Backend::ProtocolId::Udp) {
+            const auto* meta = optView->getMetadata<Backend::UdpMetadata>();
             if (meta && meta->srcPort != 0) {
                 // FNV-1a style mix of channel index + client IP + client port to pin flow to a consistent worker
                 std::uint64_t hash = 14695981039346656037ULL ^ channelIdx;

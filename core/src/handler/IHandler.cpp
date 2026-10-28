@@ -1,8 +1,8 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/Borrow.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -39,15 +39,15 @@ std::size_t IHandler::inputChannelCount() const noexcept
     return m_inputChannels.size();
 }
 
-Message::MessageResult IHandler::onMessageReceived(std::string_view, const Message::MessageView&)
+::Backend::MessageResult IHandler::onMessageReceived(std::string_view, const Backend::MessageView&)
 {
-    return Message::Consumed { };
+    return ::Backend::Consumed { };
 }
 
 void IHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Message::MessageView> messages,
-    Common::Compat::span<Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<::Backend::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
@@ -55,7 +55,7 @@ void IHandler::onBatchReceived(
     }
 }
 
-void IHandler::processBatch(std::string_view channelName, Common::Compat::span<const Message::MessageView> messages)
+void IHandler::processBatch(std::string_view channelName, Common::Compat::span<const Backend::MessageView> messages)
 {
     auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
         "message_processing_duration_us", "Message transit and processing duration in microseconds");
@@ -69,7 +69,7 @@ void IHandler::processBatch(std::string_view channelName, Common::Compat::span<c
         }
     }
 
-    Common::Memory::SmallSpanBuffer<Message::MessageResult, 64> resultsBuffer(messages.size());
+    Common::Memory::SmallSpanBuffer<::Backend::MessageResult, 64> resultsBuffer(messages.size());
     auto resultsSpan = resultsBuffer.span(messages.size());
     onBatchReceived(channelName, messages, resultsSpan);
 

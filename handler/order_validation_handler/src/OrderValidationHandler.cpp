@@ -1,8 +1,8 @@
 #include "OrderValidationHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/serialization/xml/XmlSerializer.hpp"
 #include "log/Log.hpp"
 
@@ -893,13 +893,13 @@ bool OrderValidationHandler::validateOrderFast(const Proxy::Model::OrderView& or
     return true;
 }
 
-Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     auto order = parseOrder(message.payload());
     if (!order.has_value()) {
         Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to Order. Discarding.",
             channelName, message.payload().size());
-        return Core::Message::Dropped {
+        return Backend::Dropped {
             .reason = "Failed XML deserialization to Order",
             .errorCode = 400
         };
@@ -908,7 +908,7 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
     if (!validateOrder(*order)) {
         Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
             order->customer, order->item, order->quantity);
-        return Core::Message::Dropped {
+        return Backend::Dropped {
             .reason = "Failed domain business rules validation (customer/item/qty)",
             .errorCode = 422
         };
@@ -916,7 +916,7 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
 
     if (!m_cachedOutputChannel) {
         Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
-        return Core::Message::Dropped {
+        return Backend::Dropped {
             .reason = "No output channel available for forwarding",
             .errorCode = 500
         };
@@ -928,13 +928,13 @@ Core::Message::MessageResult OrderValidationHandler::onMessageReceived(std::stri
     if (!m_cachedOutputChannel->send(message.rawBuffer())) {
         Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", outputChannelName);
     }
-    return Core::Message::Forwarded { .channel = outputChannelName };
+    return Backend::Forwarded { .channel = outputChannelName };
 }
 
 void OrderValidationHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     if (messages.empty())
         return;
@@ -949,7 +949,7 @@ void OrderValidationHandler::onBatchReceived(
         if (!order.has_value()) {
             Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization. Discarding.",
                 channelName, msg.payload().size());
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "Failed XML deserialization to Order",
                 .errorCode = 400
             };
@@ -959,7 +959,7 @@ void OrderValidationHandler::onBatchReceived(
         if (!validateOrder(*order)) {
             Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
                 order->customer, order->item, order->quantity);
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "Failed domain business rules validation (customer/item/qty)",
                 .errorCode = 422
             };
@@ -968,9 +968,9 @@ void OrderValidationHandler::onBatchReceived(
 
         if (m_cachedOutputChannel) {
             spans[validCount++] = msg.rawBuffer();
-            outResults[i] = Core::Message::Forwarded { .channel = m_cachedOutputChannel->name() };
+            outResults[i] = Backend::Forwarded { .channel = m_cachedOutputChannel->name() };
         } else {
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "No output channel available for forwarding",
                 .errorCode = 500
             };

@@ -2,9 +2,9 @@
 
 #include "backend/IBackend.hpp"
 #include "backend/IConfig.hpp"
+#include "backend/MessageView.hpp"
 #include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <chrono>
 #include <condition_variable>
@@ -39,7 +39,7 @@ class BenchmarkReceiver : public Core::Handler::IHandler {
 public:
     BenchmarkReceiver(::Backend::IBackend& backend, std::size_t expectedCount);
 
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
     bool waitForCompletion(
         std::chrono::milliseconds timeout,

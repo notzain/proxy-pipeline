@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/IOutputChannel.hpp"
+#include "backend/MessageView.hpp"
+#include "backend/ProtocolId.hpp"
 #include "common/memory/ObserverPtr.hpp"
-#include "core/message/MessageView.hpp"
-#include "core/message/ProtocolId.hpp"
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -16,7 +16,7 @@ namespace MatchCriteria {
      * @brief Matches MessageView::protocol() against an expected ProtocolId.
      */
     struct Protocol {
-        Core::Message::ProtocolId expected;
+        Backend::ProtocolId expected;
     };
 
     /**
@@ -65,7 +65,7 @@ class RouteRule {
 public:
     RouteRule(RoutePattern pattern, std::string targetChannelName);
 
-    [[nodiscard]] bool matches(const Core::Message::MessageView& message) const noexcept;
+    [[nodiscard]] bool matches(const Backend::MessageView& message) const noexcept;
     [[nodiscard]] const std::string& targetChannelName() const noexcept;
     [[nodiscard]] Common::Memory::ObserverPtr<::Backend::IOutputChannel> targetChannel() const noexcept;
     void bindTargetChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept;

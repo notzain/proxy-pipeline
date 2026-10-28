@@ -6,7 +6,7 @@ The Proxy framework uses message envelopes to frame data across IPC channels, ne
 
 Historically:
 1. `EnvelopeHeader` was declared as a compiler-packed C++ struct (`#pragma pack(push, 1)`) and copied directly to/from memory via `std::memcpy` or pointer cast (`reinterpret_cast<const EnvelopeHeader*>`). This coupled the wire representation to host byte order and compiler packing behaviour.
-2. In-flight messages were represented by `Core::Message::MessageView` which assumed that all incoming messages begin with `EnvelopeHeader` (`EnvelopeMagic = 0x5058`).
+2. In-flight messages were represented by `Backend::MessageView` which assumed that all incoming messages begin with `EnvelopeHeader` (`EnvelopeMagic = 0x5058`).
 3. Future requirements dictate that:
    - The native Proxy envelope wire format must be specified with explicit endianness (network byte order / big-endian) and explicit field-by-field serialization/deserialization.
    - Handlers should consume messages through an interface that strictly exposes the application `payload` (plus transport attributes like `rawBuffer` and timestamps), without assuming every backend uses the Proxy envelope header.

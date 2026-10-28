@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Core::Message {
+namespace Backend {
 
 /**
  * @brief Network transport metadata captured by UDP Ingress and restored at UDP Egress.
@@ -22,4 +22,4 @@ struct alignas(4) UdpMetadata {
 
 static_assert(sizeof(UdpMetadata) == 48, "UdpMetadata must be exactly 48 bytes");
 
-} // namespace Core::Message
+} // namespace Backend

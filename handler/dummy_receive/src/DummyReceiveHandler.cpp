@@ -1,7 +1,7 @@
 #include "DummyReceiveHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
@@ -20,7 +20,7 @@ bool DummyReceiveHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult DummyReceiveHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult DummyReceiveHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     auto payload = message.payload();
     std::string textFormatted;
@@ -38,7 +38,7 @@ Core::Message::MessageResult DummyReceiveHandler::onMessageReceived(std::string_
 
     Proxy::Log::info("[DummyReceive] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[DummyReceive] Channel '{}' hex dump: {}", channelName, hexFormatted);
-    return Core::Message::Consumed { };
+    return Backend::Consumed { };
 }
 
 } // namespace Proxy::Handler

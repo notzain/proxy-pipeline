@@ -1,9 +1,9 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/ProtocolId.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/ProtocolId.hpp"
 #include "log/Log.hpp"
 #include <charconv>
 #include <unordered_map>
@@ -72,7 +72,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
             } else if (typeStr == "client_port" || typeStr == "port") {
                 patternVariant = MatchCriteria::ClientPort { static_cast<std::uint16_t>(numVal) };
             } else if (typeStr == "protocol") {
-                patternVariant = MatchCriteria::Protocol { static_cast<Core::Message::ProtocolId>(numVal) };
+                patternVariant = MatchCriteria::Protocol { static_cast<Backend::ProtocolId>(numVal) };
             } else if (typeStr == "default" || typeStr == "fallback") {
                 patternVariant = MatchCriteria::Fallback { };
             } else {
@@ -118,25 +118,25 @@ const std::vector<RouteRule>& RouteHandler::rules() const noexcept
     return m_rules;
 }
 
-Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult RouteHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     for (const auto& rule : m_rules) {
         if (rule.matches(message)) {
             auto target = rule.targetChannel();
             if (target) {
                 target->send(message.rawBuffer());
-                return Core::Message::Forwarded { .channel = rule.targetChannelName() };
+                return Backend::Forwarded { .channel = rule.targetChannelName() };
             }
         }
     }
 
     if (m_defaultOutputChannel) {
         m_defaultOutputChannel->send(message.rawBuffer());
-        return Core::Message::Forwarded { .channel = m_defaultOutputChannel->name() };
+        return Backend::Forwarded { .channel = m_defaultOutputChannel->name() };
     }
 
     Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
-    return Core::Message::Dropped {
+    return Backend::Dropped {
         .reason = "Matched no routing rule and no default channel configured",
         .errorCode = 404
     };
@@ -144,8 +144,8 @@ Core::Message::MessageResult RouteHandler::onMessageReceived(std::string_view ch
 
 void RouteHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     if (messages.empty())
         return;
@@ -178,10 +178,10 @@ void RouteHandler::onBatchReceived(
 
         if (destination) {
             buckets[destination].push_back(Common::Memory::ByteView(msg.rawBuffer()));
-            outResults[i] = Core::Message::Forwarded { .channel = destinationName };
+            outResults[i] = Backend::Forwarded { .channel = destinationName };
         } else {
             Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "Matched no routing rule and no default channel configured",
                 .errorCode = 404
             };

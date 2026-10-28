@@ -2,11 +2,11 @@
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/ProtocolId.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/ProtocolId.hpp"
-#include "core/message/UdpMetadata.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include <arpa/inet.h>
 #include <catch2/catch_test_macros.hpp>
@@ -26,7 +26,7 @@ public:
     bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
-        auto optView = Core::Message::MessageView::from(message);
+        auto optView = Backend::MessageView::from(message);
         std::string payloadStr;
         if (optView) {
             payloadStr = std::string(reinterpret_cast<const char*>(optView->payload().data()), optView->payload().size());
@@ -81,18 +81,18 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     SECTION("Single message routing")
     {
         std::string msg1 = "Hello VIP Customer";
-        auto env1 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg1));
-        auto view1 = Core::Message::MessageView::from(env1);
+        auto env1 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg1));
+        auto view1 = Backend::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
         std::string msg2 = "STD: Regular Customer";
-        auto env2 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg2));
-        auto view2 = Core::Message::MessageView::from(env2);
+        auto env2 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg2));
+        auto view2 = Backend::MessageView::from(env2);
         REQUIRE(view2.has_value());
 
         std::string msg3 = "Other message";
-        auto env3 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msg3));
-        auto view3 = Core::Message::MessageView::from(env3);
+        auto env3 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg3));
+        auto view3 = Backend::MessageView::from(env3);
         REQUIRE(view3.has_value());
 
         router.onMessageReceived("in", *view1);
@@ -116,24 +116,24 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string msgStd = "STD: Batch";
         std::string msgDef = "Default Fallback";
 
-        auto env1 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip1));
-        auto env2 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgStd));
-        auto env3 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip2));
-        auto env4 = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(msgDef));
+        auto env1 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip1));
+        auto env2 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgStd));
+        auto env3 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip2));
+        auto env4 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgDef));
 
-        std::vector<Core::Message::MessageView> batch = {
-            *Core::Message::MessageView::from(env1),
-            *Core::Message::MessageView::from(env2),
-            *Core::Message::MessageView::from(env3),
-            *Core::Message::MessageView::from(env4)
+        std::vector<Backend::MessageView> batch = {
+            *Backend::MessageView::from(env1),
+            *Backend::MessageView::from(env2),
+            *Backend::MessageView::from(env3),
+            *Backend::MessageView::from(env4)
         };
 
-        std::array<Core::Message::MessageResult, 4> results;
+        std::array<Backend::MessageResult, 4> results;
         router.onBatchReceived("in", batch, results);
-        CHECK(std::get<Core::Message::Forwarded>(results[0]).channel == "vip_out");
-        CHECK(std::get<Core::Message::Forwarded>(results[1]).channel == "std_out");
-        CHECK(std::get<Core::Message::Forwarded>(results[2]).channel == "vip_out");
-        CHECK(std::get<Core::Message::Forwarded>(results[3]).channel == "def_out");
+        CHECK(std::get<Backend::Forwarded>(results[0]).channel == "vip_out");
+        CHECK(std::get<Backend::Forwarded>(results[1]).channel == "std_out");
+        CHECK(std::get<Backend::Forwarded>(results[2]).channel == "vip_out");
+        CHECK(std::get<Backend::Forwarded>(results[3]).channel == "def_out");
 
         REQUIRE(vipPtr->sentPayloads.size() == 2);
         CHECK(vipPtr->sentPayloads[0] == "VIP 1");
@@ -157,16 +157,16 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         portRule.bindTargetChannel(portPtr);
         portRouter.addRule(std::move(portRule));
 
-        Core::Message::UdpMetadata meta;
+        Backend::UdpMetadata meta;
         meta.srcPort = htons(9050);
         meta.dstPort = htons(8080);
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "Datagram from 9050";
-        auto env = Core::Message::MessageEnvelope::packUdp(
+        auto env = Backend::MessageEnvelope::packUdp(
             meta,
             Common::Memory::ByteView(payload));
-        auto view = Core::Message::MessageView::from(env);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
         portRouter.onMessageReceived("udp_in", *view);

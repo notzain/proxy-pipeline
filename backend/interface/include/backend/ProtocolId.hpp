@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Core::Message {
+namespace Backend {
 
 /**
  * @brief Identifies the network or application protocol carried in the envelope.
@@ -14,4 +14,4 @@ enum class ProtocolId : std::uint8_t {
     Mqtt = 3 ///< MQTT pub/sub message with MqttMetadata
 };
 
-} // namespace Core::Message
+} // namespace Backend

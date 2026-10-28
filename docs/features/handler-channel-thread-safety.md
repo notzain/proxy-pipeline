@@ -34,12 +34,12 @@ enabling serialized access:
 ```cpp
 std::atomic<std::size_t> received { 0 };
 
-Core::Message::MessageResult onMessageReceived(
+Backend::MessageResult onMessageReceived(
     std::string_view,
-    const Core::Message::MessageView&) override
+    const Backend::MessageView&) override
 {
     received.fetch_add(1, std::memory_order_relaxed);
-    return Core::Message::Consumed {};
+    return Backend::Consumed {};
 }
 ```
 

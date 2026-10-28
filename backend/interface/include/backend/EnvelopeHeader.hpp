@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/message/ProtocolId.hpp"
+#include "backend/ProtocolId.hpp"
 #include <cstdint>
 
-namespace Core::Message {
+namespace Backend {
 
 inline constexpr std::uint16_t EnvelopeMagic = 0x5058; // 'PX' (Proxy eXchange)
 inline constexpr std::uint8_t EnvelopeVersion = 1;
@@ -24,4 +24,4 @@ struct EnvelopeHeader {
 
 static_assert(sizeof(EnvelopeHeader) == 18, "EnvelopeHeader must be exactly 18 bytes packed");
 
-} // namespace Core::Message
+} // namespace Backend

@@ -1,6 +1,6 @@
 #include "RouteRule.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "common/compat/StringView.hpp"
-#include "core/message/UdpMetadata.hpp"
 #include <arpa/inet.h>
 #include <cstring>
 #include <string_view>
@@ -13,7 +13,7 @@ namespace {
      * @brief Matcher visitor providing pattern matching semantics analogous to Rust's `match`.
      */
     struct PatternMatcher {
-        const Core::Message::MessageView& message;
+        const Backend::MessageView& message;
 
         bool operator()(const MatchCriteria::Protocol& c) const noexcept
         {
@@ -48,7 +48,7 @@ namespace {
 
         bool operator()(const MatchCriteria::ClientPort& c) const noexcept
         {
-            const auto* udpMeta = message.getMetadata<Core::Message::UdpMetadata>();
+            const auto* udpMeta = message.getMetadata<Backend::UdpMetadata>();
             if (!udpMeta) {
                 return false;
             }
@@ -70,7 +70,7 @@ RouteRule::RouteRule(RoutePattern pattern, std::string targetChannelName)
 {
 }
 
-bool RouteRule::matches(const Core::Message::MessageView& message) const noexcept
+bool RouteRule::matches(const Backend::MessageView& message) const noexcept
 {
     return std::visit(PatternMatcher { message }, m_pattern);
 }

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace Core::Message::Wire {
+namespace Common::IO::Wire {
 
 inline void writeUint16Be(std::byte* dst, std::uint16_t value) noexcept
 {
@@ -48,4 +48,4 @@ inline void writeUint64Be(std::byte* dst, std::uint64_t value) noexcept
     return (static_cast<std::uint64_t>(src[0]) << 56) | (static_cast<std::uint64_t>(src[1]) << 48) | (static_cast<std::uint64_t>(src[2]) << 40) | (static_cast<std::uint64_t>(src[3]) << 32) | (static_cast<std::uint64_t>(src[4]) << 24) | (static_cast<std::uint64_t>(src[5]) << 16) | (static_cast<std::uint64_t>(src[6]) << 8) | static_cast<std::uint64_t>(src[7]);
 }
 
-} // namespace Core::Message::Wire
+} // namespace Common::IO::Wire

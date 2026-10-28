@@ -25,7 +25,7 @@ public:
      * @param channelName Name of the channel.
      * @param buffer Non-owning view of the raw byte buffer received.
      */
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 };
 
 } // namespace Proxy::Handler

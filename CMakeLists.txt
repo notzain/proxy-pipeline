@@ -40,6 +40,7 @@ add_subdirectory(core)
 
 # In-process transport backend (in-tree)
 add_subdirectory(backend/inproc)
+add_subdirectory(backend/vendor)
 
 # Discover backends through Conan dependency graph
 proxy_discover_backends()

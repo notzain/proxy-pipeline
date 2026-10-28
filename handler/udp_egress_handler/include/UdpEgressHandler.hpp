@@ -54,15 +54,15 @@ public:
      * @brief Ingress callback for enveloped messages received from the internal pipeline.
      * Restores client destination from UdpMetadata and transmits message.payload() via UDP.
      */
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
     /**
      * @brief Vectorized ingress callback for batches of enveloped messages.
      */
     void onBatchReceived(
         std::string_view channelName,
-        Common::Compat::span<const Core::Message::MessageView> messages,
-        Common::Compat::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<Backend::MessageResult> outResults) override;
 
 private:
     std::unique_ptr<Core::Net::UdpOutputChannel> m_udpOut;

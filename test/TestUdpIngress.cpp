@@ -3,11 +3,11 @@
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/HandlerRunner.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "core/net/UdpOutputChannel.hpp"
 #include <arpa/inet.h>
@@ -167,18 +167,18 @@ public:
 
 } // namespace
 
-TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", "[message][envelope]")
+TEST_CASE("Backend::MessageEnvelope and MessageView serialize and parse", "[message][envelope]")
 {
     std::string testPayload = "<order><item>Widget</item></order>";
     Common::Memory::ByteView payloadSpan(testPayload);
 
     SECTION("Pack raw envelope")
     {
-        auto env = Core::Message::MessageEnvelope::packRaw(payloadSpan);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(payloadSpan);
+        auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Core::Message::ProtocolId::Raw);
+        CHECK(view->protocol() == Backend::ProtocolId::Raw);
         CHECK(view->metadata().empty());
         CHECK(view->payload().size() == testPayload.size());
 
@@ -188,19 +188,19 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
 
     SECTION("Pack UDP envelope with metadata")
     {
-        Core::Message::UdpMetadata meta { };
+        Backend::UdpMetadata meta { };
         meta.srcIp = 0x0100007F; // 127.0.0.1
         meta.srcPort = htons(54321);
         meta.dstIp = 0x0100007F;
         meta.dstPort = htons(9123);
 
-        auto env = Core::Message::MessageEnvelope::packUdp(meta, payloadSpan);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packUdp(meta, payloadSpan);
+        auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Core::Message::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::ProtocolId::Udp);
 
-        const auto* parsedMeta = view->getMetadata<Core::Message::UdpMetadata>();
+        const auto* parsedMeta = view->getMetadata<Backend::UdpMetadata>();
         REQUIRE(parsedMeta != nullptr);
         CHECK(parsedMeta->srcPort == htons(54321));
         CHECK(parsedMeta->dstPort == htons(9123));
@@ -211,21 +211,21 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
 
     SECTION("Mutate payload using withPayload")
     {
-        Core::Message::UdpMetadata meta { };
+        Backend::UdpMetadata meta { };
         meta.srcPort = htons(1122);
-        auto env = Core::Message::MessageEnvelope::packUdp(meta, payloadSpan);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packUdp(meta, payloadSpan);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
         std::string updatedPayload = "<order><item>SuperWidget</item><qty>10</qty></order>";
         Common::Memory::ByteView updatedSpan(updatedPayload);
 
-        auto mutatedEnv = Core::Message::MessageEnvelope::withPayload(*view, updatedSpan);
-        auto mutatedView = Core::Message::MessageView::from(mutatedEnv);
+        auto mutatedEnv = Backend::MessageEnvelope::withPayload(*view, updatedSpan);
+        auto mutatedView = Backend::MessageView::from(mutatedEnv);
 
         REQUIRE(mutatedView.has_value());
-        CHECK(mutatedView->protocol() == Core::Message::ProtocolId::Udp);
-        CHECK(mutatedView->getMetadata<Core::Message::UdpMetadata>()->srcPort == htons(1122));
+        CHECK(mutatedView->protocol() == Backend::ProtocolId::Udp);
+        CHECK(mutatedView->getMetadata<Backend::UdpMetadata>()->srcPort == htons(1122));
 
         std::string_view parsedMutated(reinterpret_cast<const char*>(mutatedView->payload().data()), mutatedView->payload().size());
         CHECK(parsedMutated == updatedPayload);
@@ -252,9 +252,9 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
         };
 
         auto wireSpan = Common::Compat::as_bytes(Common::Compat::span<const std::uint8_t, 23>(goldenWire));
-        auto view = Core::Message::MessageView::from(wireSpan);
+        auto view = Backend::MessageView::from(wireSpan);
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Core::Message::ProtocolId::Raw);
+        CHECK(view->protocol() == Backend::ProtocolId::Raw);
         CHECK(view->metadata().empty());
         CHECK(view->payload().size() == 5);
         CHECK(view->timestampNs() == 0x0102030405060708ULL);
@@ -262,7 +262,7 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
         CHECK(payloadStr == "Hello");
 
         // Verify packing produces identical bytes
-        std::vector<std::byte> packed = Core::Message::MessageEnvelope::packRaw(
+        std::vector<std::byte> packed = Backend::MessageEnvelope::packRaw(
             view->payload(),
             0x0102030405060708ULL);
         REQUIRE(packed.size() == goldenWire.size());
@@ -278,7 +278,7 @@ TEST_CASE("Core::Message::MessageEnvelope and MessageView serialize and parse", 
         Common::Memory::ByteView payload(customPayload);
 
         // Custom backend creates a MessageView directly wrapping its payload and raw frame
-        Core::Message::MessageView customView(payload);
+        Backend::MessageView customView(payload);
         CHECK(customView.payload().size() == customPayload.size());
         CHECK(customView.rawBuffer().size() == customPayload.size());
         std::string_view extracted(reinterpret_cast<const char*>(customView.payload().data()), customView.payload().size());
@@ -305,11 +305,11 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
 
         REQUIRE(receiveResult.hasValue());
         REQUIRE(receiveResult.value() > expectedPayload.size());
-        auto view = Core::Message::MessageView::from(Common::Memory::ByteView(buffer.data(), receiveResult.value()));
+        auto view = Backend::MessageView::from(Common::Memory::ByteView(buffer.data(), receiveResult.value()));
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Core::Message::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::ProtocolId::Udp);
 
-        const auto* meta = view->getMetadata<Core::Message::UdpMetadata>();
+        const auto* meta = view->getMetadata<Backend::UdpMetadata>();
         REQUIRE(meta != nullptr);
         CHECK(ntohs(meta->dstPort) == testPort);
 
@@ -372,10 +372,10 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
         const auto& sentMessages = backend.m_lastCreatedOutput->getSentMessages();
         REQUIRE(sentMessages.size() >= 1);
 
-        auto view = Core::Message::MessageView::from(Common::Memory::ByteView(sentMessages.front()));
+        auto view = Backend::MessageView::from(Common::Memory::ByteView(sentMessages.front()));
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Core::Message::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::ProtocolId::Udp);
         std::string_view payloadStr(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
         CHECK(payloadStr == testOrder);
     }
@@ -398,13 +398,13 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     std::uint16_t clientPort = ntohs(clientAddr.sin_port);
 
     // Pack an envelope addressed to this client
-    Core::Message::UdpMetadata meta { };
+    Backend::UdpMetadata meta { };
     meta.srcIp = htonl(INADDR_LOOPBACK);
     meta.srcPort = clientAddr.sin_port;
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt status=\"confirmed\"/>";
-    auto envelope = Core::Message::MessageEnvelope::packUdp(
+    auto envelope = Backend::MessageEnvelope::packUdp(
         meta,
         Common::Memory::ByteView(expectedPayload));
 
@@ -458,14 +458,14 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     socklen_t addrLen = sizeof(clientAddr);
     REQUIRE(::getsockname(clientFd, reinterpret_cast<sockaddr*>(&clientAddr), &addrLen) == 0);
 
-    Core::Message::UdpMetadata meta { };
+    Backend::UdpMetadata meta { };
     meta.addressFamily = 6;
     std::memcpy(meta.srcIpv6, &clientAddr.sin6_addr, sizeof(meta.srcIpv6));
     meta.srcPort = clientAddr.sin6_port;
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
-    auto envelope = Core::Message::MessageEnvelope::packUdp(
+    auto envelope = Backend::MessageEnvelope::packUdp(
         meta,
         Common::Memory::ByteView(expectedPayload));
 

@@ -1,8 +1,8 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <utility>
@@ -53,7 +53,7 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult MergeHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
     Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
@@ -66,18 +66,18 @@ Core::Message::MessageResult MergeHandler::onMessageReceived(std::string_view ch
     } else {
         Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", outName);
     }
-    return Core::Message::Forwarded { .channel = outName };
+    return Backend::Forwarded { .channel = outName };
 }
 
 void MergeHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
-        outResults[i] = Core::Message::Forwarded { .channel = outName };
+        outResults[i] = Backend::Forwarded { .channel = outName };
     }
     if (messages.empty())
         return;

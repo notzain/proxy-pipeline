@@ -1,5 +1,5 @@
 #include "MessageDispatcher.hpp"
-#include "core/message/MessageView.hpp"
+#include "backend/MessageView.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <array>
@@ -20,12 +20,12 @@ void dispatchReceivedBatch(
     static auto& s_droppedCounter = Telemetry::MetricsRegistry::instance().counter(
         "messages_dropped_total", "Total malformed messages dropped");
 
-    std::array<Message::MessageView, 16> views;
+    std::array<Backend::MessageView, 16> views;
     std::size_t validViews = 0;
     std::size_t batchBytes = 0;
 
     for (const auto rawMessage : rawMessages) {
-        auto optView = Message::MessageView::from(rawMessage);
+        auto optView = Backend::MessageView::from(rawMessage);
         if (!optView) {
             ++invalidEnvelopeCount;
             s_droppedCounter.increment();
@@ -47,7 +47,7 @@ void dispatchReceivedBatch(
     s_msgCounter.increment(validViews);
     s_bytesCounter.increment(batchBytes);
 
-    const auto messages = Common::Compat::span<const Message::MessageView>(views.data(), validViews);
+    const auto messages = Common::Compat::span<const Backend::MessageView>(views.data(), validViews);
     if (handlerMutex) {
         std::lock_guard lock(*handlerMutex);
         handler.processBatch(channelName, messages);

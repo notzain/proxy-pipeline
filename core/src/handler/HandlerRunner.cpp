@@ -3,6 +3,7 @@
 #include "core/telemetry/StatsDExporter.hpp"
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "core/threading/SequentialStrategy.hpp"
+#include "core/threading/SimpleExecutionStrategy.hpp"
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
 #include <atomic>
@@ -72,7 +73,9 @@ void HandlerRunner::setExecutionModel(const ExecutionModel& model)
 {
     std::visit([this](const auto& m) {
         using T = std::decay_t<decltype(m)>;
-        if constexpr (std::is_same_v<T, SequentialModel>) {
+        if constexpr (std::is_same_v<T, SimpleModel>) {
+            m_strategy = std::make_unique<Threading::SimpleExecutionStrategy>();
+        } else if constexpr (std::is_same_v<T, SequentialModel>) {
             m_strategy = std::make_unique<Threading::SequentialStrategy>();
         } else if constexpr (std::is_same_v<T, ThreadPoolModel>) {
             m_strategy = std::make_unique<Threading::ThreadPoolStrategy>(

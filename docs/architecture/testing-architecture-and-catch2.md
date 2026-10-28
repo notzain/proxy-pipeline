@@ -118,8 +118,8 @@ Instead of spinning up physical network sockets, handlers are tested in-memory b
 #include <catch2/catch_test_macros.hpp>
 #include "handler/order_validation_handler/OrderValidationHandler.hpp"
 #include "core/simulation/SimulationBackend.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 
 TEST_CASE("OrderValidationHandler rejects malformed orders", "[handler][order]")
 {
@@ -133,16 +133,16 @@ TEST_CASE("OrderValidationHandler rejects malformed orders", "[handler][order]")
 
     // Construct an invalid raw payload (negative price)
     std::string invalidXml = "<Order><orderId>1</orderId><price>-5.0</price><quantity>10</quantity><symbol>AAPL</symbol></Order>";
-    auto envelope = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(invalidXml));
+    auto envelope = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(invalidXml));
 
-    auto view = Core::Message::MessageView::from(envelope);
+    auto view = Backend::MessageView::from(envelope);
     REQUIRE(view.has_value());
 
     // Process message and assert outcome
     auto result = handler.onMessageReceived("orders_in", *view);
-    REQUIRE(std::holds_alternative<Core::Message::Dropped>(result));
+    REQUIRE(std::holds_alternative<Backend::Dropped>(result));
     
-    auto dropped = std::get<Core::Message::Dropped>(result);
+    auto dropped = std::get<Backend::Dropped>(result);
     CHECK(dropped.reason.find("price") != std::string::npos);
 }
 ```

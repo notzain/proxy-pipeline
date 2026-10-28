@@ -1,9 +1,9 @@
 #include "UdpEgressHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
+#include "backend/MessageView.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
-#include "core/message/UdpMetadata.hpp"
 #include "core/net/UdpOutputChannel.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
@@ -45,16 +45,16 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     if (!m_udpOut) {
-        return Core::Message::Consumed { };
+        return Backend::Consumed { };
     }
 
     auto payload = message.payload();
 
-    if (m_replyToOrigin && message.protocol() == Core::Message::ProtocolId::Udp) {
-        const auto* meta = message.getMetadata<Core::Message::UdpMetadata>();
+    if (m_replyToOrigin && message.protocol() == Backend::ProtocolId::Udp) {
+        const auto* meta = message.getMetadata<Backend::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
             const auto originAddr = (meta->addressFamily == 6)
                 ? ::Backend::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)
@@ -68,7 +68,7 @@ Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_vie
             if (!m_udpOut->sendTo(payload, originAddr)) {
                 Proxy::Log::warn("[UdpEgressHandler] Failed to send reply to origin client {}", originAddr.toString());
             }
-            return Core::Message::Consumed { };
+            return Backend::Consumed { };
         }
     }
 
@@ -79,13 +79,13 @@ Core::Message::MessageResult UdpEgressHandler::onMessageReceived(std::string_vie
     if (!m_udpOut->send(payload)) {
         Proxy::Log::warn("[UdpEgressHandler] Failed to forward packet to {}:{}", m_destHost, m_destPort);
     }
-    return Core::Message::Consumed { };
+    return Backend::Consumed { };
 }
 
 void UdpEgressHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {

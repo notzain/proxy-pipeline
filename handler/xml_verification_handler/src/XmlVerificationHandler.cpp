@@ -1,9 +1,9 @@
 #include "XmlVerificationHandler.hpp"
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 
 namespace Proxy::Handler {
@@ -68,12 +68,12 @@ bool XmlVerificationHandler::validate(Common::Compat::span<const std::byte> xmlD
     return m_validator && m_validator->validate(xmlData);
 }
 
-Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult XmlVerificationHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     if (validate(message.payload())) {
         if (!m_outputChannel) {
             Proxy::Log::warn("[XmlVerificationHandler] No output channel is available for forwarding");
-            return Core::Message::Dropped {
+            return Backend::Dropped {
                 .reason = "No output channel available for forwarding",
                 .errorCode = 500
             };
@@ -84,12 +84,12 @@ Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::stri
         if (!m_outputChannel->send(message.rawBuffer())) {
             Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", outputChannelName);
         }
-        return Core::Message::Forwarded { .channel = outputChannelName };
+        return Backend::Forwarded { .channel = outputChannelName };
     }
 
     Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
         channelName, message.payload().size(), m_schemaPath.string());
-    return Core::Message::Dropped {
+    return Backend::Dropped {
         .reason = "Rejected: XSD schema validation failure",
         .errorCode = 400
     };
@@ -97,8 +97,8 @@ Core::Message::MessageResult XmlVerificationHandler::onMessageReceived(std::stri
 
 void XmlVerificationHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     if (messages.empty())
         return;
@@ -112,9 +112,9 @@ void XmlVerificationHandler::onBatchReceived(
         if (validate(msg.payload())) {
             if (m_outputChannel) {
                 spans[validCount++] = msg.rawBuffer();
-                outResults[i] = Core::Message::Forwarded { .channel = m_outputChannel->name() };
+                outResults[i] = Backend::Forwarded { .channel = m_outputChannel->name() };
             } else {
-                outResults[i] = Core::Message::Dropped {
+                outResults[i] = Backend::Dropped {
                     .reason = "No output channel available for forwarding",
                     .errorCode = 500
                 };
@@ -122,7 +122,7 @@ void XmlVerificationHandler::onBatchReceived(
         } else {
             Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
                 channelName, msg.payload().size(), m_schemaPath.string());
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "Rejected: XSD schema validation failure",
                 .errorCode = 400
             };

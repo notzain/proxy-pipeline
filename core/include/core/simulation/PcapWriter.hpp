@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common/compat/Span.hpp"
-#include "core/simulation/PcapFormat.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <fstream>

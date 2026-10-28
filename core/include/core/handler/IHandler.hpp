@@ -13,17 +13,14 @@
 #include <type_traits>
 #include <vector>
 
+#include "backend/MessageResult.hpp"
 #include "core/handler/HandlerTraits.hpp"
-#include "core/message/MessageResult.hpp"
 
 namespace Backend {
 class IConfig;
 class IBackend;
-} // namespace Backend
-
-namespace Core::Message {
 class MessageView;
-} // namespace Core::Message
+} // namespace Backend
 
 namespace Core::Handler {
 
@@ -106,7 +103,7 @@ public:
      * @param message Validated non-owning view of the envelope, metadata, and payload.
      * @return MessageResult Strongly-typed result (Forwarded, Consumed, or Dropped).
      */
-    [[nodiscard]] virtual Message::MessageResult onMessageReceived(std::string_view channelName, const Message::MessageView& message);
+    [[nodiscard]] virtual ::Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message);
 
     /**
      * @brief Ingress callback invoked when a batch of enveloped messages has been received on an input channel.
@@ -120,8 +117,8 @@ public:
      */
     virtual void onBatchReceived(
         std::string_view channelName,
-        Common::Compat::span<const Message::MessageView> messages,
-        Common::Compat::span<Message::MessageResult> outResults);
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<::Backend::MessageResult> outResults);
 
     /**
      * @brief Dispatches a received batch of messages to the handler.
@@ -133,7 +130,7 @@ public:
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.
      */
-    void processBatch(std::string_view channelName, Common::Compat::span<const Message::MessageView> messages);
+    void processBatch(std::string_view channelName, Common::Compat::span<const Backend::MessageView> messages);
 
     // --- Output Channel Management (Egress) ---
 

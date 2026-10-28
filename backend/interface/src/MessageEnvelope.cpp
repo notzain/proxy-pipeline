@@ -1,10 +1,10 @@
-#include "core/message/MessageEnvelope.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "common/io/WireFormat.hpp"
 #include "common/memory/ByteView.hpp"
-#include "core/message/WireFormat.hpp"
 #include <chrono>
 #include <cstring>
 
-namespace Core::Message {
+namespace Backend {
 
 namespace {
 
@@ -31,14 +31,14 @@ std::size_t MessageEnvelope::packInto(
     }
 
     std::byte* dst = destination.data();
-    Wire::writeUint16Be(dst, EnvelopeMagic);
+    Common::IO::Wire::writeUint16Be(dst, EnvelopeMagic);
     dst[2] = static_cast<std::byte>(EnvelopeVersion);
     dst[3] = static_cast<std::byte>(protocol);
-    Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
-    Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
+    Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
+    Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
 
     std::uint64_t ts = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
-    Wire::writeUint64Be(dst + 10, ts);
+    Common::IO::Wire::writeUint64Be(dst + 10, ts);
 
     if (!metadata.empty()) {
         std::memcpy(dst + sizeof(EnvelopeHeader), metadata.data(), metadata.size());
@@ -84,4 +84,4 @@ std::vector<std::byte> MessageEnvelope::withPayload(
     return pack(view.protocol(), view.metadata(), newPayload, view.timestampNs());
 }
 
-} // namespace Core::Message
+} // namespace Backend

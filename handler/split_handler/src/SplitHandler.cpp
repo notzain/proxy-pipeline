@@ -1,8 +1,8 @@
 #include "SplitHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <sstream>
 #include <string>
@@ -53,7 +53,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult SplitHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
         channelName, message.payload().size());
@@ -64,17 +64,17 @@ Core::Message::MessageResult SplitHandler::onMessageReceived(std::string_view ch
         }
     }
     Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
-    return Core::Message::Forwarded { .channel = m_outputChannelsStr };
+    return Backend::Forwarded { .channel = m_outputChannelsStr };
 }
 
 void SplitHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
-        outResults[i] = Core::Message::Forwarded { .channel = m_outputChannelsStr };
+        outResults[i] = Backend::Forwarded { .channel = m_outputChannelsStr };
     }
     if (messages.empty())
         return;

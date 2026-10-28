@@ -43,7 +43,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param buffer Byte buffer of the message payload.
      */
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
     /**
      * @brief Batch ingress callback for incoming messages.
@@ -54,8 +54,8 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        Common::Compat::span<const Core::Message::MessageView> messages,
-        Common::Compat::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<Backend::MessageResult> outResults) override;
 
     /**
      * @brief Deserializes an XML buffer into an Order model.

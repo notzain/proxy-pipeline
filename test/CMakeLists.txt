@@ -40,6 +40,7 @@ target_link_libraries(proxy_tests PRIVATE
     backend-socket
     backend-uds
     backend-shm
+    backend-vendor
     proxylog::proxylog
     LibXml2::LibXml2
     XercesC::XercesC

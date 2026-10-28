@@ -1,15 +1,15 @@
 #pragma once
 
+#include "backend/EnvelopeHeader.hpp"
+#include "backend/MessageView.hpp"
+#include "backend/ProtocolId.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
-#include "core/message/EnvelopeHeader.hpp"
-#include "core/message/MessageView.hpp"
-#include "core/message/ProtocolId.hpp"
-#include "core/message/UdpMetadata.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
-namespace Core::Message {
+namespace Backend {
 
 /**
  * @brief Factory and serializer for constructing valid binary Envelope buffers.
@@ -75,4 +75,4 @@ public:
         Common::Compat::span<const std::byte> newPayload);
 };
 
-} // namespace Core::Message
+} // namespace Backend

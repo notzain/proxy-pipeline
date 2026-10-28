@@ -52,7 +52,7 @@ public:
      * @param channelName Name of the channel that received the message.
      * @param message Validated view of the received enveloped message.
      */
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
     /**
      * @brief Vectorized ingress callback populating per-message outcomes.
@@ -63,8 +63,8 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        Common::Compat::span<const Core::Message::MessageView> messages,
-        Common::Compat::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<Backend::MessageResult> outResults) override;
 
     /**
      * @brief Validates an XML byte buffer against the loaded schema.

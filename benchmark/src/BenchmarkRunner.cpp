@@ -10,7 +10,7 @@ BenchmarkReceiver::BenchmarkReceiver(::Backend::IBackend& backend, std::size_t e
     m_receiveTimestamps.reserve(m_expectedCount);
 }
 
-Core::Message::MessageResult BenchmarkReceiver::onMessageReceived(std::string_view, const Core::Message::MessageView& message)
+Backend::MessageResult BenchmarkReceiver::onMessageReceived(std::string_view, const Backend::MessageView& message)
 {
     {
         std::lock_guard lock(m_mutex);
@@ -21,7 +21,7 @@ Core::Message::MessageResult BenchmarkReceiver::onMessageReceived(std::string_vi
     if (m_receiveTimestamps.size() >= m_expectedCount) {
         m_cv.notify_all();
     }
-    return Core::Message::Consumed { };
+    return Backend::Consumed { };
 }
 
 bool BenchmarkReceiver::waitForCompletion(std::chrono::milliseconds timeout, std::chrono::milliseconds idleDrainTimeout)

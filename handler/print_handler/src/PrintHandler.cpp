@@ -1,7 +1,7 @@
 #include "PrintHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/MessageView.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <cctype>
 #include <fmt/core.h>
@@ -21,7 +21,7 @@ bool PrintHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult PrintHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     auto payload = message.payload();
     std::string textFormatted;
@@ -39,13 +39,13 @@ Core::Message::MessageResult PrintHandler::onMessageReceived(std::string_view ch
 
     Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
     Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
-    return Core::Message::Consumed { };
+    return Backend::Consumed { };
 }
 
 void PrintHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     Proxy::Log::info("[PrintHandler] Channel '{}' received batch of {} message(s)", channelName, messages.size());
     const auto count = std::min(messages.size(), outResults.size());

@@ -1,4 +1,5 @@
 #include "core/simulation/PcapWriter.hpp"
+#include "core/simulation/PcapFormat.hpp"
 #include <arpa/inet.h>
 #include <cstring>
 #include <vector>

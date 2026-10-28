@@ -31,7 +31,7 @@ public:
      * @param channelName Name of the input channel that received the message.
      * @param message Enveloped message view.
      */
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override;
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
     /**
      * @brief Callback invoked when a batch of messages arrives on any registered input channel.
@@ -42,8 +42,8 @@ public:
      */
     void onBatchReceived(
         std::string_view channelName,
-        Common::Compat::span<const Core::Message::MessageView> messages,
-        Common::Compat::span<Core::Message::MessageResult> outResults) override;
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<Backend::MessageResult> outResults) override;
 
 private:
     Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_outputChannel;

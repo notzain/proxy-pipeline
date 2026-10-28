@@ -7,6 +7,9 @@ namespace Core::Handler {
 ExecutionModel parseExecutionModel(const ::Backend::IConfig& config)
 {
     std::string modelName = config.getOr<std::string>("execution.model", config.getOr<std::string>("execution_model", "dedicated"));
+    if (modelName == "simple") {
+        return SimpleModel { };
+    }
     if (modelName == "sequential" || modelName == "single") {
         return SequentialModel { };
     }

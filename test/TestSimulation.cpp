@@ -1,9 +1,9 @@
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/simulation/MockInputChannel.hpp"
 #include "core/simulation/MockOutputChannel.hpp"
 #include "core/simulation/PcapFormat.hpp"
@@ -168,13 +168,13 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
             return true;
         }
 
-        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& msg) override
+        Backend::MessageResult onMessageReceived(std::string_view, const Backend::MessageView& msg) override
         {
             if (out) {
                 out->send(msg.payload());
-                return Core::Message::Forwarded { .channel = "egress" };
+                return Backend::Forwarded { .channel = "egress" };
             }
-            return Core::Message::Consumed { };
+            return Backend::Consumed { };
         }
     };
 
@@ -190,7 +190,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
     // Push envelope into ingress
     std::string payload = "Deterministic Sim Payload";
-    auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), 100'000ULL);
+    auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), 100'000ULL);
     inCh->pushMessage(env, 100'000ULL);
 
     // Run handler asynchronously to process message
@@ -224,12 +224,12 @@ TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[s
 
         void onBatchReceived(
             std::string_view,
-            Common::Compat::span<const Core::Message::MessageView> messages,
-            Common::Compat::span<Core::Message::MessageResult> outResults) override
+            Common::Compat::span<const Backend::MessageView> messages,
+            Common::Compat::span<Backend::MessageResult> outResults) override
         {
             if (outResults.size() >= 2) {
-                outResults[0] = Core::Message::Forwarded { .channel = "accepted" };
-                outResults[1] = Core::Message::Dropped {
+                outResults[0] = Backend::Forwarded { .channel = "accepted" };
+                outResults[1] = Backend::Dropped {
                     .reason = "invalid test message",
                     .errorCode = 400
                 };
@@ -240,13 +240,13 @@ TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[s
     BatchResultHandler handler(backend);
     std::string firstPayload = "valid";
     std::string secondPayload = "invalid";
-    auto firstEnvelope = Core::Message::MessageEnvelope::packRaw(
+    auto firstEnvelope = Backend::MessageEnvelope::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(firstPayload.data(), firstPayload.size())));
-    auto secondEnvelope = Core::Message::MessageEnvelope::packRaw(
+    auto secondEnvelope = Backend::MessageEnvelope::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(secondPayload.data(), secondPayload.size())));
-    std::array<Core::Message::MessageView, 2> messages {
-        *Core::Message::MessageView::from(firstEnvelope),
-        *Core::Message::MessageView::from(secondEnvelope)
+    std::array<Backend::MessageView, 2> messages {
+        *Backend::MessageView::from(firstEnvelope),
+        *Backend::MessageView::from(secondEnvelope)
     };
 
     handler.processBatch("input", messages);

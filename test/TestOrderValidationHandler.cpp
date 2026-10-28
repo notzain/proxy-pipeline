@@ -1,8 +1,8 @@
 #include "OrderValidationHandler.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -22,7 +22,7 @@ public:
 
     bool send(Common::Compat::span<const std::byte> message) override
     {
-        auto optView = Core::Message::MessageView::from(message);
+        auto optView = Backend::MessageView::from(message);
         std::string str = optView
             ? std::string(reinterpret_cast<const char*>(optView->payload().data()), optView->payload().size())
             : std::string(reinterpret_cast<const char*>(message.data()), message.size());
@@ -114,8 +114,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedXercesSax->item == "Widget-Pro");
         CHECK(parsedXercesSax->quantity == 42);
 
-        auto env = Core::Message::MessageEnvelope::packRaw(span);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(span);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
         REQUIRE(mockOutPtr->sentMessages().size() == 1);
@@ -130,8 +130,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
 
-        auto env = Core::Message::MessageEnvelope::packRaw(span);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(span);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
         CHECK(mockOutPtr->sentMessages().empty());
@@ -143,8 +143,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
 
-        auto env = Core::Message::MessageEnvelope::packRaw(span);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(span);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
         CHECK(mockOutPtr->sentMessages().empty());
@@ -194,8 +194,8 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         std::string invalidOrderXml = "<order><customer>A</customer><item>Widget</item><quantity>5</quantity></order>";
         Common::Memory::ByteView span(invalidOrderXml);
 
-        auto env = Core::Message::MessageEnvelope::packRaw(span);
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(span);
+        auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
         CHECK(mockOutPtr->sentMessages().empty());
@@ -309,8 +309,8 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
 
     BENCHMARK("Baseline: Order Full Ingress Pipeline")
     {
-        auto env = Core::Message::MessageEnvelope::packRaw(span);
-        auto view = *Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(span);
+        auto view = *Backend::MessageView::from(env);
         handler.onMessageReceived("bench_in", view);
     };
 

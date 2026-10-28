@@ -64,9 +64,9 @@ public:
 
 protected:
     bool onConfigure(const Core::Config::Configuration& config) override;
-    Core::Message::MessageResult onMessageReceived(
+    Backend::MessageResult onMessageReceived(
         std::string_view channelName,
-        const Core::Message::MessageView& message) override;
+        const Backend::MessageView& message) override;
 
 private:
     std::string m_forbiddenWord;
@@ -83,8 +83,8 @@ Channel creation uses the backend injected into the base class (`backend()`):
 #include "FilterHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageResult.hpp"
-#include "core/message/MessageView.hpp"
+#include "backend/MessageResult.hpp"
+#include "backend/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 
@@ -108,9 +108,9 @@ bool FilterHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult FilterHandler::onMessageReceived(
+Backend::MessageResult FilterHandler::onMessageReceived(
     std::string_view channelName,
-    const Core::Message::MessageView& message)
+    const Backend::MessageView& message)
 {
     auto payloadSpan = message.payload();
     std::string_view payloadStr(reinterpret_cast<const char*>(payloadSpan.data()), payloadSpan.size());
@@ -118,7 +118,7 @@ Core::Message::MessageResult FilterHandler::onMessageReceived(
     // Filter condition:
     if (payloadStr.find(m_forbiddenWord) != std::string_view::npos) {
         Proxy::Log::warn("[FilterHandler] Message rejected: contains forbidden keyword");
-        return Core::Message::Dropped {
+        return Backend::Dropped {
             .reason = "Payload contains forbidden pattern",
             .errorCode = 403
         };
@@ -127,10 +127,10 @@ Core::Message::MessageResult FilterHandler::onMessageReceived(
     // Forward valid message intact (preserving envelope header & metadata)
     if (m_outputChannel) {
         m_outputChannel->send(message.rawBytes());
-        return Core::Message::Forwarded { };
+        return Backend::Forwarded { };
     }
 
-    return Core::Message::Consumed { };
+    return Backend::Consumed { };
 }
 
 } // namespace Proxy::Handler
@@ -152,8 +152,8 @@ In `test/TestFilterHandler.cpp`:
 #include <catch2/catch_test_macros.hpp>
 #include "handler/filter_handler/include/FilterHandler.hpp"
 #include "core/simulation/SimulationBackend.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 
 TEST_CASE("FilterHandler drops forbidden messages and forwards valid ones", "[handler][filter]")
 {
@@ -169,21 +169,21 @@ TEST_CASE("FilterHandler drops forbidden messages and forwards valid ones", "[ha
 
     SECTION("Valid payload is forwarded") {
         std::string validText = "NORMAL_PACKET_CONTENT";
-        auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(validText));
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(validText));
+        auto view = Backend::MessageView::from(env);
 
         auto result = handler.onMessageReceived("test_in", *view);
-        REQUIRE(std::holds_alternative<Core::Message::Forwarded>(result));
+        REQUIRE(std::holds_alternative<Backend::Forwarded>(result));
     }
 
     SECTION("Forbidden payload is dropped with errorCode 403") {
         std::string badText = "CONTAINS_BAD_PACKET_HERE";
-        auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(badText));
-        auto view = Core::Message::MessageView::from(env);
+        auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(badText));
+        auto view = Backend::MessageView::from(env);
 
         auto result = handler.onMessageReceived("test_in", *view);
-        REQUIRE(std::holds_alternative<Core::Message::Dropped>(result));
-        auto dropped = std::get<Core::Message::Dropped>(result);
+        REQUIRE(std::holds_alternative<Backend::Dropped>(result));
+        auto dropped = std::get<Backend::Dropped>(result);
         CHECK(dropped.errorCode == 403);
     }
 }

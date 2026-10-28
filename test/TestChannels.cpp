@@ -1,4 +1,6 @@
 #include "backend/ISocketPoller.hpp"
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
@@ -6,8 +8,6 @@
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include <array>
@@ -35,7 +35,7 @@ public:
         : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
-            auto env = Core::Message::MessageEnvelope::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
+            auto env = Backend::MessageEnvelope::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
             m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
         }
         if (appendMalformed) {
@@ -200,7 +200,7 @@ public:
     bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
-        auto optView = Core::Message::MessageView::from(message);
+        auto optView = Backend::MessageView::from(message);
         std::string str = optView
             ? std::string(reinterpret_cast<const char*>(optView->payload().data()), optView->payload().size())
             : std::string(reinterpret_cast<const char*>(message.data()), message.size());
@@ -229,7 +229,7 @@ public:
         m_outChannel = out;
     }
 
-    Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
+    Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override
     {
         std::lock_guard lock(m_handlerMutex);
         std::string text(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
@@ -243,7 +243,7 @@ public:
         if (m_count >= 2 && m_runner) {
             m_runner->stop();
         }
-        return Core::Message::Forwarded { };
+        return Backend::Forwarded { };
     }
 
     std::mutex m_handlerMutex;
@@ -267,13 +267,13 @@ public:
         m_runner = runner;
     }
 
-    Core::Message::MessageResult onMessageReceived(
+    Backend::MessageResult onMessageReceived(
         std::string_view,
-        const Core::Message::MessageView&) override
+        const Backend::MessageView&) override
     {
         receivedCount.fetch_add(1, std::memory_order_relaxed);
         m_runner->stop();
-        return Core::Message::Consumed { };
+        return Backend::Consumed { };
     }
 
     std::atomic<std::size_t> receivedCount { 0 };
@@ -299,15 +299,15 @@ public:
         m_stepStarted = stepStarted;
     }
 
-    Core::Message::MessageResult onMessageReceived(
+    Backend::MessageResult onMessageReceived(
         std::string_view,
-        const Core::Message::MessageView&) override
+        const Backend::MessageView&) override
     {
         recordWork(std::chrono::milliseconds(2));
         if (m_received.fetch_add(1, std::memory_order_relaxed) + 1 == 2 && m_runner) {
             m_runner->stop();
         }
-        return Core::Message::Consumed { };
+        return Backend::Consumed { };
     }
 
     void step() override
@@ -365,9 +365,9 @@ public:
         m_runner = runner;
     }
 
-    Core::Message::MessageResult onMessageReceived(
+    Backend::MessageResult onMessageReceived(
         std::string_view,
-        const Core::Message::MessageView&) override
+        const Backend::MessageView&) override
     {
         const auto active = m_activeCalls.fetch_add(1, std::memory_order_acq_rel) + 1;
         auto maxActive = m_maxConcurrentCalls.load(std::memory_order_relaxed);
@@ -389,7 +389,7 @@ public:
         if (m_received.fetch_add(1, std::memory_order_relaxed) + 1 == 2 && m_runner) {
             m_runner->stop();
         }
-        return Core::Message::Consumed { };
+        return Backend::Consumed { };
     }
 
     [[nodiscard]] std::size_t maxConcurrentCalls() const noexcept
@@ -546,7 +546,7 @@ TEST_CASE("Ingress accounting is consistent across execution models", "[channel]
     const auto initialLatency = latencyHistogram.count();
 
     const std::string payload = "valid";
-    const auto expectedBytes = Core::Message::MessageEnvelope::packRaw(
+    const auto expectedBytes = Backend::MessageEnvelope::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(payload.data(), payload.size())))
                                    .size();
 
@@ -728,7 +728,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
             m_outChannel = out;
         }
 
-        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
+        Backend::MessageResult onMessageReceived(std::string_view, const Backend::MessageView& message) override
         {
             if (m_outChannel) {
                 m_outChannel->send(message.rawBuffer());
@@ -737,7 +737,7 @@ TEST_CASE("MergeHandler redirects multiple input channels to single output chann
             if (m_count >= 2 && m_runner) {
                 m_runner->stop();
             }
-            return Core::Message::Forwarded { };
+            return Backend::Forwarded { };
         }
 
     private:
@@ -840,7 +840,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
             m_runner = runner;
         }
 
-        Core::Message::MessageResult onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message) override
+        Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             lastReceivedChannel = std::string(channelName);
@@ -850,7 +850,7 @@ TEST_CASE("Execution models handle oversized jumbo messages exceeding 2048 bytes
             if (message.payload().size() > 2048 && m_runner) {
                 m_runner->stop();
             }
-            return Core::Message::Consumed { };
+            return Backend::Consumed { };
         }
 
         std::mutex m_mutex;
@@ -975,14 +975,14 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
             m_runner = runner;
         }
 
-        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView& message) override
+        Backend::MessageResult onMessageReceived(std::string_view, const Backend::MessageView& message) override
         {
             std::lock_guard lock(m_mutex);
             received.emplace_back(reinterpret_cast<const char*>(message.payload().data()), message.payload().size());
             if (received.size() >= m_expectedCount && m_runner) {
                 m_runner->stop();
             }
-            return Core::Message::Consumed { };
+            return Backend::Consumed { };
         }
 
         std::mutex m_mutex;

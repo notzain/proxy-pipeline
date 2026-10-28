@@ -102,7 +102,7 @@ graph TD
 ## 4. Message Outcome Accounting (`MessageResult`)
 
 Handlers communicate the fate of each message to the framework via strongly-typed outcome variants:
-1. **`Core::Message::Forwarded`**: Message was successfully processed and emitted to one or more output channels.
-2. **`Core::Message::Consumed`**: Message reached its terminal destination and was safely consumed (e.g. `PrintHandler` or sink logger).
-3. **`Core::Message::Dropped`**: Message was rejected by business validation (carries a descriptive string reason and integer error code). Feeds directly into `MetricsRegistry` drop counters and simulation event streams.
+1. **`Backend::Forwarded`**: Message was successfully processed and emitted to one or more output channels.
+2. **`Backend::Consumed`**: Message reached its terminal destination and was safely consumed (e.g. `PrintHandler` or sink logger).
+3. **`Backend::Dropped`**: Message was rejected by business validation (carries a descriptive string reason and integer error code). Feeds directly into `MetricsRegistry` drop counters and simulation event streams.
 

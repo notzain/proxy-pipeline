@@ -10,6 +10,12 @@ class IConfig;
 namespace Core::Handler {
 
 /**
+ * @brief Minimal, deterministic single-threaded execution model for tracing and debugging.
+ */
+struct SimpleModel {
+};
+
+/**
  * @brief Single-threaded round-robin execution model.
  */
 struct SequentialModel { };
@@ -37,13 +43,13 @@ struct ThreadPoolModel {
 /**
  * @brief Discriminated union of supported execution models and their parameters.
  */
-using ExecutionModel = std::variant<SequentialModel, DedicatedThreadModel, ThreadPoolModel>;
+using ExecutionModel = std::variant<SimpleModel, SequentialModel, DedicatedThreadModel, ThreadPoolModel>;
 
 /**
  * @brief Parses an ExecutionModel directly from a configuration object.
  *
  * Reads:
- * - `execution.model` (or `execution_model`): "sequential", "thread_pool", or "dedicated" (default).
+ * - `execution.model` (or `execution_model`): "simple", "sequential", "thread_pool", or "dedicated" (default).
  * - `execution.pool_size` (or `execution.threads`): Worker thread count for ThreadPoolModel (default: 0).
  * - `execution.strict_fifo`: Strict per-flow FIFO order flag (default: true).
  * - `execution.serialize_handler_access`: Serialize handler callbacks and step() (default: false).

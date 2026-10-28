@@ -1,9 +1,9 @@
 #include "core/net/UdpInputChannel.hpp"
+#include "backend/EnvelopeHeader.hpp"
 #include "backend/ISocketPoller.hpp"
 #include "backend/SocketAddress.hpp"
-#include "core/message/EnvelopeHeader.hpp"
-#include "core/message/UdpMetadata.hpp"
-#include "core/message/WireFormat.hpp"
+#include "backend/UdpMetadata.hpp"
+#include "common/io/WireFormat.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -20,7 +20,7 @@ namespace Core::Net {
 
 namespace {
 
-    constexpr std::size_t EnvelopePreambleSize = sizeof(Message::EnvelopeHeader) + sizeof(Message::UdpMetadata);
+    constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Backend::UdpMetadata);
 
     std::uint64_t getCurrentTimeNs()
     {
@@ -37,14 +37,14 @@ namespace {
         const Backend::SocketAddress& boundAddr)
     {
         std::byte* dst = destination.data();
-        Message::Wire::writeUint16Be(dst, Message::EnvelopeMagic);
-        dst[2] = static_cast<std::byte>(Message::EnvelopeVersion);
-        dst[3] = static_cast<std::byte>(Message::ProtocolId::Udp);
-        Message::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(sizeof(Message::UdpMetadata)));
-        Message::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payloadSize));
-        Message::Wire::writeUint64Be(dst + 10, getCurrentTimeNs());
+        Common::IO::Wire::writeUint16Be(dst, Backend::EnvelopeMagic);
+        dst[2] = static_cast<std::byte>(Backend::EnvelopeVersion);
+        dst[3] = static_cast<std::byte>(Backend::ProtocolId::Udp);
+        Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)));
+        Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payloadSize));
+        Common::IO::Wire::writeUint64Be(dst + 10, getCurrentTimeNs());
 
-        Message::UdpMetadata meta { };
+        Backend::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();
         meta.dstPort = boundAddr.portNet();
         if (clientAddr.family() == Backend::AddressFamily::Ipv6) {
@@ -60,7 +60,7 @@ namespace {
             meta.dstIp = boundAddr.ipv4Net();
         }
 
-        std::memcpy(dst + sizeof(Message::EnvelopeHeader), &meta, sizeof(Message::UdpMetadata));
+        std::memcpy(dst + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Backend::UdpMetadata));
     }
 
 } // namespace

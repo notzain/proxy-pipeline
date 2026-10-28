@@ -1,7 +1,7 @@
+#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/handler/IHandler.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include "core/telemetry/Counter.hpp"
 #include "core/telemetry/Gauge.hpp"
@@ -146,10 +146,10 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
 
         std::atomic<std::size_t> receivedCount { 0 };
 
-        Core::Message::MessageResult onMessageReceived(std::string_view, const Core::Message::MessageView&) override
+        Backend::MessageResult onMessageReceived(std::string_view, const Backend::MessageView&) override
         {
             receivedCount.fetch_add(1, std::memory_order_relaxed);
-            return Core::Message::Consumed { };
+            return Backend::Consumed { };
         }
     };
 
@@ -163,11 +163,11 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
                               .count())
         - 50000; // 50 microseconds ago
 
-    auto env = Core::Message::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), pastNs);
-    auto optView = Core::Message::MessageView::from(env);
+    auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), pastNs);
+    auto optView = Backend::MessageView::from(env);
     REQUIRE(optView.has_value());
 
-    std::array<Core::Message::MessageView, 1> views { *optView };
+    std::array<Backend::MessageView, 1> views { *optView };
     handler.processBatch("test_in", views);
 
     REQUIRE(handler.receivedCount.load() == 1);

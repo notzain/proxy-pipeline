@@ -13,8 +13,8 @@ and simulation from accurately recording mixed results in optimized batches.
 - Inject `Backend::IBackend&` into the handler constructor and retain it as a
   non-null reference for the handler lifetime.
 - Keep `configure()` focused on configuration data and channel setup.
-- Populate an output span `std::span<Message::MessageResult>` in `onBatchReceived()`
-  backed by `Core::Memory::SmallSpanBuffer<Message::MessageResult, 64>` to eliminate dynamic heap
+- Populate an output span `std::span<Backend::MessageResult>` in `onBatchReceived()`
+  backed by `Core::Memory::SmallSpanBuffer<Backend::MessageResult, 64>` to eliminate dynamic heap
   allocations during batch dispatch while preserving order and reporting mixed outcomes.
 - Have batch dispatch report each result to the backend with the corresponding
   raw message when `m_backend.tracksMessageResults()` is enabled (e.g. SimBackend),

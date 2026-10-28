@@ -1,9 +1,9 @@
 #include "UdpIngressHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "backend/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "log/Log.hpp"
 #include <array>
@@ -40,11 +40,11 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
     return true;
 }
 
-Core::Message::MessageResult UdpIngressHandler::onMessageReceived(std::string_view channelName, const Core::Message::MessageView& message)
+Backend::MessageResult UdpIngressHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     if (!m_outputChannel) {
         Proxy::Log::warn("[UdpIngressHandler] No output channel is available for forwarding");
-        return Core::Message::Dropped {
+        return Backend::Dropped {
             .reason = "No output channel available for forwarding",
             .errorCode = 500
         };
@@ -57,19 +57,19 @@ Core::Message::MessageResult UdpIngressHandler::onMessageReceived(std::string_vi
     if (!m_outputChannel->send(message.rawBuffer())) {
         Proxy::Log::warn("[UdpIngressHandler] Failed to forward datagram to '{}'", outputChannelName);
     }
-    return Core::Message::Forwarded { .channel = outputChannelName };
+    return Backend::Forwarded { .channel = outputChannelName };
 }
 
 void UdpIngressHandler::onBatchReceived(
     std::string_view channelName,
-    Common::Compat::span<const Core::Message::MessageView> messages,
-    Common::Compat::span<Core::Message::MessageResult> outResults)
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
     if (!m_outputChannel) {
         Proxy::Log::warn("[UdpIngressHandler] No output channel is available for batch forwarding");
         for (std::size_t i = 0; i < count; ++i) {
-            outResults[i] = Core::Message::Dropped {
+            outResults[i] = Backend::Dropped {
                 .reason = "No output channel available for forwarding",
                 .errorCode = 500
             };
@@ -79,7 +79,7 @@ void UdpIngressHandler::onBatchReceived(
 
     const auto outputChannelName = m_outputChannel->name();
     for (std::size_t i = 0; i < count; ++i) {
-        outResults[i] = Core::Message::Forwarded { .channel = outputChannelName };
+        outResults[i] = Backend::Forwarded { .channel = outputChannelName };
     }
     if (messages.empty())
         return;
