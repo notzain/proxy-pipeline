@@ -466,10 +466,13 @@ function(conan_profile_detect_default)
 endfunction()
 
 
-function(conan_install)
+function(conan_install build_config)
     set(conan_output_folder ${CMAKE_BINARY_DIR}/conan)
     # Invoke "conan install" with the provided arguments
     set(conan_args -of=${conan_output_folder})
+    if(PROXY_CONAN_OFFLINE)
+        list(APPEND conan_args --no-remote)
+    endif()
     list(JOIN ARGN " " argn_str)
     message(STATUS "CMake-Conan: conan install ${CMAKE_SOURCE_DIR} ${conan_args} ${argn_str}")
 
@@ -499,6 +502,12 @@ function(conan_install)
     if(NOT "${return_code}" STREQUAL "0")
         message(FATAL_ERROR "Conan install failed='${return_code}'")
     endif()
+
+    file(MAKE_DIRECTORY "${conan_output_folder}")
+    file(
+        WRITE "${conan_output_folder}/conan-install-graph-${build_config}.json"
+        "${conan_stdout}"
+    )
 
     # the files are generated in a folder that depends on the layout used, if
     # one is specified, but we don't know a priori where this is.
@@ -628,7 +637,14 @@ macro(conan_provide_dependency method package_name)
             if(NOT _multiconfig_generator AND NOT _build_config STREQUAL "${CMAKE_BUILD_TYPE}")
                 set(_self_build_config -s &:build_type=${CMAKE_BUILD_TYPE})
             endif()
-            conan_install(${_host_profile_flags} ${_build_profile_flags} -s build_type=${_build_config} ${_self_build_config} ${CONAN_INSTALL_ARGS})
+            conan_install(
+                "${_build_config}"
+                ${_host_profile_flags}
+                ${_build_profile_flags}
+                -s build_type=${_build_config}
+                ${_self_build_config}
+                ${CONAN_INSTALL_ARGS}
+            )
         endforeach()
 
         get_property(_conan_generators_folder GLOBAL PROPERTY CONAN_GENERATORS_FOLDER)
@@ -712,6 +728,7 @@ cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL conan_provide_dependen
 set(CONAN_HOST_PROFILE "default;auto-cmake" CACHE STRING "Conan host profile")
 set(CONAN_BUILD_PROFILE "default" CACHE STRING "Conan build profile")
 set(CONAN_INSTALL_ARGS "--build=missing" CACHE STRING "Command line arguments for conan install")
+option(PROXY_CONAN_OFFLINE "Prevent Conan from contacting configured remotes" OFF)
 
 find_program(_cmake_program NAMES cmake NO_PACKAGE_ROOT_PATH NO_CMAKE_PATH NO_CMAKE_ENVIRONMENT_PATH NO_CMAKE_SYSTEM_PATH NO_CMAKE_FIND_ROOT_PATH)
 if(NOT _cmake_program)

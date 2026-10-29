@@ -1,0 +1,87 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 0,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "offline-base",
+      "hidden": true,
+      "environment": {
+        "CONAN_HOME": "${sourceDir}/conan_offline_home"
+      }
+    },
+    {
+      "name": "offline-debug",
+      "displayName": "Offline Debug",
+      "description": "Debug build using bundled offline conan home",
+      "inherits": [
+        "debug",
+        "offline-base"
+      ]
+    },
+    {
+      "name": "offline-release",
+      "displayName": "Offline Release",
+      "description": "Release build using bundled offline conan home",
+      "inherits": [
+        "release",
+        "offline-base"
+      ]
+    },
+    {
+      "name": "gcc16-debug",
+      "displayName": "Debug (GCC 16)",
+      "description": "Debug build using GCC 16 (g++-16)",
+      "inherits": "debug",
+      "environment": {
+        "CC": "/opt/homebrew/bin/gcc-16",
+        "CXX": "/opt/homebrew/bin/g++-16"
+      }
+    },
+    {
+      "name": "gcc16-debug-17",
+      "displayName": "Debug (GCC 16) C++17",
+      "description": "Debug build using GCC 16 (g++-16) C++17",
+      "inherits": "debug-cpp17",
+      "environment": {
+        "CC": "/opt/homebrew/bin/gcc-16",
+        "CXX": "/opt/homebrew/bin/g++-16"
+      }
+    },
+    {
+      "name": "gcc16-release",
+      "displayName": "Release (GCC 16)",
+      "description": "Release build using GCC 16 (g++-16)",
+      "inherits": "release",
+      "environment": {
+        "CC": "/opt/homebrew/bin/gcc-16",
+        "CXX": "/opt/homebrew/bin/g++-16"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "offline-debug",
+      "displayName": "Build Offline Debug",
+      "configurePreset": "offline-debug"
+    },
+    {
+      "name": "offline-release",
+      "displayName": "Build Offline Release",
+      "configurePreset": "offline-release"
+    },
+    {
+      "name": "gcc16-debug",
+      "displayName": "Build Debug (GCC 16)",
+      "configurePreset": "gcc16-debug"
+    },
+    {
+      "name": "gcc16-release",
+      "displayName": "Build Release (GCC 16)",
+      "configurePreset": "gcc16-release"
+    }
+  ]
+}

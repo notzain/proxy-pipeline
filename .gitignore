@@ -8,6 +8,7 @@ CMakeUserPresets.json
 
 # Conan
 conan.lock
+conan_offline_home/
 .conan/
 .conan2/
 

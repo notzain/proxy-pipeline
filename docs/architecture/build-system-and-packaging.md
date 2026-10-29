@@ -11,7 +11,7 @@ In a project containing multiple independent transport backends (`shm`, `uds`, `
 ### The Solution
 The Proxy repository integrates **Modern CMake 4.x**, **Conan 2.x CMake Dependency Provider (`conan_provider.cmake`)**, and automated **OCI Distroless Packaging**:
 1. **Dynamic Backend Matrix Generation (`ProxyBackends.cmake`)**: Automatic discovery and target generation.
-2. **Transparent Dependency Fetching**: CMake transparently resolves external dependencies on first configure.
+2. **Connected and Offline Dependency Resolution**: CMake transparently resolves dependencies through Conan. A generated Conan cache bundle can be restored on an isolated machine, where the provider's offline option prevents remote access.
 3. **Dynamic CI Child Pipelines**: CMake writes `manifest.json` and `child-pipeline.yml`, dynamically generating the GitLab CI matrix.
 4. **Stripped Minimal Container Images**: Multi-stage `Dockerfile` outputs distroless non-root runtime images.
 
@@ -42,6 +42,8 @@ flowchart TD
 
     PROVIDER -->|Intercepts find_package| CONANFILE
     CONANFILE --> CONAN_BACKENDS
+    CACHE_BUNDLE["thirdparty/proxy-conan-cache.tgz"]
+    CACHE_BUNDLE -->|conan cache restore| PROVIDER
     ROOT_CMAKE --> PB_CMAKE
     CONAN_BACKENDS --> DISCOVER
     DISCOVER --> ADD_HANDLER
@@ -49,6 +51,23 @@ flowchart TD
     ADD_HANDLER --> MANIFEST
     ADD_HANDLER --> CHILD_CI
 ```
+
+### Offline Conan Cache Bundle
+
+Use `scripts/vendor-conan-cache.sh <preset>` on macOS with Podman CLI to start an Ubuntu 22.04 x86_64 container with GCC/G++ 11.4, export the in-repository Conan recipes, configure the selected preset with the pinned target profile, and save the dependency graph's cached artifacts under `thirdparty/`. Copy `thirdparty/` to the isolated Ubuntu 22.04 x86_64 machine and restore the cache before configuring:
+
+```bash
+conan cache restore thirdparty/proxy-conan-cache.tgz
+cmake --preset debug --fresh \
+  -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
+  -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
+  -DCONAN_HOST_PROFILE="$PWD/profiles/conan/ubuntu-x86_64-gcc-11" \
+  -DCONAN_BUILD_PROFILE="$PWD/profiles/conan/ubuntu-x86_64-gcc-11" \
+  -DPROXY_CONAN_OFFLINE=ON
+cmake --build --preset debug
+```
+
+On macOS the script builds inside Linux, so it does not produce macOS binaries. The offline option passes `--no-remote` to Conan and uses the same host and build profiles. A missing artifact causes configuration to fail without trying a remote.
 
 ### Key CMake Functions (`cmake/ProxyBackends.cmake`)
 - **`proxy_discover_backends()`**:
@@ -86,4 +105,3 @@ sequenceDiagram
 - **Zero Package Managers / Shells**: Images contain only the stripped binary and runtime C++ libraries (`glibc`, `libstdc++`), mitigating shell injection vulnerabilities.
 - **Non-Root Execution**: Runs under the default unprivileged UID `65532:65532` (`nonroot`).
 - **Tiny Footprint**: Image sizes are typically under 30 MB, enabling sub-second container pull and startup times.
-

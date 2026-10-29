@@ -200,6 +200,37 @@ cmake --build build
 
 Compiled handler executables are emitted to the `bin/` directory, named with their backend suffix (e.g. `bin/print_handler_file`, `bin/split_handler_socket`, `bin/order_validation_handler_shm`).
 
+### Building Offline
+
+On your connected Mac, initialize and start the Podman VM if needed, then create a dependency bundle:
+
+```bash
+# Run once to create the VM:
+podman machine init
+# Run whenever the VM is stopped:
+podman machine start
+./scripts/vendor-conan-cache.sh debug
+# Or create a distinct C++17 bundle:
+./scripts/vendor-conan-cache.sh debug-cpp17
+```
+
+The script runs the dependency build inside an Ubuntu 22.04 x86_64 container with GCC/G++ 11.4, then writes preset-specific archives and package lists, such as `thirdparty/proxy-conan-cache-debug.tgz`. Copy `thirdparty/` and the project to the firewalled Ubuntu 22.04 x86_64 machine with GCC/G++ 11.4.
+
+On the offline machine, restore the cache before configuring:
+
+```bash
+conan cache restore thirdparty/proxy-conan-cache-debug.tgz
+cmake --preset debug --fresh \
+  -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
+  -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
+  -DCONAN_HOST_PROFILE="$PWD/profiles/conan/ubuntu-x86_64-gcc-11" \
+  -DCONAN_BUILD_PROFILE="$PWD/profiles/conan/ubuntu-x86_64-gcc-11" \
+  -DPROXY_CONAN_OFFLINE=ON
+cmake --build --preset debug
+```
+
+`PROXY_CONAN_OFFLINE=ON` makes Conan fail if a required artifact is missing instead of trying a remote. For C++17, restore `thirdparty/proxy-conan-cache-debug-cpp17.tgz`, configure with the `debug-cpp17` preset, and use the `ubuntu-x86_64-gcc-11-cpp17` host and build profiles. Bundles contain Linux binaries built in the container; use Ubuntu 22.04 or a compatible newer Ubuntu system. See [the offline bundle guide](docs/features/offline-conan-cache-bundles.md) for details.
+
 ---
 
 ## Running Handlers & Pipelines
@@ -317,6 +348,7 @@ Packages handlers into lightweight, stripped Distroless container images (`gcr.i
 - [C++17 Compatibility & Polyfill Architecture](docs/features/cpp17-common-library.md)
 - [Message Envelope Wire Format Specification](docs/features/message-envelope-wire-format.md)
 - [Centralized Message Validation & Ingress Accounting](docs/features/centralized-message-validation-ingress-accounting.md)
+- [Offline Conan Cache Bundles](docs/features/offline-conan-cache-bundles.md)
 - [In-Process Pipeline Runner Design](docs/features/inproc-pipeline-runner.md)
 - [Handler Channel Thread Safety](docs/features/handler-channel-thread-safety.md)
 - [Live Telemetry Dashboard Plan](docs/features/live-telemetry-dashboard-plan.md)
