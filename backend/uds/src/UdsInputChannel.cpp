@@ -80,8 +80,9 @@ void UdsInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdsInputChannel] Listening on UDS path {}", m_socketPath);
 }
 
-BytesResult UdsInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
@@ -90,7 +91,11 @@ BytesResult UdsInputChannel::receiveInto(Common::Compat::span<std::byte> destina
     }
 
     if (m_poller) {
-        return m_poller->receive(m_socketFd, destination, timeout);
+        auto result = m_poller->receive(m_socketFd, slot.buffer, timeout);
+        if (result.hasValue()) {
+            slot.size = result.value();
+        }
+        return result;
     }
 
     return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));

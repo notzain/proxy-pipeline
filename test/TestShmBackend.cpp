@@ -146,10 +146,11 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         REQUIRE(out.send(Common::Memory::ByteView(payload)));
 
         std::array<std::byte, 256> rxBuf;
-        auto receiveResult = in.receiveInto(rxBuf, std::chrono::milliseconds(50));
+        ::Backend::BufferSlot rxSlot { rxBuf, 0 };
+        auto receiveResult = in.receiveSlot(rxSlot, std::chrono::milliseconds(50));
         REQUIRE(receiveResult.hasValue());
         REQUIRE(receiveResult.value() == payload.size());
-        std::string recovered(reinterpret_cast<char*>(rxBuf.data()), receiveResult.value());
+        std::string recovered(reinterpret_cast<char*>(rxBuf.data()), rxSlot.size);
         REQUIRE(recovered == payload);
 
         // Vectorized batch send and receiveBatch

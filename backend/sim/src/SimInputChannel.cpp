@@ -133,14 +133,14 @@ void SimInputChannel::emitEvent(Common::Compat::span<const std::byte> payload, s
     ::sendto(m_eventFd, json.data(), json.size(), 0, reinterpret_cast<sockaddr*>(&dest), sizeof(dest));
 }
 
-BytesResult SimInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+BytesResult SimInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
-    std::array<::Backend::BufferSlot, 1> slots { ::Backend::BufferSlot { destination, 0 } };
-    BatchResult result = receiveBatch(slots, timeout);
+    slot.size = 0;
+    BatchResult result = receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), timeout);
     if (!result.hasValue()) {
         return BytesResult::failure(result.error().cause);
     }
-    return BytesResult::success(slots[0].size);
+    return BytesResult::success(slot.size);
 }
 
 BatchResult SimInputChannel::receiveBatch(

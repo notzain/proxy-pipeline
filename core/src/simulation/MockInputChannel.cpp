@@ -60,8 +60,9 @@ bool MockInputChannel::isReady(const TimedMessage& msg) const
     return m_clock->nowNs() >= msg.scheduledTimeNs;
 }
 
-Backend::BytesResult MockInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
     auto startTime = std::chrono::steady_clock::now();
 
     while (true) {
@@ -69,8 +70,9 @@ Backend::BytesResult MockInputChannel::receiveInto(Common::Compat::span<std::byt
             std::lock_guard lock(m_mutex);
             if (!m_queue.empty() && isReady(m_queue.front())) {
                 const auto& data = m_queue.front().data;
-                std::size_t copyLen = std::min(destination.size(), data.size());
-                std::memcpy(destination.data(), data.data(), copyLen);
+                std::size_t copyLen = std::min(slot.buffer.size(), data.size());
+                std::memcpy(slot.buffer.data(), data.data(), copyLen);
+                slot.size = copyLen;
                 m_queue.pop_front();
                 return BytesResult::success(copyLen);
             }

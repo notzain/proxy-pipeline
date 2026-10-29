@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <thread>
+#include <utility>
 
 namespace Core::Threading {
 
@@ -37,6 +38,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
             batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
         }
         std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
+        std::array<::Backend::Lease, 16> leases;
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
@@ -53,11 +55,13 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                 if (batchCount > 0) {
                     for (std::size_t i = 0; i < batchCount; ++i) {
                         rawMessages[i] = Common::Memory::ByteView((*batchBuffers)[i].data(), batchSlots[i].size);
+                        leases[i] = std::move(batchSlots[i].lease);
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
                         channel.name(),
                         Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), batchCount),
+                        Common::Compat::span<::Backend::Lease>(leases.data(), batchCount),
                         invalidEnvelopeCount,
                         nullptr);
                 }

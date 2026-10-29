@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace Backend {
 
@@ -21,7 +20,6 @@ namespace Backend {
  */
 class IInputChannel {
 public:
-    using Buffer = std::vector<std::byte>;
     using Timeout = std::chrono::milliseconds;
 
     explicit IInputChannel(std::string name = "");
@@ -35,25 +33,17 @@ public:
     [[nodiscard]] std::string_view name() const noexcept;
 
     /**
-     * @brief Polls the input channel and reads data directly into a provided buffer without heap allocation.
+     * @brief Receives one message into a buffer slot, attaching an ownership lease if the transport requires settlement.
      *
-     * Core zero-copy reception primitive implemented by transport channels.
+     * Core zero-copy reception primitive implemented by transport channels. On success `slot.size` holds the
+     * received byte count. Transports owning their buffers leave `slot.lease` empty; transports whose messages
+     * are owned by an external API attach a Lease that the caller must settle or move onward.
      *
-     * @param destination Non-owning pre-allocated memory span to receive data into.
+     * @param slot Target slot; `slot.buffer` must be pre-allocated.
      * @param timeout Maximum duration to wait for data.
      * @return A typed result distinguishing data, timeout, closure, and channel errors.
      */
-    virtual BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) = 0;
-
-    /**
-     * @brief Polls the input channel for the next available message, returning an allocated buffer.
-     *
-     * Non-virtual convenience wrapper that delegates to receiveInto().
-     *
-     * @param timeout Maximum duration to wait for data.
-     * @return A typed result containing the received buffer or the reason no data was received.
-     */
-    ReceiveMessageResult receive(Timeout timeout);
+    virtual BytesResult receiveSlot(BufferSlot& slot, Timeout timeout) = 0;
 
     /**
      * @brief Drains a batch of incoming messages into pre-allocated destination buffer slots.

@@ -28,7 +28,7 @@ struct TimedMessage {
 /**
  * @brief Mock implementation of Backend::IInputChannel for deterministic simulation and replays.
  *
- * Implements receive(), receiveInto(), and receiveBatch() with support for:
+ * Implements receiveSlot() and receiveBatch() with support for:
  *  - Deterministic Virtual Clock integration (only returns messages where scheduledTimeNs <= clock.nowNs())
  *  - Queue preloading from memory, vectors, or PCAP streams
  *  - Vectorized batch draining
@@ -67,7 +67,7 @@ public:
     [[nodiscard]] std::size_t pendingCount() const;
 
     // Backend::IInputChannel interface implementation
-    ::Backend::BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
     ::Backend::BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;

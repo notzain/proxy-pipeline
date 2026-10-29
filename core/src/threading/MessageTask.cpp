@@ -58,6 +58,7 @@ MessageTask::MessageTask(MessageTask&& other) noexcept
     , m_inlineSize(other.m_inlineSize)
     , m_pooledSlice(std::move(other.m_pooledSlice))
     , m_heapBuffer(std::move(other.m_heapBuffer))
+    , m_lease(std::move(other.m_lease))
 {
     if (m_inlineSize > 0) {
         std::memcpy(m_inlineBuffer.data(), other.m_inlineBuffer.data(), m_inlineSize);
@@ -71,6 +72,7 @@ MessageTask& MessageTask::operator=(MessageTask&& other) noexcept
         m_inlineSize = other.m_inlineSize;
         m_pooledSlice = std::move(other.m_pooledSlice);
         m_heapBuffer = std::move(other.m_heapBuffer);
+        m_lease = std::move(other.m_lease);
         if (m_inlineSize > 0) {
             std::memcpy(m_inlineBuffer.data(), other.m_inlineBuffer.data(), m_inlineSize);
         }
@@ -92,6 +94,16 @@ Common::Compat::span<const std::byte> MessageTask::payload() const noexcept
         return m_pooledSlice.span();
     }
     return Common::Compat::span<const std::byte>(m_heapBuffer.data(), m_heapBuffer.size());
+}
+
+void MessageTask::setLease(Backend::Lease lease) noexcept
+{
+    m_lease = std::move(lease);
+}
+
+Backend::Lease& MessageTask::lease() const noexcept
+{
+    return m_lease;
 }
 
 } // namespace Core::Threading

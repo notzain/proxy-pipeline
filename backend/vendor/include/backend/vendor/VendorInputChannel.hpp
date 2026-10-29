@@ -12,11 +12,17 @@ class VendorBackend;
 /**
  * @brief Ingress channel wrapping the 3rd-party vendor Receiver.
  *
- * Receives VendorMessage instances, registers them into VendorBackend, and packs
- * [VendorMetadata(msgId) | Payload] into the destination buffer via MessageEnvelope.
+ * Receives VendorMessage instances, packs the raw payload into the destination buffer
+ * via MessageEnvelope, and attaches an out-of-band Backend::Lease owning the VendorMessage
+ * to the BufferSlot so it is finalized or dropped upon handler completion.
  */
 class VendorInputChannel : public ::Backend::IInputChannel {
 public:
+    VendorInputChannel(
+        std::string name,
+        std::shared_ptr<Sdk::VendorManager> manager,
+        std::shared_ptr<Sdk::VendorReceiver> receiver = nullptr);
+
     VendorInputChannel(
         std::string name,
         VendorBackend& backend,
@@ -24,14 +30,14 @@ public:
 
     ~VendorInputChannel() override = default;
 
-    ::Backend::BytesResult receiveInto(
-        Common::Compat::span<std::byte> destination,
+    ::Backend::BytesResult receiveSlot(
+        ::Backend::BufferSlot& slot,
         Timeout timeout) override;
 
     void setReceiver(std::shared_ptr<Sdk::VendorReceiver> receiver);
 
 private:
-    VendorBackend& m_backend;
+    std::shared_ptr<Sdk::VendorManager> m_manager;
     std::shared_ptr<Sdk::VendorReceiver> m_receiver;
 };
 

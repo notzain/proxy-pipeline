@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/Lease.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/BufferSlice.hpp"
 #include <array>
@@ -75,12 +76,26 @@ public:
      */
     [[nodiscard]] Common::Compat::span<const std::byte> payload() const noexcept;
 
+    /**
+     * @brief Attaches the transport ownership lease travelling with this message.
+     */
+    void setLease(Backend::Lease lease) noexcept;
+
+    /**
+     * @brief Returns the ownership lease so the consuming worker can move it out for settlement.
+     *
+     * Worker queues expose drained tasks as const views; the lease is settlement state rather than
+     * message content, hence it is mutable.
+     */
+    [[nodiscard]] Backend::Lease& lease() const noexcept;
+
 private:
     std::string m_channelName;
     std::array<std::byte, SmallBufferSize> m_inlineBuffer;
     std::size_t m_inlineSize { 0 };
     Common::Memory::BufferSlice m_pooledSlice;
     std::vector<std::byte> m_heapBuffer;
+    mutable Backend::Lease m_lease;
 };
 
 } // namespace Core::Threading
