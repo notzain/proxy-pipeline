@@ -43,13 +43,15 @@ public:
         }
     }
 
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout) override
     {
+        slot.size = 0;
         std::lock_guard lock(m_mutex);
         if (m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
-            const auto bytesToCopy = std::min(destination.size(), msg.size());
-            std::memcpy(destination.data(), msg.data(), bytesToCopy);
+            const auto bytesToCopy = std::min(slot.buffer.size(), msg.size());
+            std::memcpy(slot.buffer.data(), msg.data(), bytesToCopy);
+            slot.size = bytesToCopy;
             return BytesResult::success(bytesToCopy);
         }
         return BytesResult::failure(Backend::receiveTimeout());
@@ -89,8 +91,9 @@ public:
     {
     }
 
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout) override
     {
+        slot.size = 0;
         return BytesResult::failure(m_error);
     }
 
@@ -100,12 +103,14 @@ private:
 
 class PartialFailureInputChannel : public Backend::IInputChannel {
 public:
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout) override
     {
         if (m_received) {
+            slot.size = 0;
             return BytesResult::failure(Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
         }
-        destination[0] = std::byte { 0x2a };
+        slot.buffer[0] = std::byte { 0x2a };
+        slot.size = 1;
         m_received = true;
         return BytesResult::success(1);
     }
@@ -149,18 +154,20 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
     REQUIRE_FALSE(failedResult.hasValue());
     CHECK(failedResult.error() == "failure");
 
+    ::Backend::BufferSlot slot { buffer, 0 };
+
     StatusInputChannel timeoutChannel(Backend::receiveTimeout());
-    auto timeout = timeoutChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    auto timeout = timeoutChannel.receiveSlot(slot, std::chrono::milliseconds(0));
     REQUIRE_FALSE(timeout.hasValue());
     CHECK(Backend::isReceiveTimeout(timeout.error()));
 
     StatusInputChannel closedChannel(Backend::receiveClosed());
-    auto closed = closedChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    auto closed = closedChannel.receiveSlot(slot, std::chrono::milliseconds(0));
     REQUIRE_FALSE(closed.hasValue());
     CHECK(Backend::isReceiveClosed(closed.error()));
 
     StatusInputChannel errorChannel(Backend::receiveFailure(std::make_error_code(std::errc::permission_denied)));
-    auto error = errorChannel.receiveInto(buffer, std::chrono::milliseconds(0));
+    auto error = errorChannel.receiveSlot(slot, std::chrono::milliseconds(0));
     REQUIRE_FALSE(error.hasValue());
     const auto* receiveFailure = std::get_if<Backend::ReceiveFailure>(&error.error());
     REQUIRE(receiveFailure != nullptr);
@@ -171,7 +178,6 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
     REQUIRE_FALSE(closedPoller.hasValue());
     CHECK(Backend::isReceiveClosed(closedPoller.error()));
 
-    ::Backend::BufferSlot slot { buffer, 0 };
     auto batchTimeout = timeoutChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
     REQUIRE_FALSE(batchTimeout.hasValue());
     CHECK(Backend::isReceiveTimeout(batchTimeout.error().cause));
@@ -779,17 +785,18 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
     Common::Memory::ByteView sendSpan(testMsg);
 
     std::array<std::byte, 128> recvBuf { };
-    auto timeoutResult = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(0));
+    ::Backend::BufferSlot recvSlot { recvBuf, 0 };
+    auto timeoutResult = inChannel.receiveSlot(recvSlot, std::chrono::milliseconds(0));
     REQUIRE_FALSE(timeoutResult.hasValue());
     CHECK(Backend::isReceiveTimeout(timeoutResult.error()));
 
     REQUIRE(outChannel.send(sendSpan));
 
-    auto result = inChannel.receiveInto(recvBuf, std::chrono::milliseconds(500));
+    auto result = inChannel.receiveSlot(recvSlot, std::chrono::milliseconds(500));
     REQUIRE(result.hasValue());
     REQUIRE(result.value() == testMsg.size());
 
-    std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), result.value());
+    std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), recvSlot.size);
     CHECK(receivedStr == testMsg);
 }
 

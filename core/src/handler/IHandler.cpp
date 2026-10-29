@@ -55,7 +55,10 @@ void IHandler::onBatchReceived(
     }
 }
 
-void IHandler::processBatch(std::string_view channelName, Common::Compat::span<const Backend::MessageView> messages)
+void IHandler::processBatch(
+    std::string_view channelName,
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<::Backend::Lease> leases)
 {
     auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
         "message_processing_duration_us", "Message transit and processing duration in microseconds");
@@ -77,6 +80,11 @@ void IHandler::processBatch(std::string_view channelName, Common::Compat::span<c
         for (std::size_t i = 0; i < messages.size(); ++i) {
             m_backend.onMessageResult(channelName, messages[i].rawBuffer(), resultsSpan[i]);
         }
+    }
+
+    const auto settleCount = std::min(leases.size(), messages.size());
+    for (std::size_t i = 0; i < settleCount; ++i) {
+        leases[i].settle(resultsSpan[i].is<::Backend::Dropped>() ? ::Backend::Settlement::Reject : ::Backend::Settlement::Ack);
     }
 }
 

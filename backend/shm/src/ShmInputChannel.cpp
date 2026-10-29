@@ -47,8 +47,10 @@ void ShmInputChannel::reset()
     }
 }
 
-BytesResult ShmInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
+    const auto destination = slot.buffer;
     if (!isValid()) {
         return BytesResult::failure(::Backend::receiveClosed());
     }
@@ -60,6 +62,7 @@ BytesResult ShmInputChannel::receiveInto(Common::Compat::span<std::byte> destina
         ShmSignaler::notifyOne(m_ring->notFullSync());
     }
     if (bytes > 0) {
+        slot.size = bytes;
         return BytesResult::success(bytes);
     }
     if (timeout.count() == 0) {
@@ -77,6 +80,7 @@ BytesResult ShmInputChannel::receiveInto(Common::Compat::span<std::byte> destina
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
+            slot.size = bytes;
             return BytesResult::success(bytes);
         }
     }
@@ -95,6 +99,7 @@ BytesResult ShmInputChannel::receiveInto(Common::Compat::span<std::byte> destina
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
+            slot.size = bytes;
             return BytesResult::success(bytes);
         }
     }

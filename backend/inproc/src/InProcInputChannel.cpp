@@ -12,8 +12,9 @@ InProcInputChannel::InProcInputChannel(std::string name, std::shared_ptr<InProcR
 
 InProcInputChannel::~InProcInputChannel() = default;
 
-::Backend::BytesResult InProcInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout)
+::Backend::BytesResult InProcInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout)
 {
+    slot.size = 0;
     if (!m_ring) {
         return ::Backend::BytesResult::failure(::Backend::receiveClosed());
     }
@@ -24,13 +25,14 @@ InProcInputChannel::~InProcInputChannel() = default;
     std::size_t drained = m_ring->drain(1, [&](Common::Compat::span<const std::vector<std::byte>> slice) {
         if (!slice.empty()) {
             const auto& msg = slice[0];
-            copiedBytes = std::min(destination.size(), msg.size());
-            std::memcpy(destination.data(), msg.data(), copiedBytes);
+            copiedBytes = std::min(slot.buffer.size(), msg.size());
+            std::memcpy(slot.buffer.data(), msg.data(), copiedBytes);
             found = true;
         }
     });
 
     if (drained > 0 && found) {
+        slot.size = copiedBytes;
         return ::Backend::BytesResult::success(copiedBytes);
     }
 

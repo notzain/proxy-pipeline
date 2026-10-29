@@ -28,6 +28,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Pre-allocated stack buffer for single datagram reception to maintain 100% predictable trace/debug stacks
         std::array<std::byte, 65535> receiveBuffer;
+        ::Backend::BufferSlot slot { Common::Memory::MutableByteView(receiveBuffer), 0 };
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
@@ -36,7 +37,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
-                auto result = channel.receiveInto(Common::Memory::MutableByteView(receiveBuffer), channelTimeout);
+                auto result = channel.receiveSlot(slot, channelTimeout);
 
                 if (result.hasValue()) {
                     const std::size_t receivedBytes = result.value();
@@ -47,6 +48,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                             handler,
                             channel.name(),
                             Common::Compat::span<const Common::Compat::span<const std::byte>>(batch.data(), batch.size()),
+                            Common::Compat::span<::Backend::Lease>(&slot.lease, 1),
                             invalidEnvelopeCount,
                             nullptr);
                     }
@@ -93,4 +95,3 @@ bool SimpleExecutionStrategy::isRunning() const noexcept
 }
 
 } // namespace Core::Threading
-

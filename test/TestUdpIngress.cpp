@@ -98,12 +98,14 @@ public:
     {
     }
 
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout) override
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout) override
     {
+        slot.size = 0;
         if (m_index < m_messages.size()) {
             const auto& msg = m_messages[m_index++];
-            std::size_t count = std::min(destination.size(), msg.size());
-            std::memcpy(destination.data(), msg.data(), count);
+            std::size_t count = std::min(slot.buffer.size(), msg.size());
+            std::memcpy(slot.buffer.data(), msg.data(), count);
+            slot.size = count;
             return BytesResult::success(count);
         }
         return BytesResult::failure(::Backend::receiveTimeout());
@@ -115,9 +117,8 @@ public:
     {
         std::size_t count = 0;
         while (count < slots.size()) {
-            BytesResult result = receiveInto(slots[count].buffer, timeout);
+            BytesResult result = receiveSlot(slots[count], timeout);
             if (result.hasValue()) {
-                slots[count].size = result.value();
                 count++;
             } else if (::Backend::isReceiveTimeout(result.error())) {
                 break;
@@ -301,11 +302,12 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         sendTestUdpDatagram("127.0.0.1", testPort, expectedPayload);
 
         std::array<std::byte, 2048> buffer;
-        auto receiveResult = channel.receiveInto(buffer, std::chrono::milliseconds(500));
+        Backend::BufferSlot slot { buffer, 0 };
+        auto receiveResult = channel.receiveSlot(slot, std::chrono::milliseconds(500));
 
         REQUIRE(receiveResult.hasValue());
         REQUIRE(receiveResult.value() > expectedPayload.size());
-        auto view = Backend::MessageView::from(Common::Memory::ByteView(buffer.data(), receiveResult.value()));
+        auto view = Backend::MessageView::from(slot.filledSpan());
         REQUIRE(view.has_value());
         CHECK(view->protocol() == Backend::ProtocolId::Udp);
 

@@ -69,8 +69,9 @@ void SocketInputChannel::openAndBindSocket()
     Proxy::Log::info("[SocketInputChannel] Listening on UDP {}:{}", m_host, m_port);
 }
 
-BytesResult SocketInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+BytesResult SocketInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
@@ -79,7 +80,11 @@ BytesResult SocketInputChannel::receiveInto(Common::Compat::span<std::byte> dest
     }
 
     if (m_poller) {
-        return m_poller->receive(m_socketFd, destination, timeout);
+        auto result = m_poller->receive(m_socketFd, slot.buffer, timeout);
+        if (result.hasValue()) {
+            slot.size = result.value();
+        }
+        return result;
     }
 
     return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));

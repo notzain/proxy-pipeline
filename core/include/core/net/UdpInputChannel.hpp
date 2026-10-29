@@ -52,9 +52,9 @@ public:
     UdpInputChannel& operator=(UdpInputChannel&&) noexcept;
 
     /**
-     * @brief Reads a datagram and serializes an in-place envelope directly into destination.
+     * @brief Reads a datagram and serializes an in-place envelope directly into slot.buffer.
      */
-    ::Backend::BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
+    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
 
     /**
      * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.

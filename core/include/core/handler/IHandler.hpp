@@ -2,6 +2,7 @@
 
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
+#include "backend/Lease.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/Borrow.hpp"
 #include "core/config/Configuration.hpp"
@@ -127,10 +128,18 @@ public:
      * message to the injected backend. This is the handler-level dispatch boundary for
      * message-age telemetry; calling onMessageReceived() or onBatchReceived() directly bypasses it.
      *
+     * After the handler returns, every non-empty lease is settled from its result:
+     * Dropped settles Reject; Forwarded and Consumed settle Ack. If the handler throws,
+     * leases remain unsettled and are released for redelivery by their owner.
+     *
      * @param channelName Name of the channel that received the messages.
      * @param messages Non-owning views of the received messages.
+     * @param leases Ownership leases parallel to `messages` (empty for transports owning their buffers).
      */
-    void processBatch(std::string_view channelName, Common::Compat::span<const Backend::MessageView> messages);
+    void processBatch(
+        std::string_view channelName,
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<::Backend::Lease> leases = { });
 
     // --- Output Channel Management (Egress) ---
 

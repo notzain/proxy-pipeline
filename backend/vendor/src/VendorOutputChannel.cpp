@@ -1,5 +1,7 @@
 #include "backend/vendor/VendorOutputChannel.hpp"
+#include "backend/MessageView.hpp"
 #include "log/Log.hpp"
+#include <utility>
 
 namespace Backend::Vendor {
 
@@ -23,9 +25,14 @@ bool VendorOutputChannel::send(Common::Compat::span<const std::byte> message)
         return false;
     }
 
+    auto payloadSpan = message;
+    if (const auto view = ::Backend::MessageView::from(message)) {
+        payloadSpan = view->payload();
+    }
+
     std::string payloadStr(
-        reinterpret_cast<const char*>(message.data()),
-        message.size());
+        reinterpret_cast<const char*>(payloadSpan.data()),
+        payloadSpan.size());
 
     Sdk::VendorMessage outMsg(0, std::move(payloadStr));
     return m_sender->send(outMsg);

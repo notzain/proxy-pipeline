@@ -18,8 +18,10 @@ FileInputChannel::FileInputChannel(std::string name, std::filesystem::path watch
     Proxy::Log::info("[FileInputChannel] Watching directory: {}", m_watchDir.string());
 }
 
-BytesResult FileInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
+    const auto destination = slot.buffer;
     if (destination.empty()) {
         return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));
     }
@@ -69,6 +71,7 @@ BytesResult FileInputChannel::receiveInto(Common::Compat::span<std::byte> destin
                 Proxy::Log::debug("[FileInputChannel] Read and deleted processed file {}", filePath.string());
             }
 
+            slot.size = bytesToRead;
             return BytesResult::success(bytesToRead);
         }
         if (ec) {

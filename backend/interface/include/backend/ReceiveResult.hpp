@@ -25,7 +25,6 @@ struct ReceiveBatchFailure {
 
 using BytesResult = Result<std::size_t, ReceiveError>;
 using BatchResult = Result<std::size_t, ReceiveBatchFailure>;
-using ReceiveMessageResult = Result<std::vector<std::byte>, ReceiveError>;
 
 [[nodiscard]] inline ReceiveError receiveTimeout()
 {

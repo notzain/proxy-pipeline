@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
+#include <utility>
 
 namespace Core::Threading {
 
@@ -64,13 +65,16 @@ namespace {
             }
             std::size_t spanCount = batchEnd - batchStart;
             std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
+            std::array<::Backend::Lease, 16> leases;
             for (std::size_t k = 0; k < spanCount; ++k) {
                 rawMessages[k] = Common::Memory::ByteView(tasks[batchStart + k].payload());
+                leases[k] = std::move(tasks[batchStart + k].lease());
             }
             Detail::dispatchReceivedBatch(
                 handler,
                 chName,
                 Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), spanCount),
+                Common::Compat::span<::Backend::Lease>(leases.data(), spanCount),
                 invalidEnvelopeCount,
                 handlerMutex);
             batchStart = batchEnd;
@@ -144,6 +148,7 @@ namespace {
                 } else {
                     task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                 }
+                task.setLease(std::move(batchSlots[i].lease));
 
                 if (!sharedQueue->tryPush(std::move(task))) {
                     sharedQueue->push(std::move(task), stoken);
@@ -169,6 +174,7 @@ namespace {
             const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
             for (std::size_t i = 0; i < nReceived; ++i) {
                 slots[i].commitInline(inPlaceSlots[i].size);
+                slots[i].setLease(std::move(inPlaceSlots[i].lease));
                 if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
                     hasOversized = true;
                 }
@@ -199,8 +205,9 @@ namespace {
 
         if (hasOversized && targetQueue) {
             std::array<std::byte, 65535> jumboBuf;
+            ::Backend::BufferSlot jumboSlot { Common::Memory::MutableByteView(jumboBuf), 0 };
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
-            auto jumboResult = channel.receiveInto(jumboBuf, zeroTimeout);
+            auto jumboResult = channel.receiveSlot(jumboSlot, zeroTimeout);
             if (!jumboResult.hasValue() && channelFailed(channelName, jumboResult.error())) {
                 return false;
             }
@@ -209,6 +216,7 @@ namespace {
                 targetQueue->pushBatch(
                     1,
                     [&](MessageTask& slot, std::size_t) {
+                        slot.setLease(std::move(jumboSlot.lease));
                         if (jumboBytes > MessageTask::SmallBufferSize && bufferPool) {
                             if (auto slice = bufferPool->acquire()) {
                                 std::memcpy(slice->data(), jumboBuf.data(), jumboBytes);
@@ -281,6 +289,7 @@ namespace {
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
                     const std::size_t pktSize = batchSlots[pktIdx].size;
+                    slot.setLease(std::move(batchSlots[pktIdx].lease));
                     if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
                         if (auto slice = bufferPool->acquire()) {
                             std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);

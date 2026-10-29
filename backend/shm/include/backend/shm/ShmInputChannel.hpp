@@ -26,7 +26,7 @@ public:
     ShmInputChannel(std::string name, std::string path, std::size_t capacity = 1024);
     ~ShmInputChannel() override;
 
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
     BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;

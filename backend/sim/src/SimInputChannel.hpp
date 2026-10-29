@@ -22,7 +22,7 @@ public:
 
     ~SimInputChannel() override;
 
-    BytesResult receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout) override;
+    BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
     BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;

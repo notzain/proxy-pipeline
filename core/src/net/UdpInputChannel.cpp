@@ -152,8 +152,10 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-Backend::BytesResult UdpInputChannel::receiveInto(Common::Compat::span<std::byte> destination, Timeout timeout)
+Backend::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
+    slot.size = 0;
+    const auto destination = slot.buffer;
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
@@ -180,7 +182,8 @@ Backend::BytesResult UdpInputChannel::receiveInto(Common::Compat::span<std::byte
     }
 
     writeEnvelopePreamble(destination, receiveResult.value(), clientAddr, m_boundAddr);
-    return BytesResult::success(EnvelopePreambleSize + receiveResult.value());
+    slot.size = EnvelopePreambleSize + receiveResult.value();
+    return BytesResult::success(slot.size);
 }
 
 Backend::BatchResult UdpInputChannel::receiveBatch(
