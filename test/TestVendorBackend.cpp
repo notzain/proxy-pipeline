@@ -48,11 +48,21 @@ class MockVendorSender : public Backend::Vendor::Sdk::VendorSender {
 public:
     bool send(const Backend::Vendor::Sdk::VendorMessage& msg) override
     {
+        std::lock_guard lock(m_mutex);
         sentPayloads.push_back(msg.getPayload());
+        sentMessages.push_back(msg);
         return true;
     }
 
+    [[nodiscard]] std::size_t sentCount() const
+    {
+        std::lock_guard lock(m_mutex);
+        return sentMessages.size();
+    }
+
+    mutable std::mutex m_mutex;
     std::vector<std::string> sentPayloads;
+    std::vector<Backend::Vendor::Sdk::VendorMessage> sentMessages;
 };
 
 class MockVendorManager : public Backend::Vendor::Sdk::VendorManager {
@@ -122,6 +132,32 @@ public:
     std::vector<std::string> receivedPayloads;
     std::vector<std::size_t> receivedMetadataSizes;
     bool m_shouldDrop { false };
+};
+
+class VendorForwardHandler : public Core::Handler::IHandler {
+public:
+    explicit VendorForwardHandler(Backend::IBackend& backend)
+        : Core::Handler::IHandler(backend)
+    {
+    }
+
+    void addOutputChannel(Common::Memory::Borrow<Backend::IOutputChannel> out)
+    {
+        m_outputs.push_back(out);
+    }
+
+    Backend::MessageResult onMessageReceived(
+        std::string_view /*channelName*/,
+        const Backend::MessageView& message) override
+    {
+        for (auto out : m_outputs) {
+            out->send(message);
+        }
+        return Backend::Forwarded { .channel = m_outputs.empty() ? std::string_view { } : m_outputs.front()->name() };
+    }
+
+private:
+    std::vector<Common::Memory::Borrow<Backend::IOutputChannel>> m_outputs;
 };
 
 } // namespace
@@ -247,5 +283,75 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         REQUIRE(outputChannel.send(Common::Memory::ByteView(envelope)));
         REQUIRE(mockSender->sentPayloads.size() == 1);
         REQUIRE(mockSender->sentPayloads.front() == payload);
+    }
+
+    SECTION("Consuming forward sends exact received VendorMessage object and skips finalize/drop")
+    {
+        VendorForwardHandler handler(backend);
+        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver);
+        auto outputChannel = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out", mockSender);
+        handler.registerInputChannel(std::move(inputChannel));
+        handler.addOutputChannel(handler.registerOutputChannel(std::move(outputChannel)));
+
+        mockReceiver->enqueue(5005, "Forwarded Vendor Order 5005");
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::SimpleExecutionStrategy>());
+
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockSender->sentCount() == 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        REQUIRE(mockSender->sentMessages.size() == 1);
+        CHECK(mockSender->sentMessages.front().getId() == 5005);
+        CHECK(mockSender->sentMessages.front().getPayload() == "Forwarded Vendor Order 5005");
+
+        CHECK(mockManager->finalizedIds.empty());
+        CHECK(mockManager->droppedIds.empty());
+    }
+
+    SECTION("Fan-out to multiple output channels consumes original VendorMessage once and creates new message for remaining channels")
+    {
+        auto secondSender = std::make_shared<MockVendorSender>();
+        VendorForwardHandler handler(backend);
+        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver);
+        auto outChan1 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_1", mockSender);
+        auto outChan2 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_2", secondSender);
+
+        handler.registerInputChannel(std::move(inputChannel));
+        handler.addOutputChannel(handler.registerOutputChannel(std::move(outChan1)));
+        handler.addOutputChannel(handler.registerOutputChannel(std::move(outChan2)));
+
+        mockReceiver->enqueue(7007, "Fanout Vendor Payload");
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::SimpleExecutionStrategy>());
+
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (secondSender->sentCount() == 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        REQUIRE(mockSender->sentMessages.size() == 1);
+        CHECK(mockSender->sentMessages.front().getId() == 7007);
+        CHECK(mockSender->sentMessages.front().getPayload() == "Fanout Vendor Payload");
+
+        REQUIRE(secondSender->sentMessages.size() == 1);
+        CHECK(secondSender->sentMessages.front().getId() == 0);
+        CHECK(secondSender->sentMessages.front().getPayload() == "Fanout Vendor Payload");
+
+        CHECK(mockManager->finalizedIds.empty());
+        CHECK(mockManager->droppedIds.empty());
     }
 }

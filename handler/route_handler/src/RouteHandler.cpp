@@ -1,8 +1,6 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/ProtocolId.hpp"
-#include "common/memory/ByteView.hpp"
-#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <charconv>
@@ -124,14 +122,14 @@ Backend::MessageResult RouteHandler::onMessageReceived(std::string_view channelN
         if (rule.matches(message)) {
             auto target = rule.targetChannel();
             if (target) {
-                target->send(message.rawBuffer());
+                target->send(message);
                 return Backend::Forwarded { .channel = rule.targetChannelName() };
             }
         }
     }
 
     if (m_defaultOutputChannel) {
-        m_defaultOutputChannel->send(message.rawBuffer());
+        m_defaultOutputChannel->send(message);
         return Backend::Forwarded { .channel = m_defaultOutputChannel->name() };
     }
 
@@ -152,7 +150,7 @@ void RouteHandler::onBatchReceived(
 
     // Fast path: if there is only 1 rule or all match default, optimize.
     // Otherwise bucket messages by target channel.
-    std::unordered_map<Common::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<Common::Compat::span<const std::byte>>> buckets;
+    std::unordered_map<Common::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<Backend::MessageView>> buckets;
     const auto count = std::min(messages.size(), outResults.size());
 
     for (std::size_t i = 0; i < count; ++i) {
@@ -177,7 +175,7 @@ void RouteHandler::onBatchReceived(
         }
 
         if (destination) {
-            buckets[destination].push_back(Common::Memory::ByteView(msg.rawBuffer()));
+            buckets[destination].push_back(msg);
             outResults[i] = Backend::Forwarded { .channel = destinationName };
         } else {
             Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
@@ -188,9 +186,9 @@ void RouteHandler::onBatchReceived(
         }
     }
 
-    for (auto& [chan, rawVec] : buckets) {
-        if (chan && !rawVec.empty()) {
-            Common::Compat::span<const Common::Compat::span<const std::byte>> batchSpan(rawVec.data(), rawVec.size());
+    for (auto& [chan, viewVec] : buckets) {
+        if (chan && !viewVec.empty()) {
+            Common::Compat::span<const Backend::MessageView> batchSpan(viewVec.data(), viewVec.size());
             chan->sendBatch(batchSpan);
         }
     }

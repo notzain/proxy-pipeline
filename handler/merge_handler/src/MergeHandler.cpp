@@ -1,7 +1,6 @@
 #include "MergeHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
-#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <sstream>
@@ -60,7 +59,7 @@ Backend::MessageResult MergeHandler::onMessageReceived(std::string_view channelN
         channelName, message.payload().size(), outName);
 
     if (m_outputChannel) {
-        if (!m_outputChannel->send(message.rawBuffer())) {
+        if (!m_outputChannel->send(message)) {
             Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", outName);
         }
     } else {
@@ -82,16 +81,11 @@ void MergeHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Common::Memory::SmallSpanBuffer spans(messages.size());
-    for (std::size_t i = 0; i < messages.size(); ++i) {
-        spans[i] = messages[i].rawBuffer();
-    }
-
     Proxy::Log::debug("[MergeHandler] Input channel '{}' received batch of {} messages, redirecting to '{}'...",
         channelName, messages.size(), outName);
 
     if (m_outputChannel) {
-        std::size_t sent = m_outputChannel->sendBatch(spans.span(messages.size()));
+        std::size_t sent = m_outputChannel->sendBatch(messages);
         if (sent < messages.size()) {
             Proxy::Log::warn("[MergeHandler] Only {}/{} messages redirected to output channel '{}'",
                 sent, messages.size(), outName);

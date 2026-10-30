@@ -14,6 +14,9 @@ public:
     FileOutputChannel(std::string name, std::filesystem::path outputDir);
     ~FileOutputChannel() override = default;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override;
 
 private:

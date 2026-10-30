@@ -56,6 +56,9 @@ void sendTestUdpDatagram(const std::string& host, std::uint16_t port, std::strin
 
 class TestOutputChannel : public ::Backend::IOutputChannel {
 public:
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);

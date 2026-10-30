@@ -22,6 +22,11 @@ public:
 
     void settle(::Backend::Settlement outcome) noexcept override;
 
+    /**
+     * @brief Consumes and moves out the owned VendorMessage for direct forwarding.
+     */
+    [[nodiscard]] Sdk::VendorMessage takeMessage() noexcept;
+
 private:
     Sdk::VendorMessage m_message;
     std::shared_ptr<Sdk::VendorManager> m_manager;

@@ -970,7 +970,7 @@ Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_vie
     const auto outputChannelName = m_cachedOutputChannel->name();
     Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
         order->customer, order->item, order->quantity, outputChannelName);
-    if (!m_cachedOutputChannel->send(message.rawBuffer())) {
+    if (!m_cachedOutputChannel->send(message)) {
         Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", outputChannelName);
     }
     return Backend::Forwarded { .channel = outputChannelName };
@@ -984,7 +984,7 @@ void OrderValidationHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Common::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer<Backend::MessageView, 64> validMessages(messages.size());
     std::size_t validCount = 0;
     const auto count = std::min(messages.size(), outResults.size());
 
@@ -1012,7 +1012,7 @@ void OrderValidationHandler::onBatchReceived(
         }
 
         if (m_cachedOutputChannel) {
-            spans[validCount++] = msg.rawBuffer();
+            validMessages[validCount++] = msg;
             outResults[i] = Backend::Forwarded { .channel = m_cachedOutputChannel->name() };
         } else {
             outResults[i] = Backend::Dropped {
@@ -1027,7 +1027,7 @@ void OrderValidationHandler::onBatchReceived(
     }
 
     if (m_cachedOutputChannel) {
-        m_cachedOutputChannel->sendBatch(spans.span(validCount));
+        m_cachedOutputChannel->sendBatch(validMessages.span(validCount));
     }
 }
 

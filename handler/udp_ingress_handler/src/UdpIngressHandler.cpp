@@ -2,11 +2,9 @@
 #include "backend/IBackend.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "backend/MessageView.hpp"
-#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/net/UdpInputChannel.hpp"
 #include "log/Log.hpp"
-#include <array>
 #include <utility>
 
 namespace Proxy::Handler {
@@ -54,7 +52,7 @@ Backend::MessageResult UdpIngressHandler::onMessageReceived(std::string_view cha
     Proxy::Log::debug("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
         message.payload().size(), message.metadata().size(), channelName, outputChannelName);
 
-    if (!m_outputChannel->send(message.rawBuffer())) {
+    if (!m_outputChannel->send(message)) {
         Proxy::Log::warn("[UdpIngressHandler] Failed to forward datagram to '{}'", outputChannelName);
     }
     return Backend::Forwarded { .channel = outputChannelName };
@@ -87,11 +85,7 @@ void UdpIngressHandler::onBatchReceived(
     Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, outputChannelName);
 
-    Common::Memory::SmallSpanBuffer spans(messages.size());
-    for (std::size_t i = 0; i < messages.size(); ++i) {
-        spans[i] = messages[i].rawBuffer();
-    }
-    m_outputChannel->sendBatch(spans.span(messages.size()));
+    m_outputChannel->sendBatch(messages);
 }
 
 } // namespace Proxy::Handler
