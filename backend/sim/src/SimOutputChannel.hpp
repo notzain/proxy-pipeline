@@ -20,6 +20,9 @@ public:
 
     ~SimOutputChannel() override;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override;
     std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 

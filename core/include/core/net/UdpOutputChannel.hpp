@@ -39,6 +39,9 @@ public:
     UdpOutputChannel(UdpOutputChannel&&) noexcept;
     UdpOutputChannel& operator=(UdpOutputChannel&&) noexcept;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     /**
      * @brief Transmits a message to the default destination address.
      */

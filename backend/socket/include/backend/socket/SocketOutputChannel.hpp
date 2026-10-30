@@ -17,6 +17,9 @@ public:
     SocketOutputChannel(std::string name, std::string destHost, std::uint16_t destPort);
     ~SocketOutputChannel() override;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override;
     std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 

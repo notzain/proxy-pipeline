@@ -56,4 +56,9 @@ Lease::operator bool() const noexcept
     return active();
 }
 
+std::unique_ptr<ILeaseState> Lease::releaseState() noexcept
+{
+    return std::move(m_state);
+}
+
 } // namespace Backend

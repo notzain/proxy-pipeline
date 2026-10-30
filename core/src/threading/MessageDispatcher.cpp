@@ -46,6 +46,7 @@ void dispatchReceivedBatch(
 
         if (hasLeases) {
             validLeases[validViews] = std::move(leases[i]);
+            optView->attachLease(validLeases[validViews]);
         }
         views[validViews++] = *optView;
         batchBytes += rawMessage.size();

@@ -24,6 +24,9 @@ public:
     ShmOutputChannel(std::string name, std::string destPath, std::size_t capacity = 1024);
     ~ShmOutputChannel() override;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override;
     std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages) override;
 

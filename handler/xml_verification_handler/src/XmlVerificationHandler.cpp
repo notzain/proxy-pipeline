@@ -84,7 +84,7 @@ Backend::MessageResult XmlVerificationHandler::onMessageReceived(std::string_vie
         const auto outputChannelName = m_outputChannel->name();
         Proxy::Log::debug("[XmlVerificationHandler] Message from '{}' ({} bytes payload) verified against XSD schema. Forwarding to '{}'...",
             channelName, message.payload().size(), outputChannelName);
-        if (!m_outputChannel->send(message.rawBuffer())) {
+        if (!m_outputChannel->send(message)) {
             Proxy::Log::warn("[XmlVerificationHandler] Failed to forward validated message to '{}'", outputChannelName);
         }
         return Backend::Forwarded { .channel = outputChannelName };
@@ -106,7 +106,7 @@ void XmlVerificationHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Common::Memory::SmallSpanBuffer spans(messages.size());
+    Common::Memory::SmallSpanBuffer<Backend::MessageView, 64> validMessages(messages.size());
     std::size_t validCount = 0;
     const auto count = std::min(messages.size(), outResults.size());
 
@@ -114,7 +114,7 @@ void XmlVerificationHandler::onBatchReceived(
         const auto& msg = messages[i];
         if (validate(msg.payload())) {
             if (m_outputChannel) {
-                spans[validCount++] = msg.rawBuffer();
+                validMessages[validCount++] = msg;
                 outResults[i] = Backend::Forwarded { .channel = m_outputChannel->name() };
             } else {
                 outResults[i] = Backend::Dropped {
@@ -133,7 +133,7 @@ void XmlVerificationHandler::onBatchReceived(
     }
 
     if (validCount > 0) {
-        m_outputChannel->sendBatch(spans.span(validCount));
+        m_outputChannel->sendBatch(validMessages.span(validCount));
     }
 }
 

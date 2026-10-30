@@ -7,6 +7,8 @@
 
 namespace Backend {
 
+class MessageView;
+
 /**
  * @brief Abstract interface representing a message transmission channel.
  *
@@ -28,7 +30,7 @@ public:
     [[nodiscard]] std::string_view name() const noexcept;
 
     /**
-     * @brief Transmits a message through this output channel.
+     * @brief Transmits a raw or pre-packed byte buffer through this output channel.
      *
      * @param message View of the byte buffer to transmit.
      * @return true If the message was successfully dispatched/written, false otherwise.
@@ -36,7 +38,20 @@ public:
     virtual bool send(Common::Compat::span<const std::byte> message) = 0;
 
     /**
-     * @brief Transmits a batch of messages through this output channel.
+     * @brief Transmits an already-formed in-flight MessageView through this output channel.
+     *
+     * Default implementation forwards `message.rawBuffer()`. Transports that own in-flight
+     * message objects (e.g. VendorOutputChannel) override this to consume and forward the
+     * underlying message instance directly, falling back to constructing a new message from
+     * `message.payload()` if the instance was already consumed by an earlier send.
+     *
+     * @param message In-flight message view to forward.
+     * @return true If the message was successfully dispatched, false otherwise.
+     */
+    virtual bool send(const MessageView& message);
+
+    /**
+     * @brief Transmits a batch of raw byte buffers through this output channel.
      *
      * Transports may implement vectorized batch sending (e.g. ::sendmmsg on Linux)
      * to dispatch multiple datagrams in a single system call.
@@ -46,6 +61,18 @@ public:
      * @return std::size_t Number of messages successfully dispatched.
      */
     virtual std::size_t sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages);
+
+    /**
+     * @brief Transmits a batch of in-flight MessageView instances through this output channel.
+     *
+     * Default implementation extracts `rawBuffer()` spans and delegates to the vectorized
+     * byte-span `sendBatch()`. Transports that consume in-flight message objects override
+     * this or delegate per-message to `send(const MessageView&)`.
+     *
+     * @param messages View of in-flight MessageView instances to transmit.
+     * @return std::size_t Number of messages successfully dispatched.
+     */
+    virtual std::size_t sendBatch(Common::Compat::span<const MessageView> messages);
 
 protected:
     IOutputChannel(IOutputChannel&&) noexcept = default;

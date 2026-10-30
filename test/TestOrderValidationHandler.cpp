@@ -20,6 +20,9 @@ public:
     {
     }
 
+    using Backend::IOutputChannel::send;
+    using Backend::IOutputChannel::sendBatch;
+
     bool send(Common::Compat::span<const std::byte> message) override
     {
         auto optView = Backend::MessageView::from(message);

@@ -46,6 +46,15 @@ public:
     [[nodiscard]] bool active() const noexcept;
     explicit operator bool() const noexcept;
 
+    /**
+     * @brief Consumes and extracts the underlying transport lease state without settling it.
+     *
+     * Used by output channels (e.g. VendorOutputChannel) when forwarding the exact received
+     * message object to a downstream sender, transferring ownership out of the lease so
+     * post-processing settlement is a no-op.
+     */
+    [[nodiscard]] std::unique_ptr<ILeaseState> releaseState() noexcept;
+
 private:
     std::unique_ptr<ILeaseState> m_state;
 };

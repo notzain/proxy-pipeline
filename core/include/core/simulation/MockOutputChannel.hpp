@@ -32,6 +32,9 @@ public:
     explicit MockOutputChannel(const SimulationClock* clock);
     ~MockOutputChannel() override;
 
+    using ::Backend::IOutputChannel::send;
+    using ::Backend::IOutputChannel::sendBatch;
+
     /**
      * @brief Backend::IOutputChannel implementation.
      */

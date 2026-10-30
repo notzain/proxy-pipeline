@@ -1,6 +1,6 @@
 #include "backend/MessageView.hpp"
-#include "common/io/WireFormat.hpp"
 #include "backend/EnvelopeHeader.hpp"
+#include "common/io/WireFormat.hpp"
 
 namespace Backend {
 
@@ -35,5 +35,70 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
     return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs);
 }
 
-} // namespace Backend
+MessageView::MessageView(
+    Common::Compat::span<const std::byte> payload,
+    Common::Compat::span<const std::byte> rawBuffer,
+    std::uint64_t timestampNs,
+    ProtocolId protocol,
+    Common::Compat::span<const std::byte> metadata) noexcept
+    : m_rawBuffer(rawBuffer.empty() ? payload : rawBuffer)
+    , m_metadata(metadata)
+    , m_payload(payload)
+    , m_timestampNs(timestampNs)
+    , m_protocol(protocol)
+{
+}
 
+MessageView::MessageView(
+    Common::Compat::span<const std::byte> rawBuffer,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
+    ProtocolId protocol,
+    std::uint64_t timestampNs) noexcept
+    : m_rawBuffer(rawBuffer)
+    , m_metadata(metadata)
+    , m_payload(payload)
+    , m_timestampNs(timestampNs)
+    , m_protocol(protocol)
+{
+}
+
+Common::Compat::span<const std::byte> MessageView::payload() const noexcept
+{
+    return m_payload;
+}
+
+Common::Compat::span<const std::byte> MessageView::rawBuffer() const noexcept
+{
+    return m_rawBuffer;
+}
+
+Common::Compat::span<const std::byte> MessageView::metadata() const noexcept
+{
+    return m_metadata;
+}
+
+ProtocolId MessageView::protocol() const noexcept
+{
+    return m_protocol;
+}
+
+std::uint64_t MessageView::timestampNs() const noexcept
+{
+    return m_timestampNs;
+}
+
+void MessageView::attachLease(Common::Memory::Borrow<Lease> lease) noexcept
+{
+    m_lease = lease;
+}
+
+std::unique_ptr<ILeaseState> MessageView::consumeLeaseState() const noexcept
+{
+    if (!m_lease) {
+        return nullptr;
+    }
+    return m_lease->releaseState();
+}
+
+} // namespace Backend

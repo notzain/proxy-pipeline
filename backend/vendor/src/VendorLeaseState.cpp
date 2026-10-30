@@ -32,4 +32,9 @@ void VendorLeaseState::settle(::Backend::Settlement outcome) noexcept
     }
 }
 
+Sdk::VendorMessage VendorLeaseState::takeMessage() noexcept
+{
+    return std::move(m_message);
+}
+
 } // namespace Backend::Vendor

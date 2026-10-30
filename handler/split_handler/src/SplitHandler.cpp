@@ -1,7 +1,6 @@
 #include "SplitHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
-#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <sstream>
@@ -59,7 +58,7 @@ Backend::MessageResult SplitHandler::onMessageReceived(std::string_view channelN
         channelName, message.payload().size());
     std::size_t forwarded = 0;
     for (auto outChan : m_outputChannelsList) {
-        if (outChan && outChan->send(message.rawBuffer())) {
+        if (outChan && outChan->send(message)) {
             forwarded++;
         }
     }
@@ -79,16 +78,11 @@ void SplitHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Common::Memory::SmallSpanBuffer spans(messages.size());
-    for (std::size_t i = 0; i < messages.size(); ++i) {
-        spans[i] = messages[i].rawBuffer();
-    }
-
     Proxy::Log::debug("[SplitHandler] Channel '{}' received batch of {} messages, splitting...", channelName, messages.size());
 
     for (auto outChan : m_outputChannelsList) {
         if (outChan) {
-            outChan->sendBatch(spans.span(messages.size()));
+            outChan->sendBatch(messages);
         }
     }
 }
