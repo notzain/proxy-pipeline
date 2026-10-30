@@ -3,6 +3,7 @@
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
+#include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
@@ -37,8 +38,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
         for (std::size_t i = 0; i < 16; ++i) {
             batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
         }
-        std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
-        std::array<::Backend::Lease, 16> leases;
+        Common::Memory::ParallelArray<16, Common::Compat::span<const std::byte>, ::Backend::PayloadFormat, ::Backend::Lease> batch;
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
@@ -47,21 +47,26 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
+                for (auto& slot : batchSlots) {
+                    slot.reset();
+                }
+
                 auto result = channel.receiveBatch(
                     Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
                     channelTimeout);
 
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
+                    batch.clear();
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        rawMessages[i] = Common::Memory::ByteView((*batchBuffers)[i].data(), batchSlots[i].size);
-                        leases[i] = std::move(batchSlots[i].lease);
+                        batch.push_back(batchSlots[i].filledSpan(), batchSlots[i].format(), std::move(batchSlots[i].lease));
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
                         channel.name(),
-                        Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), batchCount),
-                        Common::Compat::span<::Backend::Lease>(leases.data(), batchCount),
+                        batch.span<0>(),
+                        batch.span<1>(),
+                        batch.span<2>(),
                         invalidEnvelopeCount,
                         nullptr);
                 }

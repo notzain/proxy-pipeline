@@ -5,6 +5,7 @@
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
+#include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -57,6 +58,8 @@ namespace {
     {
         const std::size_t drainCount = tasks.size();
         std::size_t batchStart = 0;
+        Common::Memory::ParallelArray<16, Common::Compat::span<const std::byte>, ::Backend::PayloadFormat, ::Backend::Lease> batch;
+
         while (batchStart < drainCount) {
             std::string_view chName = tasks[batchStart].channelName();
             std::size_t batchEnd = batchStart + 1;
@@ -64,17 +67,19 @@ namespace {
                 ++batchEnd;
             }
             std::size_t spanCount = batchEnd - batchStart;
-            std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
-            std::array<::Backend::Lease, 16> leases;
+            batch.clear();
             for (std::size_t k = 0; k < spanCount; ++k) {
-                rawMessages[k] = Common::Memory::ByteView(tasks[batchStart + k].payload());
-                leases[k] = std::move(tasks[batchStart + k].lease());
+                batch.push_back(
+                    Common::Memory::ByteView(tasks[batchStart + k].payload()),
+                    tasks[batchStart + k].format(),
+                    std::move(tasks[batchStart + k].lease()));
             }
             Detail::dispatchReceivedBatch(
                 handler,
                 chName,
-                Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), spanCount),
-                Common::Compat::span<::Backend::Lease>(leases.data(), spanCount),
+                batch.span<0>(),
+                batch.span<1>(),
+                batch.span<2>(),
                 invalidEnvelopeCount,
                 handlerMutex);
             batchStart = batchEnd;
@@ -137,18 +142,23 @@ namespace {
 
             for (std::size_t i = 0; i < received; ++i) {
                 MessageTask task;
-                const std::size_t msgSize = batchSlots[i].size;
-                if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
-                    if (auto slice = bufferPool->acquire()) {
-                        std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
-                        task.assignSlice(channelName, std::move(*slice), msgSize);
+                if (batchSlots[i].isLeased()) {
+                    const auto view = batchSlots[i].filledSpan();
+                    task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
+                } else {
+                    const std::size_t msgSize = batchSlots[i].size;
+                    if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
+                        if (auto slice = bufferPool->acquire()) {
+                            std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
+                            task.assignSlice(channelName, std::move(*slice), msgSize);
+                        } else {
+                            task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                        }
                     } else {
                         task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
                     }
-                } else {
-                    task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                    task.setLease(std::move(batchSlots[i].lease));
                 }
-                task.setLease(std::move(batchSlots[i].lease));
 
                 if (!sharedQueue->tryPush(std::move(task))) {
                     sharedQueue->push(std::move(task), stoken);
@@ -173,11 +183,16 @@ namespace {
             receiveFailed = channelFailed(channelName, result) || receiveFailed;
             const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
             for (std::size_t i = 0; i < nReceived; ++i) {
+                if (inPlaceSlots[i].isLeased()) {
+                    const auto view = inPlaceSlots[i].filledSpan();
+                    slots[i].assignLeased(channelName, view, std::move(inPlaceSlots[i].lease));
+                    continue;
+                }
                 slots[i].commitInline(inPlaceSlots[i].size);
-                slots[i].setLease(std::move(inPlaceSlots[i].lease));
                 if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
                     hasOversized = true;
                 }
+                slots[i].setLease(std::move(inPlaceSlots[i].lease));
             }
             return nReceived;
         };
@@ -212,10 +227,15 @@ namespace {
                 return false;
             }
             std::size_t jumboBytes = jumboResult.hasValue() ? jumboResult.value() : 0;
-            if (jumboBytes > 0) {
+            if (jumboBytes > 0 || jumboSlot.isLeased()) {
                 targetQueue->pushBatch(
                     1,
                     [&](MessageTask& slot, std::size_t) {
+                        if (jumboSlot.isLeased()) {
+                            const auto view = jumboSlot.filledSpan();
+                            slot.assignLeased(channelName, view, std::move(jumboSlot.lease));
+                            return;
+                        }
                         slot.setLease(std::move(jumboSlot.lease));
                         if (jumboBytes > MessageTask::SmallBufferSize && bufferPool) {
                             if (auto slice = bufferPool->acquire()) {
@@ -271,12 +291,12 @@ namespace {
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            Common::Memory::ByteView firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
+            Common::Memory::ByteView firstSpan(batchSlots[runStart].filledSpan());
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                Common::Memory::ByteView nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
+                Common::Memory::ByteView nextSpan(batchSlots[runEnd].filledSpan());
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }
@@ -288,8 +308,13 @@ namespace {
                 runCount,
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
-                    const std::size_t pktSize = batchSlots[pktIdx].size;
+                    if (batchSlots[pktIdx].isLeased()) {
+                        const auto view = batchSlots[pktIdx].filledSpan();
+                        slot.assignLeased(channelName, view, std::move(batchSlots[pktIdx].lease));
+                        return;
+                    }
                     slot.setLease(std::move(batchSlots[pktIdx].lease));
+                    const std::size_t pktSize = batchSlots[pktIdx].size;
                     if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
                         if (auto slice = bufferPool->acquire()) {
                             std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);

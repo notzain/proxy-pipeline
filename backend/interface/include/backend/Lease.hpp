@@ -2,6 +2,7 @@
 
 #include "backend/ILeaseState.hpp"
 #include "backend/Settlement.hpp"
+#include "common/memory/ObserverPtr.hpp"
 #include <memory>
 
 namespace Backend {
@@ -54,6 +55,11 @@ public:
      * post-processing settlement is a no-op.
      */
     [[nodiscard]] std::unique_ptr<ILeaseState> releaseState() noexcept;
+
+    /**
+     * @brief Returns a non-owning observer pointer to the underlying lease state, or nullptr if inactive.
+     */
+    [[nodiscard]] Common::Memory::ObserverPtr<ILeaseState> state() const noexcept;
 
 private:
     std::unique_ptr<ILeaseState> m_state;

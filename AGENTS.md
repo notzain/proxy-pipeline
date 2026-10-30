@@ -86,6 +86,12 @@ Guidelines and conventions for AI agents and developers working on this project.
 - **Coding Conventions & Control Flow**:
   - Prefer early returns, `break`, and `continue` statements over deep nesting to keep indentation flat, readable, and focused on the happy path.
   - After touching a header or source file, remove any unused includes from that file.
+  - **Memory & Type Abstractions (`Common::Memory`, `Common::Compat`, `Common::Types`)**:
+    - Avoid exposing raw pointers (`T*`) for non-owning nullable or non-nullable references across API boundaries and method return signatures.
+    - Use `Common::Memory::ObserverPtr<T>` instead of raw `T*` for non-owning, nullable pointers (e.g. `leaseState()`, `state()`).
+    - Use `Common::Memory::Borrow<T>` or `Common::Memory::NotNull<T*>` for rebindable non-owning references and non-null guarantees.
+    - Use `Common::Compat::span<T>` instead of pointer + length pairs.
+    - Leverage `Common::Types` (e.g. `Variant`) and `Common::Memory` primitives (e.g. `ParallelArray`, `BufferSlice`) instead of bespoke ad-hoc structures.
 - **Git Workflow & Branching Policy**:
   - **Feature Branches**: All new features and non-trivial modifications must be developed inside dedicated feature branches (e.g. `feat/<feature-name>`) and merged back into the base branch (`master` / `main`) only when completed and verified. Never work directly on `master` for feature development.
   - **Explicit Approval Required**: Never create a git commit without the user's explicit prior approval. Always ask for permission and get confirmation before executing `git commit`.

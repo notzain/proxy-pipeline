@@ -37,17 +37,20 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
+                slot.reset();
                 auto result = channel.receiveSlot(slot, channelTimeout);
 
                 if (result.hasValue()) {
                     const std::size_t receivedBytes = result.value();
-                    if (receivedBytes > 0) {
-                        auto msgSpan = Common::Memory::ByteView(receiveBuffer.data(), receivedBytes);
+                    if (receivedBytes > 0 || slot.isLeased()) {
+                        auto msgSpan = slot.filledSpan();
                         std::array<Common::Compat::span<const std::byte>, 1> batch { msgSpan };
+                        const std::array<::Backend::PayloadFormat, 1> formats { slot.format() };
                         Detail::dispatchReceivedBatch(
                             handler,
                             channel.name(),
                             Common::Compat::span<const Common::Compat::span<const std::byte>>(batch.data(), batch.size()),
+                            Common::Compat::span<const ::Backend::PayloadFormat>(formats.data(), formats.size()),
                             Common::Compat::span<::Backend::Lease>(&slot.lease, 1),
                             invalidEnvelopeCount,
                             nullptr);

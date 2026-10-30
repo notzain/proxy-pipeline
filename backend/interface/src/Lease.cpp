@@ -61,4 +61,9 @@ std::unique_ptr<ILeaseState> Lease::releaseState() noexcept
     return std::move(m_state);
 }
 
+Common::Memory::ObserverPtr<ILeaseState> Lease::state() const noexcept
+{
+    return Common::Memory::ObserverPtr<ILeaseState>(m_state.get());
+}
+
 } // namespace Backend

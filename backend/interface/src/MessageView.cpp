@@ -101,4 +101,12 @@ std::unique_ptr<ILeaseState> MessageView::consumeLeaseState() const noexcept
     return m_lease->releaseState();
 }
 
+Common::Memory::ObserverPtr<ILeaseState> MessageView::leaseState() const noexcept
+{
+    if (!m_lease) {
+        return nullptr;
+    }
+    return m_lease->state();
+}
+
 } // namespace Backend
