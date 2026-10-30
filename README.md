@@ -229,7 +229,7 @@ cmake --preset debug --fresh \
 cmake --build --preset debug
 ```
 
-`PROXY_CONAN_OFFLINE=ON` makes Conan fail if a required artifact is missing instead of trying a remote. For C++17, restore `thirdparty/proxy-conan-cache-debug-cpp17.tgz`, configure with the `debug-cpp17` preset, and use the `ubuntu-x86_64-gcc-11-cpp17` host and build profiles. Bundles contain Linux binaries built in the container; use Ubuntu 22.04 or a compatible newer Ubuntu system. See [the offline bundle guide](docs/features/offline-conan-cache-bundles.md) for details.
+`PROXY_CONAN_OFFLINE=ON` makes Conan fail if a required artifact is missing instead of trying a remote. For C++17, restore `thirdparty/proxy-conan-cache-debug-cpp17.tgz`, configure with the `debug-cpp17` preset, and use the `ubuntu-x86_64-gcc-11-cpp17` host and build profiles. Bundles contain Linux binaries built in the container; use Ubuntu 22.04 or a compatible newer Ubuntu system. See [the offline bundle guide](docs/features/infrastructure/004-infrastructure-offline-conan-cache-bundles.md) for details.
 
 ---
 
@@ -337,19 +337,65 @@ Packages handlers into lightweight, stripped Distroless container images (`gcr.i
 - [Tools & Synthetic Traffic Generation](docs/guides/tools-and-synthetic-traffic-generation.md): Building and using `generate_sample_pcap` to create synthetic PCAP test captures with mixed valid/corrupted traffic.
 - [Performance Tuning & Profiling Guide](docs/guides/performance-tuning-and-profiling.md): Linux kernel sysctl socket tuning, CPU affinity pinning, memory slab sizing, and perf flame graph profiling.
 
-### Feature Specifications & Implementation Records (`docs/features/`)
-- [ByteView Convenience Value Type (`Common::Memory::ByteView`)](docs/features/byte-span-helper.md)
-- [Configuration Subsystem & Strongly-Typed Resolution](docs/features/configuration-subsystem.md)
-- [Logging Subsystem & Sinks (`proxylog`)](docs/features/logging-subsystem.md)
-- [Shared Memory Transport Architecture](docs/features/shm-transport.md)
-- [Socket Poller & Platform Multiplexing Architecture](docs/features/socket-poller-architecture.md)
-- [Trait-Based Serialization & Intermediate Representation](docs/features/serialization-framework.md)
-- [Multi-Process Pipeline Orchestration](docs/features/chain-runner-orchestration.md)
-- [C++17 Compatibility & Polyfill Architecture](docs/features/cpp17-common-library.md)
-- [Message Envelope Wire Format Specification](docs/features/message-envelope-wire-format.md)
-- [Centralized Message Validation & Ingress Accounting](docs/features/centralized-message-validation-ingress-accounting.md)
-- [Offline Conan Cache Bundles](docs/features/offline-conan-cache-bundles.md)
-- [In-Process Pipeline Runner Design](docs/features/inproc-pipeline-runner.md)
-- [Handler Channel Thread Safety](docs/features/handler-channel-thread-safety.md)
-- [Live Telemetry Dashboard Plan](docs/features/live-telemetry-dashboard-plan.md)
+### Feature Specifications & Historical Records (`docs/features/`)
+
+#### Messaging & Zero-Copy Lifecycle (`docs/features/message/`)
+- [001: Initial Value-Copied Buffers & Multi-Channel Chaining](docs/features/message/001-message-initial-value-copied-buffers.md)
+- [002: Pluggable Execution Strategies & Zero-Allocation Ingress](docs/features/message/002-message-zero-allocation-ingress-and-task-queue.md)
+- [003: Small Buffer Optimization (SBO) & In-Place Ring Slot Ingress](docs/features/message/003-message-sbo-task-and-inplace-ring-ingress.md)
+- [004: Vectorized Batch Ingress & Egress (`receiveBatch` / `sendBatch`)](docs/features/message/004-message-vectorized-batch-ingress-and-egress.md)
+- [005: `MessageEnvelope`, `MessageView`, & Origin-Preserving Metadata](docs/features/message/005-message-envelope-and-origin-metadata.md)
+- [006: Zero-Copy Jumbo `BufferPool`, `MpmcQueue`, & Borrowed Channel Handles](docs/features/message/006-message-buffer-pool-mpmc-and-borrowed-channels.md)
+- [007: Strongly-Typed `MessageResult` & Simulation Trace Reporting](docs/features/message/007-message-result-variant-and-simulation-tracing.md)
+- [008: Cohesive `BufferSlot` & Channel Name Encapsulation](docs/features/message/008-message-buffer-slot-and-channel-encapsulation.md)
+- [009: Centralized `MessageDispatcher` & Typed `ReceiveResult`](docs/features/message/009-message-centralized-dispatcher-and-receive-result.md)
+- [010: Explicit Big-Endian Wire Format v1 & `ByteView` Abstractions](docs/features/message/010-message-explicit-wire-format-and-byte-views.md)
+- [011: Vendor Backend PoC & In-Band Correlation Registry](docs/features/message/011-message-vendor-poc-and-envelope-unification.md)
+- [012: Out-of-Band `Backend::Lease` Ownership & `receiveSlot` Unification](docs/features/message/012-message-lease-ownership-and-receive-slot.md)
+- [013: Consuming `VendorMessage` Forwarding & `MessageView` Egress](docs/features/message/013-message-consuming-vendor-forward.md)
+
+#### Transport Backends & Network Polling (`docs/features/transport/`)
+- [001: Initial File & UDP Socket Transports (`backend/file`, `backend/socket`)](docs/features/transport/001-transport-initial-file-and-udp-socket.md)
+- [002: Platform Socket Poller & Async I/O Multiplexing (`ISocketPoller`)](docs/features/transport/002-transport-socket-poller-and-async-io.md)
+- [003: Unix Domain Socket IPC & Pre-Connected Datagram Tuning (`backend/uds`)](docs/features/transport/003-transport-uds-and-datagram-tuning.md)
+- [004: Kernel-Bypass Shared Memory Transport (`backend/shm`)](docs/features/transport/004-transport-kernel-bypass-shared-memory.md)
+- [005: Reusable Network UDP Channels (`UdpInputChannel` & `UdpOutputChannel`)](docs/features/transport/005-transport-network-udp-ingress-egress-channels.md)
+- [006: In-Process Pipeline Channel Backend & Benchmark Runner (`backend/inproc`)](docs/features/transport/006-transport-inproc-pipeline-backend.md)
+- [007: 3rd-Party Vendor SDK Transport & Consuming Lifecycle (`backend/vendor`)](docs/features/transport/007-transport-vendor-sdk-backend.md)
+
+#### Handlers, Concurrency & Supervision (`docs/features/handler/`)
+- [001: Foundational Handlers, Fan-Out (`SplitHandler`), & Fan-In (`MergeHandler`)](docs/features/handler/001-handler-foundational-split-and-merge.md)
+- [002: Pluggable Execution Strategies (`Sequential`, `DedicatedThread`, `ThreadPool`, `Simple`)](docs/features/handler/002-handler-pluggable-execution-strategies.md)
+- [003: `XmlVerificationHandler` & `OrderValidationHandler` Optimizations](docs/features/handler/003-handler-xml-and-order-validation.md)
+- [004: Edge UDP Gateways (`UdpIngressHandler`, `UdpEgressHandler`) & Dynamic `RouteHandler`](docs/features/handler/004-handler-udp-gateways-and-dynamic-router.md)
+- [005: Handler Classification Traits (`HandlerRole`, `HandlerProtocol`) & Sidecar Manifests](docs/features/handler/005-handler-classification-and-sidecar-manifests.md)
+- [006: `HandlerRunner` Supervision, Constructor Injection, NVI `onConfigure`, & Channel Encapsulation](docs/features/handler/006-handler-runner-nvi-and-channel-encapsulation.md)
+- [007: Handler Thread-Safety Guarantees & Async-Signal-Safe Shutdown](docs/features/handler/007-handler-thread-safety-and-signal-safe-shutdown.md)
+
+#### Serialization & Schema Engines (`docs/features/serialization/`)
+- [001: Trait-Based Serialization & Intermediate Representation (`Core::Serialization`)](docs/features/serialization/001-serialization-trait-based-ir-framework.md)
+- [002: Zero-Copy `std::string_view` In-Place Parsing Optimizations](docs/features/serialization/002-serialization-zero-copy-string-view-and-inplace-parsing.md)
+- [003: Conditional XML Library Switches & Core Xerces-C Integration](docs/features/serialization/003-serialization-conditional-xml-and-xerces-support.md)
+
+#### Simulation, Tracing & Live Telemetry (`docs/features/simulation/`)
+- [001: Native PCAP Engine, `SimBackend`, & Interactive Step-By-Step Debugger](docs/features/simulation/001-simulation-pcap-engine-and-sim-backend.md)
+- [002: Deterministic Execution Tracing, Semantic Assertions, & Interactive Queue Visualization](docs/features/simulation/002-simulation-deterministic-tracing-and-queue-visualizer.md)
+- [003: Lock-Free StatsD Telemetry & Consolidated Live Operator Dashboard](docs/features/simulation/003-simulation-live-telemetry-and-operator-dashboard.md)
+
+#### Common Primitives, Polyfills & Logging (`docs/features/common/`)
+- [001: Universal Logging Library (`proxylog`) & `spdlog` Sinks](docs/features/common/001-common-universal-logging-subsystem.md)
+- [002: Strongly-Typed Configuration Subsystem (`Backend::IConfig` & `Core::Config::Configuration`)](docs/features/common/002-common-configuration-subsystem.md)
+- [003: Lock-Free Queues (`SpscQueue`, `MpmcQueue`) & `BufferPool`](docs/features/common/003-common-lockfree-queues-and-buffer-pool.md)
+- [004: macOS GCC Emulated TLS (`emutls`) Thread Teardown Fix](docs/features/common/004-common-macos-emutls-thread-teardown-fix.md)
+- [005: Value Types & RAII Safety (`UniqueFd`, `Borrow`, `NotNull`, `ObserverPtr`, `SmallSpanBuffer`)](docs/features/common/005-common-value-types-and-raii-safety.md)
+- [006: Zero-Dependency C++17/C++20 Compatibility Polyfills (`Common::Compat`)](docs/features/common/006-common-cpp17-compat-polyfills.md)
+- [007: Ergonomic `ByteView`, `MutableByteView`, & `Common::Types::Variant`](docs/features/common/007-common-byte-view-and-variant-wrapper.md)
+
+#### Build System, Orchestration & Packaging (`docs/features/infrastructure/`)
+- [001: Conan 2 Dependency Discovery, Multi-Backend Matrix (`ProxyBackends.cmake`), & Dynamic OCI Packaging](docs/features/infrastructure/001-infrastructure-conan-discovery-and-oci-packaging.md)
+- [002: Declarative Multi-Process Pipeline Supervisor (`scripts/chain_runner.py`)](docs/features/infrastructure/002-infrastructure-chain-runner-orchestration.md)
+- [003: Comprehensive Documentation Architecture, Guides, & Repository `README.md`](docs/features/infrastructure/003-infrastructure-documentation-architecture-and-guides.md)
+- [004: Offline Conan 2 Cache Bundles & Firewalled Build Support](docs/features/infrastructure/004-infrastructure-offline-conan-cache-bundles.md)
+
+#### Benchmarks
 - [Benchmark Results & Performance Profile](BENCHMARK.md)
