@@ -74,7 +74,7 @@ Common::Net::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& sl
                 std::memcpy(slot.buffer.data(), data.data(), copyLen);
                 slot.size = copyLen;
                 m_queue.pop_front();
-                return BytesResult::success(copyLen);
+                return BytesResult::ok(copyLen);
             }
         }
 
@@ -90,7 +90,7 @@ Common::Net::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& sl
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    return BytesResult::failure(Common::Net::ReceiveTimeout { });
+    return BytesResult::err(Common::Net::ReceiveTimeout { });
 }
 
 Common::Net::BatchResult MockInputChannel::receiveBatch(
@@ -98,7 +98,7 @@ Common::Net::BatchResult MockInputChannel::receiveBatch(
     Timeout timeout)
 {
     if (slots.empty()) {
-        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+        return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     auto startTime = std::chrono::steady_clock::now();
@@ -130,8 +130,8 @@ Common::Net::BatchResult MockInputChannel::receiveBatch(
     }
 
     return drained > 0
-        ? BatchResult::success(drained)
-        : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+        ? BatchResult::ok(drained)
+        : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Core::Simulation

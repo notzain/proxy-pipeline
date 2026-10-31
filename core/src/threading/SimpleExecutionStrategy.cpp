@@ -41,8 +41,8 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                 auto& slot = scratch.prepareSync(channel)[0];
                 auto result = channel.receiveSlot(slot, channelTimeout);
 
-                if (result.hasValue()) {
-                    const std::size_t receivedBytes = result.value();
+                if (result.isOk()) {
+                    const std::size_t receivedBytes = result.unwrap();
                     if (receivedBytes > 0 || slot.isLeased()) {
                         auto msgSpan = slot.filledSpan();
                         std::array<Common::Compat::span<const std::byte>, 1> batch { msgSpan };
@@ -57,7 +57,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                             nullptr);
                     }
                 } else {
-                    const auto& cause = result.error();
+                    const auto& cause = result.unwrapErr();
                     if (!cause.is<Common::Net::ReceiveTimeout>()) {
                         if (cause.is<Common::Net::ReceiveClosed>()) {
                             Proxy::Log::error("[SimpleExecutionStrategy] Input channel '{}' is closed", channel.name());

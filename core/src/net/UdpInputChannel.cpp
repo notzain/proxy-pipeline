@@ -159,15 +159,15 @@ Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slo
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
+            return BytesResult::err(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
         }
     }
 
     if (destination.size() <= EnvelopePreambleSize) {
-        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
+        return BytesResult::err(Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
     if (!m_poller) {
-        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
+        return BytesResult::err(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
     }
 
     Common::Net::SocketAddress clientAddr;
@@ -177,13 +177,13 @@ Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slo
         timeout,
         &clientAddr);
 
-    if (!receiveResult.hasValue()) {
+    if (!receiveResult.isOk()) {
         return receiveResult;
     }
 
-    writeEnvelopePreamble(destination, receiveResult.value(), clientAddr, m_boundAddr);
-    slot.size = EnvelopePreambleSize + receiveResult.value();
-    return BytesResult::success(slot.size);
+    writeEnvelopePreamble(destination, receiveResult.unwrap(), clientAddr, m_boundAddr);
+    slot.size = EnvelopePreambleSize + receiveResult.unwrap();
+    return BytesResult::ok(slot.size);
 }
 
 Common::Net::BatchResult UdpInputChannel::receiveBatch(
@@ -193,15 +193,15 @@ Common::Net::BatchResult UdpInputChannel::receiveBatch(
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
+            return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
         }
     }
 
     if (slots.empty()) {
-        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+        return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
     if (!m_poller) {
-        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
+        return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
     }
 
     constexpr std::size_t MaxBatch = 32;
@@ -212,7 +212,7 @@ Common::Net::BatchResult UdpInputChannel::receiveBatch(
 
     for (std::size_t i = 0; i < batchSize; ++i) {
         if (slots[i].buffer.size() <= EnvelopePreambleSize) {
-            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+            return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
         }
         payloadSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
     }
@@ -223,7 +223,7 @@ Common::Net::BatchResult UdpInputChannel::receiveBatch(
         timeout,
         Common::Compat::span<Common::Net::SocketAddress>(clientAddrs.data(), batchSize));
 
-    const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
+    const std::size_t receivedCount = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
     for (std::size_t i = 0; i < receivedCount; ++i) {
         writeEnvelopePreamble(slots[i].buffer, payloadSlots[i].size, clientAddrs[i], m_boundAddr);
         slots[i].size = EnvelopePreambleSize + payloadSlots[i].size;

@@ -105,7 +105,7 @@ namespace {
 
     bool channelFailed(std::string_view channelName, const Common::Net::BatchResult& result)
     {
-        return !result.hasValue() && channelFailed(channelName, result.error().cause);
+        return !result.isOk() && channelFailed(channelName, result.unwrapErr().cause);
     }
 
     /**
@@ -124,7 +124,7 @@ namespace {
 
         auto result = channel.receiveBatch(batchSlots, timeout);
         const bool failed = channelFailed(channelName, result);
-        const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+        const std::size_t received = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
         scratch.releaseUnusedFrom(received);
         if (failed && received == 0) {
             return false;
@@ -181,7 +181,7 @@ namespace {
         auto result = channel.receiveBatch(batchSlots, timeout);
 
         const bool failed = channelFailed(channelName, result);
-        const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+        const std::size_t received = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
         scratch.releaseUnusedFrom(received);
         if (failed && received == 0) {
             return false;

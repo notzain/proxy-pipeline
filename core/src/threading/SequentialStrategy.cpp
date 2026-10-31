@@ -47,7 +47,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                 auto result = channel.receiveBatch(slots, channelTimeout);
 
                 // Even on partial error, process any messages already drained before handling the error.
-                const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
+                const std::size_t batchCount = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
                 if (batchCount > 0) {
                     batch.clear();
                     for (std::size_t i = 0; i < batchCount; ++i) {
@@ -63,14 +63,14 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                         nullptr);
                 }
 
-                if (result.hasValue() || result.error().cause.is<Common::Net::ReceiveTimeout>()) {
+                if (result.isOk() || result.unwrapErr().cause.is<Common::Net::ReceiveTimeout>()) {
                     return;
                 }
-                if (result.error().cause.is<Common::Net::ReceiveClosed>()) {
+                if (result.unwrapErr().cause.is<Common::Net::ReceiveClosed>()) {
                     Proxy::Log::error("[SequentialStrategy] Input channel '{}' is closed", channel.name());
                 } else {
                     Proxy::Log::error("[SequentialStrategy] Input channel '{}' failed: {}",
-                        channel.name(), result.error().cause.message());
+                        channel.name(), result.unwrapErr().cause.message());
                 }
                 m_running.store(false, std::memory_order_release);
             });

@@ -55,17 +55,17 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
     slot.reset();
 
     if (!m_receiver) {
-        return Common::Net::BytesResult::failure(Common::Net::ReceiveClosed { });
+        return Common::Net::BytesResult::err(Common::Net::ReceiveClosed { });
     }
 
     if (!m_manager) {
         Proxy::Log::error("[VendorInputChannel] VendorManager not initialized");
-        return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
+        return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
     }
 
     Sdk::VendorMessage rawMsg;
     if (!m_receiver->receive(&rawMsg, static_cast<int>(timeout.count()))) {
-        return Common::Net::BytesResult::failure(Common::Net::ReceiveTimeout { });
+        return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
     // Acquire a stationary relay node from the channel's private pool (zero heap allocation on hot path)
@@ -74,7 +74,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
         Proxy::Log::error("[VendorInputChannel] Relay pool exhausted for channel '{}', dropping message ID {}",
             name(), rawMsg.getId());
         m_manager->drop(rawMsg);
-        return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
+        return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
     }
 
     node->message = std::move(rawMsg);
@@ -91,7 +91,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
                 filePath, node->message.getId());
             m_manager->drop(node->message);
             m_relayPool->release(node);
-            return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
+            return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
         }
         if (fileSize > 0) {
             node->mapping = Common::Io::MappedFile::open(filePath);
@@ -100,7 +100,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
                     filePath, node->message.getId());
                 m_manager->drop(node->message);
                 m_relayPool->release(node);
-                return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
+                return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
             }
         }
     }
@@ -114,7 +114,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
         &VendorRelayNode::recycle);
 
     slot.assignLeased(view, ::Backend::Lease(std::move(token)));
-    return Common::Net::BytesResult::success(slot.size);
+    return Common::Net::BytesResult::ok(slot.size);
 }
 
 } // namespace Backend::Vendor

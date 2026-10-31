@@ -52,9 +52,9 @@ public:
             const auto bytesToCopy = std::min(slot.buffer.size(), msg.size());
             std::memcpy(slot.buffer.data(), msg.data(), bytesToCopy);
             slot.size = bytesToCopy;
-            return BytesResult::success(bytesToCopy);
+            return BytesResult::ok(bytesToCopy);
         }
-        return BytesResult::failure(Common::Net::ReceiveTimeout { });
+        return BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
     BatchResult receiveBatch(
@@ -63,7 +63,7 @@ public:
     {
         std::lock_guard lock(m_mutex);
         if (slots.empty()) {
-            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+            return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
         }
         std::size_t count = 0;
         while (count < slots.size() && m_index < m_messages.size()) {
@@ -74,8 +74,8 @@ public:
             ++count;
         }
         return count > 0
-            ? BatchResult::success(count)
-            : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+            ? BatchResult::ok(count)
+            : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
     }
 
 private:
@@ -94,7 +94,7 @@ public:
     BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout) override
     {
         slot.size = 0;
-        return BytesResult::failure(m_error);
+        return BytesResult::err(m_error);
     }
 
 private:
@@ -107,12 +107,12 @@ public:
     {
         if (m_received) {
             slot.size = 0;
-            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
+            return BytesResult::err(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
         }
         slot.buffer[0] = std::byte { 0x2a };
         slot.size = 1;
         m_received = true;
-        return BytesResult::success(1);
+        return BytesResult::ok(1);
     }
 
 private:
@@ -147,47 +147,47 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
 {
     std::array<std::byte, 8> buffer { };
 
-    auto successfulResult = Common::Types::Result<int, std::string>::success(42);
-    REQUIRE(successfulResult.hasValue());
-    CHECK(successfulResult.value() == 42);
-    auto failedResult = Common::Types::Result<int, std::string>::failure("failure");
-    REQUIRE_FALSE(failedResult.hasValue());
-    CHECK(failedResult.error() == "failure");
+    auto successfulResult = Common::Types::Result<int, std::string>::ok(42);
+    REQUIRE(successfulResult.isOk());
+    CHECK(successfulResult.unwrap() == 42);
+    auto failedResult = Common::Types::Result<int, std::string>::err("failure");
+    REQUIRE_FALSE(failedResult.isOk());
+    CHECK(failedResult.unwrapErr() == "failure");
 
     ::Backend::BufferSlot slot { buffer, 0 };
 
     StatusInputChannel timeoutChannel(Common::Net::ReceiveTimeout { });
     auto timeout = timeoutChannel.receiveSlot(slot, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(timeout.hasValue());
-    CHECK(timeout.error().is<Common::Net::ReceiveTimeout>());
+    REQUIRE_FALSE(timeout.isOk());
+    CHECK(timeout.unwrapErr().is<Common::Net::ReceiveTimeout>());
 
     StatusInputChannel closedChannel(Common::Net::ReceiveClosed { });
     auto closed = closedChannel.receiveSlot(slot, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(closed.hasValue());
-    CHECK(closed.error().is<Common::Net::ReceiveClosed>());
+    REQUIRE_FALSE(closed.isOk());
+    CHECK(closed.unwrapErr().is<Common::Net::ReceiveClosed>());
 
     StatusInputChannel errorChannel(Common::Net::ReceiveFailure { std::make_error_code(std::errc::permission_denied) });
     auto error = errorChannel.receiveSlot(slot, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(error.hasValue());
-    const auto* receiveFailure = std::get_if<Common::Net::ReceiveFailure>(&error.error());
+    REQUIRE_FALSE(error.isOk());
+    const auto* receiveFailure = std::get_if<Common::Net::ReceiveFailure>(&error.unwrapErr());
     REQUIRE(receiveFailure != nullptr);
     CHECK(receiveFailure->code == std::make_error_code(std::errc::permission_denied));
-    CHECK(error.error().message() == std::make_error_code(std::errc::permission_denied).message());
+    CHECK(error.unwrapErr().message() == std::make_error_code(std::errc::permission_denied).message());
 
     auto poller = Common::Net::createSocketPoller();
     auto closedPoller = poller->receive(-1, buffer, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(closedPoller.hasValue());
-    CHECK(closedPoller.error().is<Common::Net::ReceiveClosed>());
+    REQUIRE_FALSE(closedPoller.isOk());
+    CHECK(closedPoller.unwrapErr().is<Common::Net::ReceiveClosed>());
 
     auto batchTimeout = timeoutChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
-    REQUIRE_FALSE(batchTimeout.hasValue());
-    CHECK(batchTimeout.error().cause.is<Common::Net::ReceiveTimeout>());
+    REQUIRE_FALSE(batchTimeout.isOk());
+    CHECK(batchTimeout.unwrapErr().cause.is<Common::Net::ReceiveTimeout>());
     auto batchError = errorChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
-    REQUIRE_FALSE(batchError.hasValue());
-    const auto* batchReceiveFailure = std::get_if<Common::Net::ReceiveFailure>(&batchError.error().cause);
+    REQUIRE_FALSE(batchError.isOk());
+    const auto* batchReceiveFailure = std::get_if<Common::Net::ReceiveFailure>(&batchError.unwrapErr().cause);
     REQUIRE(batchReceiveFailure != nullptr);
     CHECK(batchReceiveFailure->code == std::make_error_code(std::errc::permission_denied));
-    CHECK(batchError.error().cause.message() == std::make_error_code(std::errc::permission_denied).message());
+    CHECK(batchError.unwrapErr().cause.message() == std::make_error_code(std::errc::permission_denied).message());
 
     PartialFailureInputChannel partialFailure;
     std::array<::Backend::BufferSlot, 2> slots {
@@ -195,9 +195,9 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
         ::Backend::BufferSlot { buffer, 0 },
     };
     auto partialResult = partialFailure.receiveBatch(slots, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(partialResult.hasValue());
-    CHECK(partialResult.error().receivedCount == 1);
-    const auto* partialReceiveFailure = std::get_if<Common::Net::ReceiveFailure>(&partialResult.error().cause);
+    REQUIRE_FALSE(partialResult.isOk());
+    CHECK(partialResult.unwrapErr().receivedCount == 1);
+    const auto* partialReceiveFailure = std::get_if<Common::Net::ReceiveFailure>(&partialResult.unwrapErr().cause);
     REQUIRE(partialReceiveFailure != nullptr);
     CHECK(partialReceiveFailure->code == std::make_error_code(std::errc::io_error));
     CHECK(slots[0].size == 1);
@@ -792,14 +792,14 @@ TEST_CASE("UDS Input and Output channels send and receive messages", "[channel][
     std::array<std::byte, 128> recvBuf { };
     ::Backend::BufferSlot recvSlot { recvBuf, 0 };
     auto timeoutResult = inChannel.receiveSlot(recvSlot, std::chrono::milliseconds(0));
-    REQUIRE_FALSE(timeoutResult.hasValue());
-    CHECK(timeoutResult.error().is<Common::Net::ReceiveTimeout>());
+    REQUIRE_FALSE(timeoutResult.isOk());
+    CHECK(timeoutResult.unwrapErr().is<Common::Net::ReceiveTimeout>());
 
     REQUIRE(outChannel.send(sendSpan));
 
     auto result = inChannel.receiveSlot(recvSlot, std::chrono::milliseconds(500));
-    REQUIRE(result.hasValue());
-    REQUIRE(result.value() == testMsg.size());
+    REQUIRE(result.isOk());
+    REQUIRE(result.unwrap() == testMsg.size());
 
     std::string receivedStr(reinterpret_cast<const char*>(recvBuf.data()), recvSlot.size);
     CHECK(receivedStr == testMsg);
@@ -829,8 +829,8 @@ TEST_CASE("UDS Input channel drains multiple packets via receiveBatch", "[channe
         slots,
         std::chrono::milliseconds(500));
 
-    REQUIRE(result.hasValue());
-    REQUIRE(result.value() == numMessages);
+    REQUIRE(result.isOk());
+    REQUIRE(result.unwrap() == numMessages);
     for (std::size_t i = 0; i < numMessages; ++i) {
         REQUIRE(slots[i].size == sentMessages[i].size());
         std::string receivedStr(reinterpret_cast<const char*>(buffers[i].data()), slots[i].size);
@@ -964,8 +964,8 @@ TEST_CASE("Output channels send multiple messages via vectorized sendBatch", "[c
         slots,
         std::chrono::milliseconds(500));
 
-    REQUIRE(result.hasValue());
-    REQUIRE(result.value() == messages.size());
+    REQUIRE(result.isOk());
+    REQUIRE(result.unwrap() == messages.size());
     for (std::size_t i = 0; i < messages.size(); ++i) {
         std::string recStr(reinterpret_cast<const char*>(recvBuffers[i].data()), slots[i].size);
         CHECK(recStr == messages[i]);

@@ -148,8 +148,8 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         std::array<std::byte, 256> rxBuf;
         ::Backend::BufferSlot rxSlot { rxBuf, 0 };
         auto receiveResult = in.receiveSlot(rxSlot, std::chrono::milliseconds(50));
-        REQUIRE(receiveResult.hasValue());
-        REQUIRE(receiveResult.value() == payload.size());
+        REQUIRE(receiveResult.isOk());
+        REQUIRE(receiveResult.unwrap() == payload.size());
         std::string recovered(reinterpret_cast<char*>(rxBuf.data()), rxSlot.size);
         REQUIRE(recovered == payload);
 
@@ -170,9 +170,9 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
         }
 
         auto batchResult = in.receiveBatch(slots, std::chrono::milliseconds(50));
-        REQUIRE(batchResult.hasValue());
-        REQUIRE(batchResult.value() == batchMsgs.size());
-        for (std::size_t i = 0; i < batchResult.value(); ++i) {
+        REQUIRE(batchResult.isOk());
+        REQUIRE(batchResult.unwrap() == batchMsgs.size());
+        for (std::size_t i = 0; i < batchResult.unwrap(); ++i) {
             std::string rec(reinterpret_cast<char*>(batchDestBufs[i].data()), slots[i].size);
             REQUIRE(rec == batchMsgs[i]);
         }
