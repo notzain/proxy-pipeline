@@ -3,9 +3,11 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/MessageView.hpp"
 #include "backend/UdpMetadata.hpp"
+#include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/net/UdpOutputChannel.hpp"
 #include "log/Log.hpp"
+#include <algorithm>
 #include <arpa/inet.h>
 #include <utility>
 
@@ -88,6 +90,20 @@ void UdpEgressHandler::onBatchReceived(
     Common::Compat::span<Backend::MessageResult> outResults)
 {
     const auto count = std::min(messages.size(), outResults.size());
+    if (count == 0) {
+        return;
+    }
+
+    if (!m_replyToOrigin && m_udpOut) {
+        Common::Memory::SmallSpanBuffer<Common::Compat::span<const std::byte>, 64> payloads(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            payloads[i] = messages[i].payload();
+            outResults[i] = Backend::Consumed { };
+        }
+        m_udpOut->sendBatch(payloads.constSpan());
+        return;
+    }
+
     for (std::size_t i = 0; i < count; ++i) {
         outResults[i] = onMessageReceived(channelName, messages[i]);
     }

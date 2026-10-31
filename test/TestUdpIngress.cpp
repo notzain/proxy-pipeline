@@ -521,3 +521,62 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
 
     ::close(clientFd);
 }
+
+TEST_CASE("UdpEgressHandler vectorized batch forward transmits all payloads in forward mode", "[handler][egress][batch]")
+{
+    int targetFd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    REQUIRE(targetFd >= 0);
+
+    sockaddr_in targetAddr { };
+    targetAddr.sin_family = AF_INET;
+    targetAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    targetAddr.sin_port = 0;
+    REQUIRE(::bind(targetFd, reinterpret_cast<sockaddr*>(&targetAddr), sizeof(targetAddr)) == 0);
+
+    socklen_t addrLen = sizeof(targetAddr);
+    REQUIRE(::getsockname(targetFd, reinterpret_cast<sockaddr*>(&targetAddr), &addrLen) == 0);
+    std::uint16_t targetPort = ntohs(targetAddr.sin_port);
+
+    const std::string payload1 = "BatchPacket1";
+    const std::string payload2 = "BatchPacket2";
+    auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload1));
+    auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload2));
+
+    DummyTestBackend backend;
+    std::vector<std::vector<std::byte>> queuedMsgs { env1, env2 };
+    backend.queueInputChannel(std::make_unique<MockTestInputChannel>(std::move(queuedMsgs)));
+
+    Core::Config::Configuration config;
+    config.set("egress.mode", "forward");
+    config.set("egress.dest_host", "127.0.0.1");
+    config.set("egress.dest_port", std::to_string(targetPort));
+    config.set("egress.input_channel", "pipeline_out");
+
+    Proxy::Handler::UdpEgressHandler egressHandler(backend);
+    Core::Handler::HandlerRunner runner(egressHandler);
+    REQUIRE(runner.configure(config));
+
+    auto v1 = Backend::MessageView::from(Common::Memory::ByteView(env1));
+    auto v2 = Backend::MessageView::from(Common::Memory::ByteView(env2));
+    REQUIRE(v1.has_value());
+    REQUIRE(v2.has_value());
+
+    std::array<Backend::MessageView, 2> batch { *v1, *v2 };
+    std::array<Backend::MessageResult, 2> results { };
+    egressHandler.onBatchReceived("pipeline_out", batch, results);
+
+    timeval tv { .tv_sec = 1, .tv_usec = 0 };
+    ::setsockopt(targetFd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    char recvBuf1[256] { };
+    ssize_t r1 = ::recv(targetFd, recvBuf1, sizeof(recvBuf1), 0);
+    REQUIRE(r1 == static_cast<ssize_t>(payload1.size()));
+    CHECK(std::string_view(recvBuf1, r1) == payload1);
+
+    char recvBuf2[256] { };
+    ssize_t r2 = ::recv(targetFd, recvBuf2, sizeof(recvBuf2), 0);
+    REQUIRE(r2 == static_cast<ssize_t>(payload2.size()));
+    CHECK(std::string_view(recvBuf2, r2) == payload2);
+
+    ::close(targetFd);
+}

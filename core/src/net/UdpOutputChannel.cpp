@@ -1,5 +1,6 @@
 #include "core/net/UdpOutputChannel.hpp"
 #include "log/Log.hpp"
+#include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
@@ -109,6 +110,66 @@ bool UdpOutputChannel::send(Common::Compat::span<const std::byte> message)
 
 std::size_t UdpOutputChannel::sendBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages)
 {
+    if (messages.empty()) {
+        return 0;
+    }
+
+#if defined(__linux__)
+    if (!m_hasDefaultAddr) {
+        Proxy::Log::error("[UdpOutputChannel] No default destination configured for sendBatch()");
+        return 0;
+    }
+
+    int fd = ensureSocketForFamily(m_defaultAddr.family());
+    if (fd < 0) {
+        return 0;
+    }
+
+    sockaddr_storage ss { };
+    std::size_t addrLen = m_defaultAddr.toNative(&ss, sizeof(ss));
+    if (addrLen == 0) {
+        Proxy::Log::error("[UdpOutputChannel] Invalid destination SocketAddress in sendBatch()");
+        return 0;
+    }
+
+    constexpr std::size_t maxBatch = 32;
+    std::size_t totalSent = 0;
+
+    for (std::size_t offset = 0; offset < messages.size(); offset += maxBatch) {
+        std::size_t chunk = std::min(maxBatch, messages.size() - offset);
+        struct mmsghdr msgvec[maxBatch];
+        struct iovec iov[maxBatch];
+        std::memset(msgvec, 0, sizeof(msgvec[0]) * chunk);
+
+        for (std::size_t i = 0; i < chunk; ++i) {
+            const auto& msg = messages[offset + i];
+            iov[i].iov_base = const_cast<char*>(reinterpret_cast<const char*>(msg.data()));
+            iov[i].iov_len = msg.size();
+
+            msgvec[i].msg_hdr.msg_iov = &iov[i];
+            msgvec[i].msg_hdr.msg_iovlen = 1;
+            msgvec[i].msg_hdr.msg_name = &ss;
+            msgvec[i].msg_hdr.msg_namelen = static_cast<socklen_t>(addrLen);
+        }
+
+        int sentCount = ::sendmmsg(fd, msgvec, static_cast<unsigned int>(chunk), 0);
+        if (sentCount > 0) {
+            totalSent += static_cast<std::size_t>(sentCount);
+            if (static_cast<std::size_t>(sentCount) < chunk) {
+                break;
+            }
+        } else if (sentCount < 0 && (errno == ENOBUFS || errno == EAGAIN)) {
+            for (std::size_t i = 0; i < chunk; ++i) {
+                if (send(messages[offset + i])) {
+                    ++totalSent;
+                }
+            }
+        } else {
+            break;
+        }
+    }
+    return totalSent;
+#else
     std::size_t sentCount = 0;
     for (const auto& msg : messages) {
         if (send(msg)) {
@@ -116,6 +177,7 @@ std::size_t UdpOutputChannel::sendBatch(Common::Compat::span<const Common::Compa
         }
     }
     return sentCount;
+#endif
 }
 
 bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const ::Backend::SocketAddress& destination)

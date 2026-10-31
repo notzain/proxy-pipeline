@@ -144,6 +144,6 @@ This document captures the architectural review of the message pipeline—from `
 - Implement `::sendmmsg()` batching in `Core::Net::UdpOutputChannel::sendBatch()` (matching `SocketOutputChannel::sendBatch()`).
 
 #### Checklist
-- [ ] Vectorize `UdpEgressHandler::onBatchReceived()` in `forward` mode using `SmallSpanBuffer` and `m_udpOut->sendBatch()`.
-- [ ] Implement `::sendmmsg()` on Linux in `Core::Net::UdpOutputChannel::sendBatch()`.
+- [x] Vectorize `UdpEgressHandler::onBatchReceived()` in `forward` mode using `SmallSpanBuffer` and `m_udpOut->sendBatch()`.
+- [x] Implement `::sendmmsg()` on Linux in `Core::Net::UdpOutputChannel::sendBatch()`.
 
