@@ -110,32 +110,8 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
     // Construct zero-allocation SettlementToken with stateless static function pointers
     auto token = ::Backend::SettlementToken(
         node,
-        // Settler function
-        [](void* ctx, ::Backend::Settlement outcome) noexcept {
-            auto* n = static_cast<VendorRelayNode*>(ctx);
-            if (n->consumed || !n->manager) {
-                return;
-            }
-            const std::uint64_t msgId = n->message.getId();
-            switch (outcome) {
-            case ::Backend::Settlement::Ack:
-                Proxy::Log::debug("[VendorSettlement] Finalizing message ID {}", msgId);
-                n->manager->finalize(n->message);
-                break;
-            case ::Backend::Settlement::Reject:
-            case ::Backend::Settlement::Release:
-                Proxy::Log::debug("[VendorSettlement] Dropping message ID {}", msgId);
-                n->manager->drop(n->message);
-                break;
-            }
-        },
-        // Deleter function (recycling node to channel's private pool)
-        [](void* ctx) noexcept {
-            auto* n = static_cast<VendorRelayNode*>(ctx);
-            if (n && n->pool) {
-                n->pool->release(n);
-            }
-        });
+        &VendorRelayNode::settle,
+        &VendorRelayNode::recycle);
 
     slot.assignLeased(view, ::Backend::Lease(std::move(token)));
     return ::Backend::BytesResult::success(slot.size);

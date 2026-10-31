@@ -625,4 +625,38 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         CHECK(mockManager->droppedIds.front() == 9003);
         CHECK(mockManager->finalizedIds.empty());
     }
+
+    SECTION("Foreign SettlementToken is not downcast to VendorRelayNode and falls back to payload copy")
+    {
+        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
+
+        int customContext = 42;
+        bool customSettled = false;
+        struct ForeignState {
+            int* value;
+            bool* settled;
+        } foreignState { &customContext, &customSettled };
+
+        Backend::SettlementToken foreignToken(
+            &foreignState,
+            [](void* ctx, Backend::Settlement /*outcome*/) noexcept {
+                auto* s = static_cast<ForeignState*>(ctx);
+                *s->settled = true;
+            });
+
+        Backend::Lease lease(std::move(foreignToken));
+        const std::string payload = "Foreign Token Payload";
+        Backend::MessageView view { Common::Memory::ByteView(payload) };
+        view.attachLease(lease);
+
+        REQUIRE(outputChannel.send(view));
+        REQUIRE(mockSender->sentMessages.size() == 1);
+        CHECK(mockSender->sentMessages.front().getId() == 0);
+        CHECK(mockSender->sentPayloads.front() == payload);
+
+        // Foreign lease must remain active and settle via its own callback
+        REQUIRE(lease.active());
+        lease.ack();
+        CHECK(customSettled);
+    }
 }

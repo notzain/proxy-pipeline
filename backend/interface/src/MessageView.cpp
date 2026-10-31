@@ -178,28 +178,12 @@ void MessageView::attachLease(Common::Memory::Borrow<Lease> lease) noexcept
     m_lease = lease;
 }
 
-std::unique_ptr<ILeaseState> MessageView::consumeLeaseState() const noexcept
+Common::Memory::ObserverPtr<SettlementToken> MessageView::token() const noexcept
 {
     if (!m_lease) {
-        return nullptr;
-    }
-    return m_lease->releaseState();
-}
-
-SettlementToken* MessageView::token() const noexcept
-{
-    if (!m_lease) {
-        return nullptr;
+        return { };
     }
     return m_lease->token();
-}
-
-Common::Memory::ObserverPtr<ILeaseState> MessageView::leaseState() const noexcept
-{
-    if (!m_lease) {
-        return nullptr;
-    }
-    return m_lease->state();
 }
 
 } // namespace Backend

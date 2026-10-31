@@ -1,5 +1,6 @@
 #pragma once
 
+#include "backend/Settlement.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
 #include "common/compat/Span.hpp"
 #include "common/io/MappedFile.hpp"
@@ -27,17 +28,10 @@ struct VendorRelayNode {
     bool consumed { false };
     std::atomic<bool> inUse { false };
 
-    [[nodiscard]] Common::Compat::span<const std::byte> payloadView() const noexcept
-    {
-        if (mapping && mapping->size() > 0) {
-            return mapping->span();
-        }
-        const auto bytePayload = message.getBytePayload();
-        if (bytePayload.data != nullptr) {
-            return Common::Compat::span<const std::byte>(bytePayload.data, bytePayload.length);
-        }
-        return { };
-    }
+    [[nodiscard]] Common::Compat::span<const std::byte> payloadView() const noexcept;
+
+    static void settle(void* ctx, ::Backend::Settlement outcome) noexcept;
+    static void recycle(void* ctx) noexcept;
 };
 
 /**
@@ -47,42 +41,13 @@ class VendorRelayPool {
 public:
     static constexpr std::size_t DefaultCapacity = 1024;
 
-    explicit VendorRelayPool(std::size_t capacity = DefaultCapacity)
-        : m_nodes(capacity > 0 ? capacity : DefaultCapacity)
-    {
-        for (auto& node : m_nodes) {
-            node.pool = this;
-        }
-    }
+    explicit VendorRelayPool(std::size_t capacity = DefaultCapacity);
 
-    [[nodiscard]] VendorRelayNode* acquire() noexcept
-    {
-        const auto n = m_nodes.size();
-        for (std::size_t i = 0; i < n; ++i) {
-            bool expected = false;
-            if (m_nodes[i].inUse.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-                m_nodes[i].consumed = false;
-                m_nodes[i].mapping.reset();
-                return &m_nodes[i];
-            }
-        }
-        return nullptr;
-    }
+    [[nodiscard]] VendorRelayNode* acquire() noexcept;
 
-    void release(VendorRelayNode* node) noexcept
-    {
-        if (node) {
-            node->mapping.reset();
-            node->manager.reset();
-            node->consumed = false;
-            node->inUse.store(false, std::memory_order_release);
-        }
-    }
+    void release(VendorRelayNode* node) noexcept;
 
-    [[nodiscard]] std::size_t capacity() const noexcept
-    {
-        return m_nodes.size();
-    }
+    [[nodiscard]] std::size_t capacity() const noexcept;
 
 private:
     std::vector<VendorRelayNode> m_nodes;

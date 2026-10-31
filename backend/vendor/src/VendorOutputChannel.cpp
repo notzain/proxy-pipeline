@@ -48,8 +48,8 @@ bool VendorOutputChannel::send(const ::Backend::MessageView& message)
         return false;
     }
 
-    // Inspect the underlying token to verify ownership and manager compatibility
-    if (auto* token = message.token()) {
+    // Inspect the underlying token to verify origin, ownership, and manager compatibility
+    if (auto token = message.token(); token && token->settler() == &VendorRelayNode::settle) {
         auto* node = static_cast<VendorRelayNode*>(token->context());
         if (node && !node->consumed && node->manager == m_manager) {
             const auto nodeSpan = node->payloadView();

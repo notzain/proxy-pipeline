@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -171,22 +170,9 @@ public:
     void attachLease(Common::Memory::Borrow<Lease> lease) noexcept;
 
     /**
-     * @brief Consumes and extracts the underlying transport lease state, if still active.
-     *
-     * Invoked by output channels that forward the actual transport message object (consuming it).
-     * Subsequent calls on the same MessageView return nullptr.
+     * @brief Returns a non-owning observer pointer to the attached SettlementToken, if present.
      */
-    [[nodiscard]] std::unique_ptr<ILeaseState> consumeLeaseState() const noexcept;
-
-    /**
-     * @brief Returns a pointer to the attached SettlementToken, if present.
-     */
-    [[nodiscard]] SettlementToken* token() const noexcept;
-
-    /**
-     * @brief Returns a non-owning observer pointer to the attached lease state, or nullptr if none.
-     */
-    [[nodiscard]] Common::Memory::ObserverPtr<ILeaseState> leaseState() const noexcept;
+    [[nodiscard]] Common::Memory::ObserverPtr<SettlementToken> token() const noexcept;
 
     /**
      * @brief Deserializes protocol metadata `T` safely by value without unaligned pointer casts.

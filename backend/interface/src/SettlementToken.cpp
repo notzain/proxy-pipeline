@@ -93,4 +93,9 @@ void* SettlementToken::context() const noexcept
     return m_context;
 }
 
+SettlementToken::SettlerFn SettlementToken::settler() const noexcept
+{
+    return m_settler;
+}
+
 } // namespace Backend

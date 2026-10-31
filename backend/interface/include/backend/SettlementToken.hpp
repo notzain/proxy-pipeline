@@ -68,6 +68,11 @@ public:
      */
     [[nodiscard]] void* context() const noexcept;
 
+    /**
+     * @brief Returns the settler callback function pointer (non-owning), used for origin verification.
+     */
+    [[nodiscard]] SettlerFn settler() const noexcept;
+
 private:
     void* m_context { nullptr };
     SettlerFn m_settler { nullptr };

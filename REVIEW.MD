@@ -128,8 +128,8 @@ This document captures the architectural review of the message pipeline—from `
    - Expose `SettlerFn SettlementToken::settler() const noexcept` (or a `const void* typeTag`) and verify `token->settler() == &VendorInputChannel::settleRelayNode` before casting `token->context()` to `VendorRelayNode*` in `VendorOutputChannel`.
 
 #### Checklist
-- [ ] Remove `ILeaseState` and consolidate `Backend::Lease` to use `SettlementToken` exclusively.
-- [ ] Add settler/tag verification in `VendorOutputChannel::send(const MessageView&)` before casting `token->context()` to `VendorRelayNode*`.
+- [x] Remove `ILeaseState` and consolidate `Backend::Lease` to use `SettlementToken` exclusively.
+- [x] Add settler/tag verification in `VendorOutputChannel::send(const MessageView&)` before casting `token->context()` to `VendorRelayNode*`.
 
 ---
 
