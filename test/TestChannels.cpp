@@ -1,5 +1,4 @@
 #include "backend/ISocketPoller.hpp"
-#include "backend/MessageEnvelope.hpp"
 #include "backend/MessageView.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
@@ -35,7 +34,7 @@ public:
         : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
-            auto env = Backend::MessageEnvelope::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
+            auto env = Backend::MessageView::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
             m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
         }
         if (appendMalformed) {
@@ -555,7 +554,7 @@ TEST_CASE("Ingress accounting is consistent across execution models", "[channel]
     const auto initialLatency = latencyHistogram.count();
 
     const std::string payload = "valid";
-    const auto expectedBytes = Backend::MessageEnvelope::packRaw(
+    const auto expectedBytes = Backend::MessageView::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(payload.data(), payload.size())))
                                    .size();
 

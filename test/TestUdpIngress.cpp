@@ -3,7 +3,6 @@
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
-#include "backend/MessageEnvelope.hpp"
 #include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
@@ -171,14 +170,14 @@ public:
 
 } // namespace
 
-TEST_CASE("Backend::MessageEnvelope and MessageView serialize and parse", "[message][envelope]")
+TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][envelope]")
 {
     std::string testPayload = "<order><item>Widget</item></order>";
     Common::Memory::ByteView payloadSpan(testPayload);
 
     SECTION("Pack raw envelope")
     {
-        auto env = Backend::MessageEnvelope::packRaw(payloadSpan);
+        auto env = Backend::MessageView::packRaw(payloadSpan);
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
@@ -198,7 +197,7 @@ TEST_CASE("Backend::MessageEnvelope and MessageView serialize and parse", "[mess
         meta.dstIp = 0x0100007F;
         meta.dstPort = htons(9123);
 
-        auto env = Backend::MessageEnvelope::packUdp(meta, payloadSpan);
+        auto env = Backend::MessageView::packUdp(meta, payloadSpan);
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
@@ -217,14 +216,14 @@ TEST_CASE("Backend::MessageEnvelope and MessageView serialize and parse", "[mess
     {
         Backend::UdpMetadata meta { };
         meta.srcPort = htons(1122);
-        auto env = Backend::MessageEnvelope::packUdp(meta, payloadSpan);
+        auto env = Backend::MessageView::packUdp(meta, payloadSpan);
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
         std::string updatedPayload = "<order><item>SuperWidget</item><qty>10</qty></order>";
         Common::Memory::ByteView updatedSpan(updatedPayload);
 
-        auto mutatedEnv = Backend::MessageEnvelope::withPayload(*view, updatedSpan);
+        auto mutatedEnv = Backend::MessageView::withPayload(*view, updatedSpan);
         auto mutatedView = Backend::MessageView::from(mutatedEnv);
 
         REQUIRE(mutatedView.has_value());
@@ -266,7 +265,7 @@ TEST_CASE("Backend::MessageEnvelope and MessageView serialize and parse", "[mess
         CHECK(payloadStr == "Hello");
 
         // Verify packing produces identical bytes
-        std::vector<std::byte> packed = Backend::MessageEnvelope::packRaw(
+        std::vector<std::byte> packed = Backend::MessageView::packRaw(
             view->payload(),
             0x0102030405060708ULL);
         REQUIRE(packed.size() == goldenWire.size());
@@ -409,7 +408,7 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt status=\"confirmed\"/>";
-    auto envelope = Backend::MessageEnvelope::packUdp(
+    auto envelope = Backend::MessageView::packUdp(
         meta,
         Common::Memory::ByteView(expectedPayload));
 
@@ -470,7 +469,7 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
-    auto envelope = Backend::MessageEnvelope::packUdp(
+    auto envelope = Backend::MessageView::packUdp(
         meta,
         Common::Memory::ByteView(expectedPayload));
 

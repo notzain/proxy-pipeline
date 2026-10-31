@@ -8,11 +8,17 @@ Lease::Lease(std::unique_ptr<ILeaseState> state) noexcept
 {
 }
 
+Lease::Lease(SettlementToken token) noexcept
+    : m_token(std::move(token))
+{
+}
+
 Lease& Lease::operator=(Lease&& other) noexcept
 {
     if (this != &other) {
         release();
         m_state = std::move(other.m_state);
+        m_token = std::move(other.m_token);
     }
     return *this;
 }
@@ -24,6 +30,9 @@ Lease::~Lease()
 
 void Lease::settle(Settlement outcome) noexcept
 {
+    if (m_token.active()) {
+        m_token.settle(outcome);
+    }
     auto state = std::move(m_state);
     if (!state) {
         return;
@@ -48,7 +57,7 @@ void Lease::release() noexcept
 
 bool Lease::active() const noexcept
 {
-    return m_state != nullptr;
+    return m_state != nullptr || m_token.active();
 }
 
 Lease::operator bool() const noexcept
@@ -64,6 +73,16 @@ std::unique_ptr<ILeaseState> Lease::releaseState() noexcept
 Common::Memory::ObserverPtr<ILeaseState> Lease::state() const noexcept
 {
     return Common::Memory::ObserverPtr<ILeaseState>(m_state.get());
+}
+
+SettlementToken* Lease::token() noexcept
+{
+    return m_token.active() ? &m_token : nullptr;
+}
+
+const SettlementToken* Lease::token() const noexcept
+{
+    return m_token.active() ? &m_token : nullptr;
 }
 
 } // namespace Backend

@@ -123,6 +123,8 @@ namespace {
         Common::Compat::span<const std::unique_ptr<QueueType>> queues,
         std::atomic<std::size_t>& nextWorker,
         const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
+        Detail::IngressBatchScratch<16>& scratch,
+        Detail::IngressBatchScratch<1>& jumboScratch,
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
@@ -132,13 +134,12 @@ namespace {
         // Path A (MPMC sharedQueue): Poller cannot write in-place into an MPMC ring slot without blocking
         // other producers, so we pre-attach BufferSlices and move completed MessageTasks into sharedQueue.
         if (sharedQueue) {
-            thread_local Detail::IngressBatchScratch<maxBatch> tl_scratch;
-            auto batchSlots = tl_scratch.preparePooled(channel, bufferPool);
+            auto batchSlots = scratch.preparePooled(channel, bufferPool);
 
             auto result = channel.receiveBatch(batchSlots, timeout);
             const bool failed = channelFailed(channelName, result);
             const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
-            tl_scratch.releaseUnusedFrom(received);
+            scratch.releaseUnusedFrom(received);
             if (failed && received == 0) {
                 return false;
             }
@@ -149,7 +150,7 @@ namespace {
                     // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
                     const auto view = batchSlots[i].filledSpan();
                     task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
-                } else if (auto& preSlice = tl_scratch.slice(i); preSlice.has_value()) {
+                } else if (auto& preSlice = scratch.slice(i); preSlice.has_value()) {
                     // Kernel wrote directly into the BufferSlice; move the slice handle in O(1) (no memcpy).
                     task.assignSlice(channelName, std::move(*preSlice), batchSlots[i].size);
                     preSlice.reset();
@@ -226,12 +227,11 @@ namespace {
 
         // Drain the oversized (> 2 KB) datagram that did not fit into the inline SPSC slot directly into a BufferSlice.
         if (hasOversized && targetQueue) {
-            thread_local Detail::IngressBatchScratch<1> tl_jumboScratch;
-            auto& jumboSlot = tl_jumboScratch.preparePooled(channel, bufferPool)[0];
+            auto& jumboSlot = jumboScratch.preparePooled(channel, bufferPool)[0];
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
             auto jumboResult = channel.receiveSlot(jumboSlot, zeroTimeout);
             if (!jumboResult.hasValue() && channelFailed(channelName, jumboResult.error())) {
-                tl_jumboScratch.releaseUnusedFrom(0);
+                jumboScratch.releaseUnusedFrom(0);
                 return false;
             }
             std::size_t jumboBytes = jumboResult.hasValue() ? jumboResult.value() : 0;
@@ -245,7 +245,7 @@ namespace {
                             return;
                         }
                         slot.setLease(std::move(jumboSlot.lease));
-                        if (auto& preSlice = tl_jumboScratch.slice(0); preSlice.has_value()) {
+                        if (auto& preSlice = jumboScratch.slice(0); preSlice.has_value()) {
                             slot.assignSlice(channelName, std::move(*preSlice), jumboBytes);
                             preSlice.reset();
                             return;
@@ -254,7 +254,7 @@ namespace {
                     },
                     stoken);
             }
-            tl_jumboScratch.releaseUnusedFrom(0);
+            jumboScratch.releaseUnusedFrom(0);
         }
         return true;
     }
@@ -268,22 +268,20 @@ namespace {
         std::size_t channelIdx,
         Common::Compat::span<const std::unique_ptr<QueueType>> queues,
         const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
+        Detail::IngressBatchScratch<16>& scratch,
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
-        constexpr std::size_t maxBatch = 16;
-
         // Strict FIFO must inspect packet headers (IP/port) BEFORE choosing which worker SPSC queue to push to,
         // so we cannot write directly into a worker's SPSC ring before receiveBatch(). Instead, we pre-attach
         // BufferSlices so the kernel writes once into pool memory, then route each contiguous flow run to its worker.
-        thread_local Detail::IngressBatchScratch<maxBatch> tl_scratch;
-        auto batchSlots = tl_scratch.preparePooled(channel, bufferPool);
+        auto batchSlots = scratch.preparePooled(channel, bufferPool);
 
         auto result = channel.receiveBatch(batchSlots, timeout);
 
         const bool failed = channelFailed(channelName, result);
         const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
-        tl_scratch.releaseUnusedFrom(received);
+        scratch.releaseUnusedFrom(received);
         if (failed && received == 0) {
             return false;
         }
@@ -319,7 +317,7 @@ namespace {
                     }
                     slot.setLease(std::move(batchSlots[pktIdx].lease));
                     const std::size_t pktSize = batchSlots[pktIdx].size;
-                    if (auto& preSlice = tl_scratch.slice(pktIdx); preSlice.has_value()) {
+                    if (auto& preSlice = scratch.slice(pktIdx); preSlice.has_value()) {
                         // Keep > 2 KB payloads in their BufferSlice (0 copies); copy <= 2 KB into the inline slot
                         // so the 64 KB pool block is returned to the pool immediately via preSlice.reset().
                         if (pktSize > MessageTask::SmallBufferSize) {
@@ -441,13 +439,16 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
         auto* channelPtr = &channel;
         const auto currentChannelIdx = channelIdx++;
         m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](Common::Compat::stop_token stoken) {
+            Detail::IngressBatchScratch<16> scratch;
+            Detail::IngressBatchScratch<1> jumboScratch;
+
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!enforceFifo) {
-                    if (!pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, channelTimeout, stoken)) {
+                    if (!pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, scratch, jumboScratch, channelTimeout, stoken)) {
                         break;
                     }
                 } else {
-                    if (!pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, channelTimeout, stoken)) {
+                    if (!pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, scratch, channelTimeout, stoken)) {
                         break;
                     }
                 }

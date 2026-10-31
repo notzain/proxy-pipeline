@@ -1,8 +1,7 @@
 #pragma once
 
+#include "backend/MessageView.hpp"
 #include "common/compat/Span.hpp"
-#include "core/message/MessageEnvelope.hpp"
-#include "core/message/MessageView.hpp"
 #include "core/simulation/MockInputChannel.hpp"
 #include "core/simulation/MockOutputChannel.hpp"
 #include "core/simulation/PcapReader.hpp"

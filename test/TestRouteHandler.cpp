@@ -2,7 +2,7 @@
 #include "backend/IBackend.hpp"
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
-#include "backend/MessageEnvelope.hpp"
+#include "backend/MessageView.hpp"
 #include "backend/ProtocolId.hpp"
 #include "backend/UdpMetadata.hpp"
 #include "common/memory/ByteView.hpp"
@@ -84,17 +84,17 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     SECTION("Single message routing")
     {
         std::string msg1 = "Hello VIP Customer";
-        auto env1 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg1));
+        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg1));
         auto view1 = Backend::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
         std::string msg2 = "STD: Regular Customer";
-        auto env2 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg2));
+        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg2));
         auto view2 = Backend::MessageView::from(env2);
         REQUIRE(view2.has_value());
 
         std::string msg3 = "Other message";
-        auto env3 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msg3));
+        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg3));
         auto view3 = Backend::MessageView::from(env3);
         REQUIRE(view3.has_value());
 
@@ -119,10 +119,10 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string msgStd = "STD: Batch";
         std::string msgDef = "Default Fallback";
 
-        auto env1 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip1));
-        auto env2 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgStd));
-        auto env3 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgVip2));
-        auto env4 = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(msgDef));
+        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip1));
+        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgStd));
+        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip2));
+        auto env4 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgDef));
 
         std::vector<Backend::MessageView> batch = {
             *Backend::MessageView::from(env1),
@@ -166,7 +166,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "Datagram from 9050";
-        auto env = Backend::MessageEnvelope::packUdp(
+        auto env = Backend::MessageView::packUdp(
             meta,
             Common::Memory::ByteView(payload));
         auto view = Backend::MessageView::from(env);

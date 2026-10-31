@@ -1,8 +1,89 @@
 #include "backend/MessageView.hpp"
 #include "backend/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
+#include "common/memory/ByteView.hpp"
+#include <chrono>
+#include <cstring>
 
 namespace Backend {
+
+namespace {
+
+    std::uint64_t getCurrentTimeNs()
+    {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count());
+    }
+
+} // namespace
+
+std::size_t MessageView::packInto(
+    Common::Compat::span<std::byte> destination,
+    ProtocolId protocol,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
+    std::uint64_t timestampNs)
+{
+    std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
+    if (destination.data() == nullptr || destination.size() < totalSize) {
+        return 0;
+    }
+
+    std::byte* dst = destination.data();
+    Common::IO::Wire::writeUint16Be(dst, EnvelopeMagic);
+    dst[2] = static_cast<std::byte>(EnvelopeVersion);
+    dst[3] = static_cast<std::byte>(protocol);
+    Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
+    Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
+
+    std::uint64_t ts = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
+    Common::IO::Wire::writeUint64Be(dst + 10, ts);
+
+    if (!metadata.empty()) {
+        std::memcpy(dst + sizeof(EnvelopeHeader), metadata.data(), metadata.size());
+    }
+    if (!payload.empty()) {
+        std::memcpy(dst + sizeof(EnvelopeHeader) + metadata.size(), payload.data(), payload.size());
+    }
+
+    return totalSize;
+}
+
+std::vector<std::byte> MessageView::pack(
+    ProtocolId protocol,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
+    std::uint64_t timestampNs)
+{
+    std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
+    std::vector<std::byte> buffer(totalSize);
+    packInto(buffer, protocol, metadata, payload, timestampNs);
+    return buffer;
+}
+
+std::vector<std::byte> MessageView::packRaw(
+    Common::Compat::span<const std::byte> payload,
+    std::uint64_t timestampNs)
+{
+    return pack(ProtocolId::Raw, { }, payload, timestampNs);
+}
+
+std::vector<std::byte> MessageView::packUdp(
+    const UdpMetadata& meta,
+    Common::Compat::span<const std::byte> payload,
+    std::uint64_t timestampNs)
+{
+    return pack(ProtocolId::Udp, Common::Memory::ByteView(meta), payload, timestampNs);
+}
+
+std::vector<std::byte> MessageView::withPayload(
+    const MessageView& view,
+    Common::Compat::span<const std::byte> newPayload)
+{
+    return pack(view.protocol(), view.metadata(), newPayload, view.timestampNs());
+}
 
 std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byte> buffer) noexcept
 {
@@ -99,6 +180,14 @@ std::unique_ptr<ILeaseState> MessageView::consumeLeaseState() const noexcept
         return nullptr;
     }
     return m_lease->releaseState();
+}
+
+SettlementToken* MessageView::token() const noexcept
+{
+    if (!m_lease) {
+        return nullptr;
+    }
+    return m_lease->token();
 }
 
 Common::Memory::ObserverPtr<ILeaseState> MessageView::leaseState() const noexcept

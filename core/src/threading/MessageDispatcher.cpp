@@ -17,11 +17,12 @@ void dispatchReceivedBatch(
     std::size_t& invalidEnvelopeCount,
     std::mutex* handlerMutex)
 {
-    static auto& s_msgCounter = Telemetry::MetricsRegistry::instance().counter(
+    auto& registry = Telemetry::MetricsRegistry::instance();
+    auto& s_msgCounter = registry.counter(
         "messages_ingress_total", "Total messages received at ingress");
-    static auto& s_bytesCounter = Telemetry::MetricsRegistry::instance().counter(
+    auto& s_bytesCounter = registry.counter(
         "bytes_ingress_total", "Total bytes received at ingress");
-    static auto& s_droppedCounter = Telemetry::MetricsRegistry::instance().counter(
+    auto& s_droppedCounter = registry.counter(
         "messages_dropped_total", "Total malformed messages dropped");
 
     Common::Memory::ParallelArray<16, Backend::MessageView, Backend::Lease> validBatch;

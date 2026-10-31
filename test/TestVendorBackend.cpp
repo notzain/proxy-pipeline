@@ -1,4 +1,3 @@
-#include "backend/MessageEnvelope.hpp"
 #include "backend/MessageResult.hpp"
 #include "backend/MessageView.hpp"
 #include "backend/vendor/VendorBackend.hpp"
@@ -292,7 +291,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
     {
         Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
         const std::string payload = "Clean Vendor Egress Payload";
-        auto envelope = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(payload));
 
         REQUIRE(outputChannel.send(Common::Memory::ByteView(envelope)));
         REQUIRE(mockSender->sentPayloads.size() == 1);
@@ -347,7 +346,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         VendorTestHandler handler(backend, /*shouldDrop=*/false);
         handler.registerInputChannel(std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver));
 
-        const auto envelope = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(std::string_view("inner")));
+        const auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(std::string_view("inner")));
         const std::string envelopeBytes(reinterpret_cast<const char*>(envelope.data()), envelope.size());
         mockReceiver->enqueue(4503, envelopeBytes);
 
@@ -465,19 +464,18 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         CHECK(mockManager->finalizedIds.front() == 8001);
     }
 
-    SECTION("Mode B (payload file path <= pool block size) reads file into VendorBackend BufferPool and releases block on settle")
+    SECTION("Mode B (payload file path) memory-maps file with zero allocations and releases mapping on settle")
     {
-        Backend::Vendor::VendorBackend pooledBackend(mockManager, /*poolBlockSize=*/4096, /*poolBlockCount=*/4);
-        REQUIRE(pooledBackend.bufferPool()->available() == 4);
+        Backend::Vendor::VendorBackend vendorBackend(mockManager);
 
         const auto tempFile = std::filesystem::temp_directory_path() / "vendor_mode_b_pooled_test.dat";
-        const std::string fileContent = "File-backed vendor payload loaded into BufferPool slice";
+        const std::string fileContent = "File-backed vendor payload mapped via MappedFile zero-copy";
         {
             std::ofstream out(tempFile, std::ios::binary);
             out.write(fileContent.data(), static_cast<std::streamsize>(fileContent.size()));
         }
 
-        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", pooledBackend, mockReceiver);
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", vendorBackend, mockReceiver);
         mockReceiver->enqueueFile(9001, tempFile.string());
 
         {
@@ -487,9 +485,6 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
             CHECK(res.value() == fileContent.size());
             CHECK(slot.isLeased());
 
-            // While the Lease is active, 1 block from VendorBackend's BufferPool is held by VendorLeaseState
-            CHECK(pooledBackend.bufferPool()->available() == 3);
-
             const auto view = slot.filledSpan();
             std::string receivedStr(reinterpret_cast<const char*>(view.data()), view.size());
             CHECK(receivedStr == fileContent);
@@ -497,27 +492,25 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
             slot.lease.ack();
         }
 
-        // Once settled and destroyed, the BufferSlice is returned to VendorBackend's BufferPool
-        CHECK(pooledBackend.bufferPool()->available() == 4);
         REQUIRE(mockManager->finalizedIds.size() == 1);
         CHECK(mockManager->finalizedIds.front() == 9001);
 
         std::filesystem::remove(tempFile);
     }
 
-    SECTION("Mode B (oversized payload file path > pool block size) falls back to heap buffer and forwards original file-backed VendorMessage")
+    SECTION("Mode B (oversized payload file path) maps file directly and forwards original file-backed VendorMessage")
     {
-        Backend::Vendor::VendorBackend smallPoolBackend(mockManager, /*poolBlockSize=*/1024, /*poolBlockCount=*/2);
+        Backend::Vendor::VendorBackend vendorBackend(mockManager);
 
         const auto tempFile = std::filesystem::temp_directory_path() / "vendor_mode_b_oversized_test.dat";
-        const std::string largeFileContent(8192, 'F'); // 8 KB > 1 KB pool block size
+        const std::string largeFileContent(8192, 'F');
         {
             std::ofstream out(tempFile, std::ios::binary);
             out.write(largeFileContent.data(), static_cast<std::streamsize>(largeFileContent.size()));
         }
 
-        VendorForwardHandler handler(smallPoolBackend);
-        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", smallPoolBackend, mockReceiver);
+        VendorForwardHandler handler(vendorBackend);
+        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", vendorBackend, mockReceiver);
         auto outputChannel = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out", mockManager, mockSender);
         handler.registerInputChannel(std::move(inputChannel));
         handler.addOutputChannel(handler.registerOutputChannel(std::move(outputChannel)));

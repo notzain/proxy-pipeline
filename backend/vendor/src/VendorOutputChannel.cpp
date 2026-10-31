@@ -1,5 +1,5 @@
 #include "backend/vendor/VendorOutputChannel.hpp"
-#include "VendorLeaseState.hpp"
+#include "VendorRelayNode.hpp"
 #include "backend/MessageView.hpp"
 #include "log/Log.hpp"
 #include <utility>
@@ -48,20 +48,22 @@ bool VendorOutputChannel::send(const ::Backend::MessageView& message)
         return false;
     }
 
-    // Consuming forward: only valid for an unconsumed message produced by the same VendorManager.
-    // The message is marked consumed only after the sender accepted it, so a failed send leaves the
-    // lease armed and the handler's settlement still finalizes or drops the original message.
-    // NOTE: assumes VendorSender::send(const VendorMessage&) does not invalidate the message's
-    // in-memory payload, which subsequent fan-out channels still read through the zero-copy view.
-    auto* vendorState = dynamic_cast<VendorLeaseState*>(message.leaseState().get());
-    if (vendorState && !vendorState->isConsumed() && m_manager && vendorState->belongsTo(*m_manager)) {
-        if (!m_sender->send(vendorState->message())) {
-            return false;
+    // Inspect the underlying token to verify ownership and manager compatibility
+    if (auto* token = message.token()) {
+        auto* node = static_cast<VendorRelayNode*>(token->context());
+        if (node && !node->consumed && node->manager == m_manager) {
+            // Consuming forward for the same VendorManager:
+            // Send the original message by reference first; only mark consumed if send succeeds!
+            if (!m_sender->send(node->message)) {
+                return false;
+            }
+            node->consumed = true;
+            token->disarm();
+            return true;
         }
-        vendorState->markConsumed();
-        return true;
     }
 
+    // Fallback if cross-manager, non-token, or already consumed by a prior fan-out channel
     const auto payloadSpan = message.payload();
     std::string payloadStr(
         reinterpret_cast<const char*>(payloadSpan.data()),

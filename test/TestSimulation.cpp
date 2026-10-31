@@ -1,4 +1,3 @@
-#include "backend/MessageEnvelope.hpp"
 #include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
@@ -192,7 +191,7 @@ TEST_CASE("Core::Simulation::SimulationBackend integration with IHandler", "[sim
 
     // Push envelope into ingress
     std::string payload = "Deterministic Sim Payload";
-    auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), 100'000ULL);
+    auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload), 100'000ULL);
     inCh->pushMessage(env, 100'000ULL);
 
     // Run handler asynchronously to process message
@@ -242,9 +241,9 @@ TEST_CASE("IHandler reports mixed per-message batch results to the backend", "[s
     BatchResultHandler handler(backend);
     std::string firstPayload = "valid";
     std::string secondPayload = "invalid";
-    auto firstEnvelope = Backend::MessageEnvelope::packRaw(
+    auto firstEnvelope = Backend::MessageView::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(firstPayload.data(), firstPayload.size())));
-    auto secondEnvelope = Backend::MessageEnvelope::packRaw(
+    auto secondEnvelope = Backend::MessageView::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(secondPayload.data(), secondPayload.size())));
     std::array<Backend::MessageView, 2> messages {
         *Backend::MessageView::from(firstEnvelope),

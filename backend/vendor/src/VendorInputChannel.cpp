@@ -1,84 +1,46 @@
 #include "backend/vendor/VendorInputChannel.hpp"
-#include "VendorLeaseState.hpp"
+#include "VendorRelayNode.hpp"
+#include "backend/SettlementToken.hpp"
 #include "backend/vendor/VendorBackend.hpp"
-#include "common/memory/DynamicBuffer.hpp"
+#include "common/io/MappedFile.hpp"
 #include "log/Log.hpp"
 #include <filesystem>
-#include <fstream>
 #include <system_error>
 #include <utility>
 
 namespace Backend::Vendor {
 
-namespace {
-
-    /**
-     * @brief Loads a vendor payload file into a pooled BufferSlice, or maps it privately when it does not fit.
-     *
-     * Small files are read into a fixed-size `BufferPool` block. Files larger than a block (or arriving while
-     * the pool is exhausted) are memory-mapped instead of copied to the heap, so memory usage stays bounded
-     * by the pool plus the OS page cache rather than growing unbounded heap allocations.
-     */
-    bool loadPayloadFile(
-        const std::string& filePath,
-        const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
-        Common::Memory::DynamicBuffer& outBuffer)
-    {
-        std::error_code ec;
-        const auto fileSize = static_cast<std::size_t>(std::filesystem::file_size(filePath, ec));
-        if (ec) {
-            return false;
-        }
-        if (fileSize == 0) {
-            return true;
-        }
-
-        if (bufferPool && fileSize <= bufferPool->blockSize()) {
-            if (auto slice = bufferPool->acquire()) {
-                std::ifstream file(filePath, std::ios::binary);
-                if (!file.read(reinterpret_cast<char*>(slice->data()), static_cast<std::streamsize>(fileSize))) {
-                    return false;
-                }
-                slice->resize(fileSize);
-                outBuffer = std::move(*slice);
-                return true;
-            }
-            Proxy::Log::debug("[VendorInputChannel] BufferPool exhausted, mapping payload file '{}'", filePath);
-        }
-
-        auto mapping = Common::Io::MappedFile::open(filePath);
-        if (!mapping) {
-            return false;
-        }
-        outBuffer = std::move(*mapping);
-        return true;
-    }
-
-} // namespace
-
 VendorInputChannel::VendorInputChannel(
     std::string name,
     std::shared_ptr<Sdk::VendorManager> manager,
     std::shared_ptr<Sdk::VendorReceiver> receiver,
-    std::shared_ptr<Common::Memory::BufferPool> bufferPool)
+    std::size_t capacity)
     : ::Backend::IInputChannel(std::move(name))
     , m_manager(std::move(manager))
     , m_receiver(std::move(receiver))
-    , m_bufferPool(std::move(bufferPool))
+    , m_relayPool(std::make_unique<VendorRelayPool>(capacity))
 {
 }
 
 VendorInputChannel::VendorInputChannel(
     std::string name,
     VendorBackend& backend,
-    std::shared_ptr<Sdk::VendorReceiver> receiver)
-    : VendorInputChannel(std::move(name), backend.vendorManager(), std::move(receiver), backend.bufferPool())
+    std::shared_ptr<Sdk::VendorReceiver> receiver,
+    std::size_t capacity)
+    : VendorInputChannel(std::move(name), backend.vendorManager(), std::move(receiver), capacity)
 {
 }
+
+VendorInputChannel::~VendorInputChannel() = default;
 
 void VendorInputChannel::setReceiver(std::shared_ptr<Sdk::VendorReceiver> receiver)
 {
     m_receiver = std::move(receiver);
+}
+
+std::size_t VendorInputChannel::capacity() const noexcept
+{
+    return m_relayPool ? m_relayPool->capacity() : 0;
 }
 
 bool VendorInputChannel::providesOwnMemory() const noexcept
@@ -106,25 +68,76 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
         return ::Backend::BytesResult::failure(::Backend::ReceiveTimeout { });
     }
 
-    Common::Memory::DynamicBuffer fileBuffer;
+    // Acquire a stationary relay node from the channel's private pool (zero heap allocation on hot path)
+    VendorRelayNode* node = m_relayPool ? m_relayPool->acquire() : nullptr;
+    if (!node) {
+        Proxy::Log::error("[VendorInputChannel] Relay pool exhausted for channel '{}', dropping message ID {}",
+            name(), rawMsg.getId());
+        m_manager->drop(rawMsg);
+        return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+    }
 
-    const std::string& filePath = rawMsg.getPayloadFilePath();
+    node->message = std::move(rawMsg);
+    node->manager = m_manager;
+    node->consumed = false;
+    node->pool = m_relayPool.get();
+
+    const std::string& filePath = node->message.getPayloadFilePath();
     if (!filePath.empty()) {
-        if (!loadPayloadFile(filePath, m_bufferPool, fileBuffer)) {
+        std::error_code ec;
+        const auto fileSize = static_cast<std::size_t>(std::filesystem::file_size(filePath, ec));
+        if (ec) {
             Proxy::Log::error("[VendorInputChannel] Failed to read payload file '{}' for message ID {}",
-                filePath, rawMsg.getId());
-            m_manager->drop(rawMsg);
+                filePath, node->message.getId());
+            m_manager->drop(node->message);
+            m_relayPool->release(node);
             return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+        }
+        if (fileSize > 0) {
+            node->mapping = Common::Io::MappedFile::open(filePath);
+            if (!node->mapping) {
+                Proxy::Log::error("[VendorInputChannel] Failed to map payload file '{}' for message ID {}",
+                    filePath, node->message.getId());
+                m_manager->drop(node->message);
+                m_relayPool->release(node);
+                return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+            }
         }
     }
 
-    auto leaseState = std::make_unique<VendorLeaseState>(
-        std::move(rawMsg),
-        m_manager,
-        std::move(fileBuffer));
+    const auto view = node->payloadView();
 
-    const auto view = leaseState->payloadView();
-    slot.assignLeased(view, ::Backend::Lease(std::move(leaseState)));
+    // Construct zero-allocation SettlementToken with stateless static function pointers
+    auto token = ::Backend::SettlementToken(
+        node,
+        // Settler function
+        [](void* ctx, ::Backend::Settlement outcome) noexcept {
+            auto* n = static_cast<VendorRelayNode*>(ctx);
+            if (n->consumed || !n->manager) {
+                return;
+            }
+            const std::uint64_t msgId = n->message.getId();
+            switch (outcome) {
+            case ::Backend::Settlement::Ack:
+                Proxy::Log::debug("[VendorSettlement] Finalizing message ID {}", msgId);
+                n->manager->finalize(n->message);
+                break;
+            case ::Backend::Settlement::Reject:
+            case ::Backend::Settlement::Release:
+                Proxy::Log::debug("[VendorSettlement] Dropping message ID {}", msgId);
+                n->manager->drop(n->message);
+                break;
+            }
+        },
+        // Deleter function (recycling node to channel's private pool)
+        [](void* ctx) noexcept {
+            auto* n = static_cast<VendorRelayNode*>(ctx);
+            if (n && n->pool) {
+                n->pool->release(n);
+            }
+        });
+
+    slot.assignLeased(view, ::Backend::Lease(std::move(token)));
     return ::Backend::BytesResult::success(slot.size);
 }
 

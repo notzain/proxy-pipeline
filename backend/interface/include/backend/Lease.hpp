@@ -2,6 +2,7 @@
 
 #include "backend/ILeaseState.hpp"
 #include "backend/Settlement.hpp"
+#include "backend/SettlementToken.hpp"
 #include "common/memory/ObserverPtr.hpp"
 #include <memory>
 
@@ -14,13 +15,13 @@ namespace Backend {
  * Destroying an unsettled lease releases the message for redelivery, so an exception, shutdown,
  * or forgotten settlement never silently loses or acknowledges a message.
  *
- * Backends that own their buffers (file, socket, shm, uds, inproc, sim) never produce a lease;
- * an empty Lease makes every operation a no-op.
+ * Supports both polymorphic state (ILeaseState) and zero-allocation callbacks (SettlementToken).
  */
 class Lease {
 public:
     Lease() noexcept = default;
     explicit Lease(std::unique_ptr<ILeaseState> state) noexcept;
+    explicit Lease(SettlementToken token) noexcept;
 
     Lease(Lease&& other) noexcept = default;
     Lease& operator=(Lease&& other) noexcept;
@@ -49,10 +50,6 @@ public:
 
     /**
      * @brief Consumes and extracts the underlying transport lease state without settling it.
-     *
-     * Used by output channels (e.g. VendorOutputChannel) when forwarding the exact received
-     * message object to a downstream sender, transferring ownership out of the lease so
-     * post-processing settlement is a no-op.
      */
     [[nodiscard]] std::unique_ptr<ILeaseState> releaseState() noexcept;
 
@@ -61,8 +58,15 @@ public:
      */
     [[nodiscard]] Common::Memory::ObserverPtr<ILeaseState> state() const noexcept;
 
+    /**
+     * @brief Returns a non-owning pointer to the underlying SettlementToken, if present.
+     */
+    [[nodiscard]] SettlementToken* token() noexcept;
+    [[nodiscard]] const SettlementToken* token() const noexcept;
+
 private:
     std::unique_ptr<ILeaseState> m_state;
+    SettlementToken m_token;
 };
 
 } // namespace Backend

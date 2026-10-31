@@ -1,4 +1,3 @@
-#include "backend/MessageEnvelope.hpp"
 #include "backend/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/handler/IHandler.hpp"
@@ -163,7 +162,7 @@ TEST_CASE("Core::Telemetry integration with IHandler pipeline execution", "[tele
                               .count())
         - 50000; // 50 microseconds ago
 
-    auto env = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload), pastNs);
+    auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload), pastNs);
     auto optView = Backend::MessageView::from(env);
     REQUIRE(optView.has_value());
 
