@@ -62,7 +62,6 @@ private:
 
     using QueueType = Common::Queue::SpscQueue<MessageTask, 1024>;
     std::vector<std::unique_ptr<QueueType>> m_workerQueues;
-    std::atomic<std::size_t> m_nextWorker { 0 };
 
     using SharedQueueType = Common::Queue::MpmcQueue<MessageTask, 4096>;
     std::unique_ptr<SharedQueueType> m_sharedQueue;

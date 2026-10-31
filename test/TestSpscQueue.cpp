@@ -6,7 +6,6 @@
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
-#include <cstring>
 #include <numeric>
 #include <set>
 #include <string>
@@ -244,15 +243,17 @@ TEST_CASE("Common::Queue::SpscQueue tryPushInPlace returns nullopt when another 
     CHECK(drainAll(q, 2) == std::vector<int> { 1, 2 });
 }
 
-TEST_CASE("Common::Queue::SpscQueue zero-copy Core::Threading::MessageTask round-trip via prepareInline/commitInline", "[spsc][inplace]")
+TEST_CASE("Common::Queue::SpscQueue Core::Threading::MessageTask round-trip via assign", "[spsc][inplace]")
 {
     Common::Queue::SpscQueue<Core::Threading::MessageTask, 4> q;
     const std::string payload = "zero-copy payload";
 
     q.pushInPlace(1, [&](Common::Compat::span<Core::Threading::MessageTask> slots) {
-        auto buf = slots[0].prepareInline("chan");
-        std::memcpy(buf.data(), payload.data(), payload.size());
-        slots[0].commitInline(payload.size());
+        slots[0].assign(
+            "chan",
+            Common::Compat::span<const std::byte>(
+                reinterpret_cast<const std::byte*>(payload.data()),
+                payload.size()));
         return std::size_t { 1 };
     });
 

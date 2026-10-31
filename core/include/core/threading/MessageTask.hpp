@@ -7,24 +7,21 @@
 #include "common/memory/DynamicBuffer.hpp"
 #include <array>
 #include <cstddef>
-#include <cstring>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace Core::Threading {
 
 /**
  * @brief Representation of a message task passed to background thread pool workers.
  *
- * Utilizes small buffer optimization (SBO) with an inline buffer sized to a full ingress
- * batch slot (2048 bytes), so channel pollers can receive datagrams directly into ring slot
- * memory (zero-copy forwarding). Larger (jumbo) payloads spill to a zero-copy pooled BufferSlice
- * or heap fallback held in a DynamicBuffer variant.
+ * Utilizes small buffer optimization (SBO) with a cache-friendly inline buffer (256 bytes)
+ * for small frames, while larger payloads use a zero-copy pooled BufferSlice or heap fallback
+ * held in a DynamicBuffer variant, or an externally owned leased view.
  */
 class MessageTask {
 public:
-    static constexpr std::size_t SmallBufferSize = 2048;
+    static constexpr std::size_t SmallBufferSize = 256;
 
     MessageTask() = default;
 
@@ -44,24 +41,6 @@ public:
      * Binding both in one call guarantees the view can never outlive (or be detached from) its owner.
      */
     void assignLeased(std::string_view name, Common::Compat::span<const std::byte> view, Backend::Lease owner) noexcept;
-
-    /**
-     * @brief Prepares the task for an in-place write and returns its writable inline buffer.
-     *
-     * Used for zero-copy ingress: a channel writes received bytes directly into the returned
-     * span, then commitInline() records the size.
-     *
-     * @param name Channel name to associate with the task.
-     * @return Common::Compat::span<std::byte> Writable inline buffer of SmallBufferSize bytes.
-     */
-    [[nodiscard]] Common::Compat::span<std::byte> prepareInline(std::string_view name);
-
-    /**
-     * @brief Finalizes an in-place write started with prepareInline().
-     *
-     * @param size Number of bytes written into the inline buffer (clamped to SmallBufferSize).
-     */
-    void commitInline(std::size_t size) noexcept;
 
     /**
      * @brief Constructs task with channel name and payload.

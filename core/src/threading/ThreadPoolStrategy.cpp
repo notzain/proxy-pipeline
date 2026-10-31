@@ -6,14 +6,12 @@
 #include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
-#include "common/memory/MutableByteView.hpp"
 #include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cstring>
 #include <mutex>
 #include <utility>
 
@@ -114,149 +112,55 @@ namespace {
     }
 
     /**
-     * @brief Ingests datagrams directly into worker queue slot memory (zero-copy) for maximum throughput.
+     * @brief Ingests datagrams into pooled BufferSlices or leased views and enqueues them onto the shared MPMC work queue.
      */
     bool pollUnconstrained(
         std::string_view channelName,
         ::Backend::IInputChannel& channel,
-        SharedQueueType* sharedQueue,
-        Common::Compat::span<const std::unique_ptr<QueueType>> queues,
-        std::atomic<std::size_t>& nextWorker,
+        SharedQueueType& sharedQueue,
         const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
         Detail::IngressBatchScratch<16>& scratch,
-        Detail::IngressBatchScratch<1>& jumboScratch,
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
-        constexpr std::size_t maxBatch = 16;
-        const bool ownMemory = channel.providesOwnMemory();
+        auto batchSlots = scratch.preparePooled(channel, bufferPool);
 
-        // Path A (MPMC sharedQueue): Poller cannot write in-place into an MPMC ring slot without blocking
-        // other producers, so we pre-attach BufferSlices and move completed MessageTasks into sharedQueue.
-        if (sharedQueue) {
-            auto batchSlots = scratch.preparePooled(channel, bufferPool);
+        auto result = channel.receiveBatch(batchSlots, timeout);
+        const bool failed = channelFailed(channelName, result);
+        const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+        scratch.releaseUnusedFrom(received);
+        if (failed && received == 0) {
+            return false;
+        }
 
-            auto result = channel.receiveBatch(batchSlots, timeout);
-            const bool failed = channelFailed(channelName, result);
-            const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
-            scratch.releaseUnusedFrom(received);
-            if (failed && received == 0) {
-                return false;
-            }
-
-            for (std::size_t i = 0; i < received; ++i) {
-                MessageTask task;
-                if (batchSlots[i].isLeased()) {
-                    // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
-                    const auto view = batchSlots[i].filledSpan();
-                    task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
-                } else if (auto& preSlice = scratch.slice(i); preSlice.has_value()) {
-                    // Kernel wrote directly into the BufferSlice; move the slice handle in O(1) (no memcpy).
-                    task.assignSlice(channelName, std::move(*preSlice), batchSlots[i].size);
-                    preSlice.reset();
-                    task.setLease(std::move(batchSlots[i].lease));
+        for (std::size_t i = 0; i < received; ++i) {
+            MessageTask task;
+            if (batchSlots[i].isLeased()) {
+                // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
+                const auto view = batchSlots[i].filledSpan();
+                task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
+            } else if (auto& preSlice = scratch.slice(i); preSlice.has_value()) {
+                // Keep > SmallBufferSize payloads in their BufferSlice (0 copies); copy <= SmallBufferSize
+                // into the inline SBO slot so the 64 KB pool block is returned to the pool immediately.
+                const std::size_t pktSize = batchSlots[i].size;
+                if (pktSize > MessageTask::SmallBufferSize) {
+                    task.assignSlice(channelName, std::move(*preSlice), pktSize);
                 } else {
-                    // Pool was exhausted: copy from fallback scratch buffer.
-                    task.assign(channelName, batchSlots[i].filledSpan());
-                    task.setLease(std::move(batchSlots[i].lease));
+                    task.assign(channelName, preSlice->span().subspan(0, pktSize));
                 }
+                preSlice.reset();
+                task.setLease(std::move(batchSlots[i].lease));
+            } else {
+                // Pool was exhausted: copy from fallback scratch buffer.
+                task.assign(channelName, batchSlots[i].filledSpan());
+                task.setLease(std::move(batchSlots[i].lease));
+            }
 
-                if (!sharedQueue->tryPush(std::move(task))) {
-                    sharedQueue->push(std::move(task), stoken);
-                }
-            }
-            return !failed;
-        }
-
-        bool hasOversized = false;
-        bool receiveFailed = false;
-
-        // Path B (SPSC per-worker queues): Claim contiguous SPSC slots and let the transport write directly
-        // into each slot's 2 KB inline buffer (zero copies, zero pool atomics).
-        auto fillSlots = [&](Common::Compat::span<MessageTask> slots) -> std::size_t {
-            std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
-            const std::size_t n = std::min(slots.size(), maxBatch);
-            if (!ownMemory) {
-                for (std::size_t i = 0; i < n; ++i) {
-                    inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
-                }
-            }
-            auto result = channel.receiveBatch(
-                Common::Compat::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
-                timeout);
-            receiveFailed = channelFailed(channelName, result) || receiveFailed;
-            const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
-            for (std::size_t i = 0; i < nReceived; ++i) {
-                if (inPlaceSlots[i].isLeased()) {
-                    const auto view = inPlaceSlots[i].filledSpan();
-                    slots[i].assignLeased(channelName, view, std::move(inPlaceSlots[i].lease));
-                    continue;
-                }
-                slots[i].commitInline(inPlaceSlots[i].size);
-                // PosixSocketPoller peeks before draining if a datagram > 2 KB is at the head of the socket,
-                // leaving it unread; flag it so we drain it into a 64 KB BufferSlice right after.
-                if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
-                    hasOversized = true;
-                }
-                slots[i].setLease(std::move(inPlaceSlots[i].lease));
-            }
-            return nReceived;
-        };
-
-        // Round-robin probe for a worker queue with free space; block on the primary queue only if all are full.
-        const std::size_t numWorkers = queues.size();
-        const std::size_t start = nextWorker.fetch_add(1, std::memory_order_relaxed);
-        QueueType* targetQueue = nullptr;
-        for (std::size_t attempt = 0; attempt < numWorkers; ++attempt) {
-            auto& q = *queues[(start + attempt) % numWorkers];
-            if (auto res = q.tryPushInPlace(maxBatch, fillSlots, stoken)) {
-                targetQueue = &q;
-                break;
+            if (!sharedQueue.tryPush(std::move(task))) {
+                sharedQueue.push(std::move(task), stoken);
             }
         }
-        if (receiveFailed) {
-            return false;
-        }
-        if (!targetQueue) {
-            targetQueue = queues[start % numWorkers].get();
-            targetQueue->pushInPlace(maxBatch, fillSlots, stoken);
-        }
-        if (receiveFailed) {
-            return false;
-        }
-
-        // Drain the oversized (> 2 KB) datagram that did not fit into the inline SPSC slot directly into a BufferSlice.
-        if (hasOversized && targetQueue) {
-            auto& jumboSlot = jumboScratch.preparePooled(channel, bufferPool)[0];
-            constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
-            auto jumboResult = channel.receiveSlot(jumboSlot, zeroTimeout);
-            if (!jumboResult.hasValue() && channelFailed(channelName, jumboResult.error())) {
-                jumboScratch.releaseUnusedFrom(0);
-                return false;
-            }
-            std::size_t jumboBytes = jumboResult.hasValue() ? jumboResult.value() : 0;
-            if (jumboBytes > 0 || jumboSlot.isLeased()) {
-                targetQueue->pushBatch(
-                    1,
-                    [&](MessageTask& slot, std::size_t) {
-                        if (jumboSlot.isLeased()) {
-                            const auto view = jumboSlot.filledSpan();
-                            slot.assignLeased(channelName, view, std::move(jumboSlot.lease));
-                            return;
-                        }
-                        slot.setLease(std::move(jumboSlot.lease));
-                        if (auto& preSlice = jumboScratch.slice(0); preSlice.has_value()) {
-                            slot.assignSlice(channelName, std::move(*preSlice), jumboBytes);
-                            preSlice.reset();
-                            return;
-                        }
-                        slot.assign(channelName, jumboSlot.filledSpan());
-                    },
-                    stoken);
-            }
-            jumboScratch.releaseUnusedFrom(0);
-        }
-        return true;
+        return !failed;
     }
 
     /**
@@ -318,8 +222,8 @@ namespace {
                     slot.setLease(std::move(batchSlots[pktIdx].lease));
                     const std::size_t pktSize = batchSlots[pktIdx].size;
                     if (auto& preSlice = scratch.slice(pktIdx); preSlice.has_value()) {
-                        // Keep > 2 KB payloads in their BufferSlice (0 copies); copy <= 2 KB into the inline slot
-                        // so the 64 KB pool block is returned to the pool immediately via preSlice.reset().
+                        // Keep > SmallBufferSize payloads in their BufferSlice (0 copies); copy <= SmallBufferSize
+                        // into the inline slot so the 64 KB pool block is returned to the pool immediately via preSlice.reset().
                         if (pktSize > MessageTask::SmallBufferSize) {
                             slot.assignSlice(channelName, std::move(*preSlice), pktSize);
                             preSlice.reset();
@@ -440,11 +344,10 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
         const auto currentChannelIdx = channelIdx++;
         m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](Common::Compat::stop_token stoken) {
             Detail::IngressBatchScratch<16> scratch;
-            Detail::IngressBatchScratch<1> jumboScratch;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!enforceFifo) {
-                    if (!pollUnconstrained(channelName, *channelPtr, m_sharedQueue.get(), m_workerQueues, m_nextWorker, m_bufferPool, scratch, jumboScratch, channelTimeout, stoken)) {
+                    if (!pollUnconstrained(channelName, *channelPtr, *m_sharedQueue, m_bufferPool, scratch, channelTimeout, stoken)) {
                         break;
                     }
                 } else {

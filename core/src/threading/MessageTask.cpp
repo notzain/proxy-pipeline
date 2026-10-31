@@ -1,6 +1,7 @@
 #include "core/threading/MessageTask.hpp"
-#include <algorithm>
+#include <cstring>
 #include <utility>
+#include <vector>
 
 namespace Core::Threading {
 
@@ -39,24 +40,6 @@ void MessageTask::assignLeased(std::string_view name, Common::Compat::span<const
     m_lease = std::move(owner);
     m_leasedView = view;
     m_leased = true;
-}
-
-Common::Compat::span<std::byte> MessageTask::prepareInline(std::string_view name)
-{
-    if (m_channelName != name) {
-        m_channelName = name;
-    }
-    m_leasedView = { };
-    m_leased = false;
-    return Common::Compat::span<std::byte>(m_inlineBuffer.data(), m_inlineBuffer.size());
-}
-
-void MessageTask::commitInline(std::size_t size) noexcept
-{
-    m_inlineSize = std::min(size, SmallBufferSize);
-    m_spillBuffer = std::monostate { };
-    m_leasedView = { };
-    m_leased = false;
 }
 
 MessageTask::MessageTask(std::string name, Common::Compat::span<const std::byte> data)

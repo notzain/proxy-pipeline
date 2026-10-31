@@ -37,7 +37,7 @@ public:
      *        and never writes into `slot.buffer`.
      *
      * Execution strategies query this capability to skip allocating 64 KB / 1 MB scratch buffers
-     * (`receiveBuffer`, `batchBuffers`, `prepareInline`) for channels that manage their own memory.
+     * (`IngressBatchScratch`) for channels that manage their own memory.
      */
     [[nodiscard]] virtual bool providesOwnMemory() const noexcept;
 
