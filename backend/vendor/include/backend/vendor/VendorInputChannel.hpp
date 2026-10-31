@@ -35,6 +35,8 @@ public:
 
     ~VendorInputChannel() override = default;
 
+    [[nodiscard]] bool providesOwnMemory() const noexcept override;
+
     ::Backend::BytesResult receiveSlot(
         ::Backend::BufferSlot& slot,
         Timeout timeout) override;

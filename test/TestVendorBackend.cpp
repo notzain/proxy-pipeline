@@ -546,6 +546,54 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         std::filesystem::remove(tempFile);
     }
 
+    SECTION("Shared BufferPool is owned by IBackend and providesOwnMemory() skips strategy scratch buffers")
+    {
+        Backend::Vendor::VendorBackend defaultBackend(mockManager);
+        REQUIRE(defaultBackend.bufferPool() != nullptr);
+        CHECK(defaultBackend.bufferPool() == defaultBackend.bufferPool());
+
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", defaultBackend, mockReceiver);
+        CHECK(inputChannel.providesOwnMemory());
+
+        // Verify that strategies pass empty slot.buffer when providesOwnMemory() is true
+        class BufferInspectInputChannel : public Backend::Vendor::VendorInputChannel {
+        public:
+            using Backend::Vendor::VendorInputChannel::VendorInputChannel;
+
+            Backend::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
+            {
+                sawNonEmptyTargetBuffer = sawNonEmptyTargetBuffer || !slot.buffer.empty();
+                return Backend::Vendor::VendorInputChannel::receiveSlot(slot, timeout);
+            }
+
+            std::atomic<bool> sawNonEmptyTargetBuffer { false };
+        };
+
+        auto inspectChannel = std::make_unique<BufferInspectInputChannel>("vendor_in", defaultBackend, mockReceiver);
+        auto* inspectPtr = inspectChannel.get();
+
+        VendorTestHandler handler(defaultBackend, /*shouldDrop=*/false);
+        handler.registerInputChannel(std::move(inspectChannel));
+
+        mockReceiver->enqueue(9501, "Zero-Scratch Msg 1");
+        mockReceiver->enqueue(9502, "Zero-Scratch Msg 2");
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::ThreadPoolStrategy>(2, /*strictFifo=*/false, true));
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockManager->finalizedCount() < 2 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        CHECK_FALSE(inspectPtr->sawNonEmptyTargetBuffer.load());
+        CHECK(handler.receivedCount() == 2);
+    }
+
     SECTION("Mode B missing payload file drops VendorMessage and returns ReceiveFailure")
     {
         Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver);

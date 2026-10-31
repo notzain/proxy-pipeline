@@ -2,7 +2,6 @@
 
 #include "backend/IBackend.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
-#include "common/memory/BufferPool.hpp"
 #include <cstddef>
 #include <memory>
 
@@ -11,12 +10,16 @@ namespace Backend::Vendor {
 /**
  * @brief 3rd-party vendor transport backend implementation.
  *
- * Manages the shared vendor SDK manager, creates vendor input/output channels, and
- * owns the shared BufferPool used when reading file-backed vendor payloads (Mode B).
- * The pool is sized from the constructor / `configure()` and allocated exactly once, lazily, when the
- * first channel needs it; later reconfiguration attempts are ignored with a warning.
- * In-flight vendor messages are owned directly by out-of-band Backend::Lease instances
- * produced by VendorInputChannel rather than a backend-wide registry.
+ * Manages the shared vendor SDK manager and creates vendor input/output channels.
+ *
+ * Why VendorBackend uses a BufferPool even though `VendorInputChannel::providesOwnMemory()` is true:
+ * - `providesOwnMemory() == true` tells execution strategies not to allocate caller scratch buffers, because
+ *   `VendorInputChannel` always returns a leased zero-copy span bound to a `VendorLeaseState`.
+ * - However, the vendor SDK delivers messages in two ways:
+ *   1. Mode A (in-memory `{ byte*, length }`): the SDK already owns the bytes in RAM, so no pool is used.
+ *   2. Mode B (file path on disk): the SDK only gives a filesystem path, not memory. `VendorInputChannel`
+ *      must load the file into memory owned by `VendorLeaseState` so handlers receive a contiguous byte span,
+ *      acquiring a reusable `BufferSlice` from `IBackend::bufferPool()` (or `MappedFile` for oversized files).
  */
 class VendorBackend : public ::Backend::IBackend {
 public:
@@ -42,16 +45,8 @@ public:
 
     [[nodiscard]] std::shared_ptr<Sdk::VendorManager> vendorManager() const noexcept;
 
-    /**
-     * @brief Returns the shared payload BufferPool, allocating it on first use with the configured geometry.
-     */
-    [[nodiscard]] std::shared_ptr<Common::Memory::BufferPool> bufferPool();
-
 private:
     std::shared_ptr<Sdk::VendorManager> m_vendorManager;
-    std::size_t m_poolBlockSize;
-    std::size_t m_poolBlockCount;
-    std::shared_ptr<Common::Memory::BufferPool> m_bufferPool;
 };
 
 } // namespace Backend::Vendor

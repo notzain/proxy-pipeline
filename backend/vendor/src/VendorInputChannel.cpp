@@ -81,6 +81,11 @@ void VendorInputChannel::setReceiver(std::shared_ptr<Sdk::VendorReceiver> receiv
     m_receiver = std::move(receiver);
 }
 
+bool VendorInputChannel::providesOwnMemory() const noexcept
+{
+    return true;
+}
+
 ::Backend::BytesResult VendorInputChannel::receiveSlot(
     ::Backend::BufferSlot& slot,
     Timeout timeout)

@@ -14,6 +14,11 @@ std::string_view IInputChannel::name() const noexcept
     return m_name;
 }
 
+bool IInputChannel::providesOwnMemory() const noexcept
+{
+    return false;
+}
+
 BatchResult IInputChannel::receiveBatch(
     Common::Compat::span<BufferSlot> slots,
     Timeout timeout)

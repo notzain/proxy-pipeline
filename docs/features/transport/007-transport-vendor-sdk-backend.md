@@ -16,11 +16,12 @@ In `fcfe1d9` – `303528b`, the Proxy pipeline was extended to integrate a propr
 2. **Iteration 2 — Out-of-Band `Backend::Lease` (`168ad1d`)**: Eliminated `VendorMetadata`, `ScopedVendorMessage`, and the backend hash map/mutex. `VendorInputChannel::receiveSlot()` attaches a move-only `Backend::Lease` owning `VendorLeaseState(std::move(rawMsg), m_manager)` directly onto `BufferSlot::lease`.
 3. **Iteration 3 — Consuming Forward via `MessageView` (`3442deb`)**: Encapsulated an `ObserverPtr<Lease>` inside `Backend::MessageView`. When a handler calls `m_outputChannel->send(messageView)`, `VendorOutputChannel::send(const MessageView&)` consumes the `VendorLeaseState` from `messageView`, extracts the original `Sdk::VendorMessage` via `takeMessage()`, and sends it directly through `VendorSender::send(origMsg)`, disarming the `Lease` so `finalize()` is not called.
 4. **Iteration 4 — Dual-Mode Payload Ingestion & Zero-Copy Leased Views**: `BufferSlot::assignLeased(view, lease)` and `MessageTask::assignLeased(name, view, lease)` bind a read-only payload view to the `Lease` that owns it, so `VendorInputChannel` never copies payloads into strategy scratch buffers (`batchBuffers` or `MessageTask::m_inlineBuffer`). Mode A (`{ data, length }`) exposes a zero-copy span directly over `VendorMessage` memory; Mode B (`payloadFilePath`) reads the file into a `BufferSlice` from `VendorBackend`'s `Common::Memory::BufferPool`, or memory-maps it (`Common::Io::MappedFile`) when it exceeds the block size or the pool is exhausted. The buffer is held in a `Common::Memory::DynamicBuffer` owned by `VendorLeaseState`.
-5. **Iteration 5 — Hardening**:
+5. **Iteration 5 — Hardening & Unified Memory Consolidation**:
    - Leased slots/tasks are explicitly tagged `Backend::PayloadFormat::Raw`; the dispatcher never guesses from envelope-parse failures.
    - `VendorOutputChannel` marks a message consumed only **after** `VendorSender::send()` succeeds, and only forwards leases from the **same** `VendorManager`.
    - Strategies call `BufferSlot::reset()` before each receive instead of poking individual fields.
-   - The vendor `BufferPool` is allocated lazily exactly once; reconfiguration after allocation is ignored with a warning.
+   - **Lock-Free `BufferPool` Shared via `IBackend`**: `Common::Memory::BufferPool` uses a lock-free 64-bit tagged Treiber free-list (eliminating spinlock contention) and is owned directly by `Backend::IBackend` (`bufferPool()` / `setBufferPool()`), shared between `ThreadPoolStrategy` and `VendorBackend`.
+   - **Channel Memory Capability (`IInputChannel::providesOwnMemory()`) & `IngressBatchScratch`**: `VendorInputChannel` overrides `providesOwnMemory()` to return `true`. `Core::Threading::Detail::IngressBatchScratch` skips allocating 64 KB / 1 MB scratch buffers and `prepareInline()` for memory-owning channels, and pre-attaches `BufferSlice`s directly to `BufferSlot::buffer` in `ThreadPoolStrategy` so normal backends receive straight into pool memory without an extra 64 KB `memcpy`.
 
 ---
 
@@ -79,7 +80,14 @@ sequenceDiagram
 - **Decision**: Payload files that fit a pool block are read into the `BufferPool`; anything else is `mmap`ed privately (`Common::Io::MappedFile`, a `DynamicBuffer` alternative).
 - **Rationale**: The previous unbounded `std::vector` fallback defeated the fixed-size pool. Mapping is zero-copy, bounded by the page cache, and stays valid after the SDK unlinks the file on `finalize()`.
 
-### 3.5 Consuming Forward Preconditions
+### 3.5 Unified Lock-Free Memory Pool, Direct-to-Slice Ingress & Channel Memory Capability
+- **Decision**:
+  1. `Common::Memory::BufferPool` is implemented as a lock-free 64-bit tagged Treiber stack (`(tag << 32) | index`) owned per `Backend::IBackend` instance (`bufferPool()` / `setBufferPool()`) and shared with `ThreadPoolStrategy`.
+  2. `Backend::IInputChannel::providesOwnMemory()` declares whether an input channel supplies its own payload memory (`true` for `VendorInputChannel`, `false` by default).
+  3. `Core::Threading::Detail::IngressBatchScratch` unifies slot preparation across all execution strategies: skipping scratch buffers completely when `providesOwnMemory()` is `true`, reusing L2/L3-hot scratch arrays in synchronous strategies, and pre-attaching `BufferSlice`s directly to `BufferSlot::buffer` in `ThreadPoolStrategy` so kernel reads land directly in pool memory without an intermediate `batchBuffers` `memcpy`.
+- **Rationale**: Eliminates duplicate 16 MB `BufferPool` instances, removes global singleton state leakage across unit tests, eliminates spinlock contention between pollers and workers, and avoids both dead scratch allocations on vendor channels and 64 KB intermediate copies on normal channels.
+
+### 3.6 Consuming Forward Preconditions
 - `VendorSender::send()` must succeed before the lease is marked consumed; otherwise the handler's settlement finalizes/drops the original.
 - The lease's `VendorManager` must match the output channel's manager.
 - **Assumption**: `VendorSender::send(const VendorMessage&)` does not invalidate the message's in-memory payload, because later fan-out channels still read it through the zero-copy view. Re-verify against the real SDK.
@@ -131,7 +139,7 @@ slot.assignLeased(view, ::Backend::Lease(std::move(leaseState))); // slot.format
 - [x] Replace unbounded Mode B heap fallback with `Common::Io::MappedFile`.
 - [x] Allocate the vendor `BufferPool` lazily, once.
 - [x] Move `BufferSlot` and `DynamicBuffer` implementations into source files.
-- [ ] Decide on a unified memory-provider model across all backends (open design discussion).
+- [x] Upgrade `Common::Memory::BufferPool` to a lock-free tagged Treiber stack, expose per-backend pool ownership on `Backend::IBackend`, add `IInputChannel::providesOwnMemory()`, and unify strategy slot preparation in `IngressBatchScratch`.
 - [ ] Verify the `VendorSender::send()` non-invalidation assumption against the real SDK.
 - [x] Verify all lifecycle invariants in `test/TestVendorBackend.cpp`.
 

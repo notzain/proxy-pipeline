@@ -1,6 +1,7 @@
 #include "backend/vendor/VendorBackend.hpp"
 #include "backend/vendor/VendorInputChannel.hpp"
 #include "backend/vendor/VendorOutputChannel.hpp"
+#include "common/memory/BufferPool.hpp"
 #include "log/Log.hpp"
 #include <cstdint>
 #include <utility>
@@ -8,7 +9,7 @@
 namespace Backend::Vendor {
 
 VendorBackend::VendorBackend()
-    : VendorBackend(std::make_shared<Sdk::VendorManager>())
+    : m_vendorManager(std::make_shared<Sdk::VendorManager>())
 {
 }
 
@@ -17,11 +18,14 @@ VendorBackend::VendorBackend(
     std::size_t poolBlockSize,
     std::size_t poolBlockCount)
     : m_vendorManager(std::move(manager))
-    , m_poolBlockSize(poolBlockSize > 0 ? poolBlockSize : DefaultPoolBlockSize)
-    , m_poolBlockCount(poolBlockCount > 0 ? poolBlockCount : DefaultPoolBlockCount)
 {
     if (!m_vendorManager) {
         m_vendorManager = std::make_shared<Sdk::VendorManager>();
+    }
+    if (poolBlockSize != DefaultPoolBlockSize || poolBlockCount != DefaultPoolBlockCount) {
+        setBufferPool(std::make_shared<Common::Memory::BufferPool>(
+            poolBlockSize > 0 ? poolBlockSize : DefaultPoolBlockSize,
+            poolBlockCount > 0 ? poolBlockCount : DefaultPoolBlockCount));
     }
 }
 
@@ -29,23 +33,25 @@ VendorBackend::~VendorBackend() = default;
 
 void VendorBackend::configure(const ::Backend::IConfig& config)
 {
+    // Mode B vendor messages arrive as file paths on disk rather than RAM pointers; this pool backs
+    // the BufferSlices held inside VendorLeaseState when reading those files into memory.
+    const auto curPool = bufferPool();
     const auto blockSize = static_cast<std::size_t>(
-        config.getOr<std::uint64_t>("vendor.pool_block_size", m_poolBlockSize));
+        config.getOr<std::uint64_t>("vendor.pool_block_size",
+            config.getOr<std::uint64_t>("memory.pool_block_size", curPool->blockSize())));
     const auto blockCount = static_cast<std::size_t>(
-        config.getOr<std::uint64_t>("vendor.pool_block_count", m_poolBlockCount));
+        config.getOr<std::uint64_t>("vendor.pool_block_count",
+            config.getOr<std::uint64_t>("memory.pool_block_count", curPool->blockCount())));
 
-    if (m_bufferPool) {
-        if (blockSize != m_poolBlockSize || blockCount != m_poolBlockCount) {
-            Proxy::Log::warn("[VendorBackend] BufferPool already allocated ({} x {} B); ignoring reconfiguration.",
-                m_poolBlockCount, m_poolBlockSize);
-        }
-        return;
+    if (blockSize != curPool->blockSize() || blockCount != curPool->blockCount()) {
+        setBufferPool(std::make_shared<Common::Memory::BufferPool>(
+            blockSize > 0 ? blockSize : DefaultPoolBlockSize,
+            blockCount > 0 ? blockCount : DefaultPoolBlockCount));
     }
 
-    m_poolBlockSize = blockSize > 0 ? blockSize : DefaultPoolBlockSize;
-    m_poolBlockCount = blockCount > 0 ? blockCount : DefaultPoolBlockCount;
+    const auto activePool = bufferPool();
     Proxy::Log::info("[VendorBackend] Configured 3rd-party vendor backend (pool: {} x {} B).",
-        m_poolBlockCount, m_poolBlockSize);
+        activePool->blockCount(), activePool->blockSize());
 }
 
 std::unique_ptr<::Backend::IInputChannel> VendorBackend::createInputChannel(
@@ -65,14 +71,6 @@ std::unique_ptr<::Backend::IOutputChannel> VendorBackend::createOutputChannel(
 std::shared_ptr<Sdk::VendorManager> VendorBackend::vendorManager() const noexcept
 {
     return m_vendorManager;
-}
-
-std::shared_ptr<Common::Memory::BufferPool> VendorBackend::bufferPool()
-{
-    if (!m_bufferPool) {
-        m_bufferPool = std::make_shared<Common::Memory::BufferPool>(m_poolBlockSize, m_poolBlockCount);
-    }
-    return m_bufferPool;
 }
 
 } // namespace Backend::Vendor

@@ -1,4 +1,5 @@
 #include "core/threading/SequentialStrategy.hpp"
+#include "IngressBatchScratch.hpp"
 #include "MessageDispatcher.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
@@ -30,14 +31,9 @@ void SequentialStrategy::start(Handler::IHandler& handler)
     Proxy::Log::info("[SequentialStrategy] Started loop for {} channel(s)", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
-        // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
-        // Allocated once on the heap when the thread starts to prevent thread stack overflow,
-        // while keeping the buffer resident across polling loops with zero per-message allocations.
-        auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
-        std::array<::Backend::BufferSlot, 16> batchSlots;
-        for (std::size_t i = 0; i < 16; ++i) {
-            batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
-        }
+        // Reuses one L2/L3-hot 16x64KB scratch buffer across all channels because each batch is
+        // dispatched synchronously before the next receiveBatch() overwrites it.
+        Detail::IngressBatchScratch<16> scratch;
         Common::Memory::ParallelArray<16, Common::Compat::span<const std::byte>, ::Backend::PayloadFormat, ::Backend::Lease> batch;
         std::size_t invalidEnvelopeCount = 0;
 
@@ -47,19 +43,15 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
-                for (auto& slot : batchSlots) {
-                    slot.reset();
-                }
+                auto slots = scratch.prepareSync(channel);
+                auto result = channel.receiveBatch(slots, channelTimeout);
 
-                auto result = channel.receiveBatch(
-                    Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
-                    channelTimeout);
-
+                // Even on partial error, process any messages already drained before handling the error.
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
                     batch.clear();
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        batch.push_back(batchSlots[i].filledSpan(), batchSlots[i].format(), std::move(batchSlots[i].lease));
+                        batch.push_back(slots[i].filledSpan(), slots[i].format(), std::move(slots[i].lease));
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
