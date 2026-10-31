@@ -8,15 +8,13 @@ std::size_t writeEnvelopeHeader(
     ProtocolId protocol,
     std::uint16_t metadataLength,
     std::uint32_t payloadLength,
-    std::optional<Common::Compat::UtcTimePoint> timestamp) noexcept
+    Common::Compat::UtcTimePoint timestamp) noexcept
 {
     if (destination.size() < sizeof(EnvelopeHeader) || destination.data() == nullptr) {
         return 0;
     }
 
-    const std::uint64_t ts = timestamp.has_value()
-        ? Common::Compat::toEpochNs(*timestamp)
-        : Common::Compat::toEpochNs(Common::Compat::nowUtc());
+    const std::uint64_t ts = Common::Compat::toEpochNs(timestamp);
 
     std::byte* dst = destination.data();
     Common::IO::Wire::writeUint16Be(dst, EnvelopeMagic);

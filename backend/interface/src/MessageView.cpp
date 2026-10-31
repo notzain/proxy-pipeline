@@ -18,16 +18,20 @@ std::size_t MessageView::packInto(
         return 0;
     }
 
-    const auto optTimestamp = (timestampNs != 0)
-        ? std::optional<Common::Compat::UtcTimePoint>(Common::Compat::fromEpochNs(timestampNs))
-        : std::nullopt;
-
-    writeEnvelopeHeader(
-        destination,
-        protocol,
-        static_cast<std::uint16_t>(metadata.size()),
-        static_cast<std::uint32_t>(payload.size()),
-        optTimestamp);
+    if (timestampNs != 0) {
+        writeEnvelopeHeader(
+            destination,
+            protocol,
+            static_cast<std::uint16_t>(metadata.size()),
+            static_cast<std::uint32_t>(payload.size()),
+            Common::Compat::fromEpochNs(timestampNs));
+    } else {
+        writeEnvelopeHeader(
+            destination,
+            protocol,
+            static_cast<std::uint16_t>(metadata.size()),
+            static_cast<std::uint32_t>(payload.size()));
+    }
 
     std::byte* dst = destination.data();
     if (!metadata.empty()) {
