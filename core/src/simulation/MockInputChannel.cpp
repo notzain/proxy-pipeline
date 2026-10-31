@@ -60,7 +60,7 @@ bool MockInputChannel::isReady(const TimedMessage& msg) const
     return m_clock->nowNs() >= msg.scheduledTimeNs;
 }
 
-Backend::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
+Common::Net::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
     slot.size = 0;
     auto startTime = std::chrono::steady_clock::now();
@@ -90,15 +90,15 @@ Backend::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& slot, 
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
 
-    return BytesResult::failure(::Backend::receiveTimeout());
+    return BytesResult::failure(Common::Net::ReceiveTimeout { });
 }
 
-Backend::BatchResult MockInputChannel::receiveBatch(
+Common::Net::BatchResult MockInputChannel::receiveBatch(
     Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     auto startTime = std::chrono::steady_clock::now();
@@ -131,7 +131,7 @@ Backend::BatchResult MockInputChannel::receiveBatch(
 
     return drained > 0
         ? BatchResult::success(drained)
-        : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+        : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Core::Simulation

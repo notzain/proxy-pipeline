@@ -43,7 +43,7 @@ public:
 
     [[nodiscard]] bool providesOwnMemory() const noexcept override;
 
-    ::Backend::BytesResult receiveSlot(
+    Common::Net::BytesResult receiveSlot(
         ::Backend::BufferSlot& slot,
         Timeout timeout) override;
 

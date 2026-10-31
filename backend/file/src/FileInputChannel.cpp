@@ -23,7 +23,7 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
     slot.size = 0;
     const auto destination = slot.buffer;
     if (destination.empty()) {
-        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
 
     const auto startTime = std::chrono::steady_clock::now();
@@ -32,16 +32,16 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
         std::error_code ec;
         std::filesystem::directory_iterator entry(m_watchDir, ec);
         if (ec) {
-            return BytesResult::failure(::Backend::receiveFailure(ec));
+            return BytesResult::failure(Common::Net::ReceiveFailure { ec });
         }
         const std::filesystem::directory_iterator end;
         for (; entry != end; entry.increment(ec)) {
             if (ec) {
-                return BytesResult::failure(::Backend::receiveFailure(ec));
+                return BytesResult::failure(Common::Net::ReceiveFailure { ec });
             }
             if (!entry->is_regular_file(ec)) {
                 if (ec) {
-                    return BytesResult::failure(::Backend::receiveFailure(ec));
+                    return BytesResult::failure(Common::Net::ReceiveFailure { ec });
                 }
                 continue;
             }
@@ -49,17 +49,17 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
             auto filePath = entry->path();
             std::ifstream file(filePath, std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
-                return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
+                return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
             }
             const auto fileSize = file.tellg();
             if (fileSize < 0) {
-                return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
+                return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
             }
             const auto bytesToRead = std::min(destination.size(), static_cast<std::size_t>(fileSize));
             file.seekg(0, std::ios::beg);
             file.read(reinterpret_cast<char*>(destination.data()), static_cast<std::streamsize>(bytesToRead));
             if (!file && bytesToRead != 0) {
-                return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::io_error)));
+                return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
             }
             file.close();
 
@@ -75,7 +75,7 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
             return BytesResult::success(bytesToRead);
         }
         if (ec) {
-            return BytesResult::failure(::Backend::receiveFailure(ec));
+            return BytesResult::failure(Common::Net::ReceiveFailure { ec });
         }
 
         const auto elapsed = std::chrono::duration_cast<Timeout>(std::chrono::steady_clock::now() - startTime);
@@ -86,7 +86,7 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
-    return BytesResult::failure(::Backend::receiveTimeout());
+    return BytesResult::failure(Common::Net::ReceiveTimeout { });
 }
 
 } // namespace Proxy::Backend::File

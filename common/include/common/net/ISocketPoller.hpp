@@ -2,7 +2,7 @@
 
 #include "common/compat/Span.hpp"
 #include "common/net/PollerBufferSlot.hpp"
-#include "common/net/PollerResult.hpp"
+#include "common/net/ReceiveResult.hpp"
 #include "common/net/SocketAddress.hpp"
 #include <chrono>
 #include <memory>
@@ -27,7 +27,7 @@ public:
      * @param outSourceAddress Optional pointer to record sender's address.
      * @return Typed result distinguishing received data, timeout, closure, and errors.
      */
-    virtual PollerBytesResult receive(
+    virtual BytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
@@ -44,7 +44,7 @@ public:
      * @param outSourceAddresses Optional span to record sender addresses.
      * @return Typed result containing the packet count or the receive status.
      */
-    virtual PollerBatchResult receiveBatch(
+    virtual BatchResult receiveBatch(
         int socketFd,
         Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,

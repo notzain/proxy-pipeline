@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/channel/ReceiveResult.hpp"
 #include "backend/memory/BufferSlot.hpp"
 #include "common/compat/Span.hpp"
+#include "common/net/ReceiveResult.hpp"
 #include <chrono>
 #include <cstddef>
 #include <string>
@@ -21,6 +21,8 @@ namespace Backend {
 class IInputChannel {
 public:
     using Timeout = std::chrono::milliseconds;
+    using BytesResult = Common::Net::BytesResult;
+    using BatchResult = Common::Net::BatchResult;
 
     explicit IInputChannel(std::string name = "");
     IInputChannel(const IInputChannel&) = default;

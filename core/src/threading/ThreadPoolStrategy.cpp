@@ -87,23 +87,23 @@ namespace {
     using QueueType = Common::Queue::SpscQueue<MessageTask, 1024>;
     using SharedQueueType = Common::Queue::MpmcQueue<MessageTask, 4096>;
 
-    bool channelFailed(std::string_view channelName, const ::Backend::ReceiveError& error)
+    bool channelFailed(std::string_view channelName, const Common::Net::ReceiveError& error)
     {
-        if (::Backend::isReceiveTimeout(error)) {
+        if (error.is<Common::Net::ReceiveTimeout>()) {
             return false;
         }
-        if (::Backend::isReceiveClosed(error)) {
+        if (error.is<Common::Net::ReceiveClosed>()) {
             Proxy::Log::error("[ThreadPoolStrategy] Input channel '{}' is closed", channelName);
             return true;
         }
         {
             Proxy::Log::error("[ThreadPoolStrategy] Input channel '{}' failed: {}",
-                channelName, ::Backend::receiveErrorMessage(error));
+                channelName, error.message());
             return true;
         }
     }
 
-    bool channelFailed(std::string_view channelName, const ::Backend::BatchResult& result)
+    bool channelFailed(std::string_view channelName, const Common::Net::BatchResult& result)
     {
         return !result.hasValue() && channelFailed(channelName, result.error().cause);
     }

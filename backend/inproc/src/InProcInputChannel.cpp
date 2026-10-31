@@ -12,11 +12,11 @@ InProcInputChannel::InProcInputChannel(std::string name, std::shared_ptr<InProcR
 
 InProcInputChannel::~InProcInputChannel() = default;
 
-::Backend::BytesResult InProcInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout)
+Common::Net::BytesResult InProcInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout)
 {
     slot.size = 0;
     if (!m_ring) {
-        return ::Backend::BytesResult::failure(::Backend::receiveClosed());
+        return Common::Net::BytesResult::failure(Common::Net::ReceiveClosed { });
     }
 
     std::size_t copiedBytes = 0;
@@ -33,22 +33,22 @@ InProcInputChannel::~InProcInputChannel() = default;
 
     if (drained > 0 && found) {
         slot.size = copiedBytes;
-        return ::Backend::BytesResult::success(copiedBytes);
+        return Common::Net::BytesResult::success(copiedBytes);
     }
 
-    return ::Backend::BytesResult::failure(::Backend::receiveTimeout());
+    return Common::Net::BytesResult::failure(Common::Net::ReceiveTimeout { });
 }
 
-::Backend::BatchResult InProcInputChannel::receiveBatch(
+Common::Net::BatchResult InProcInputChannel::receiveBatch(
     Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout)
 {
     if (!m_ring) {
-        return ::Backend::BatchResult::failure({ 0, ::Backend::receiveClosed() });
+        return Common::Net::BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
     }
 
     if (slots.empty()) {
-        return ::Backend::BatchResult::success(0);
+        return Common::Net::BatchResult::success(0);
     }
 
     std::size_t count = 0;
@@ -63,10 +63,10 @@ InProcInputChannel::~InProcInputChannel() = default;
     });
 
     if (count > 0) {
-        return ::Backend::BatchResult::success(count);
+        return Common::Net::BatchResult::success(count);
     }
 
-    return ::Backend::BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+    return Common::Net::BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::InProc

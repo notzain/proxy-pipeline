@@ -52,7 +52,7 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
     slot.size = 0;
     const auto destination = slot.buffer;
     if (!isValid()) {
-        return BytesResult::failure(::Backend::receiveClosed());
+        return BytesResult::failure(Common::Net::ReceiveClosed { });
     }
 
     // Fast-path: non-blocking immediate dequeue
@@ -66,7 +66,7 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
         return BytesResult::success(bytes);
     }
     if (timeout.count() == 0) {
-        return BytesResult::failure(::Backend::receiveTimeout());
+        return BytesResult::failure(Common::Net::ReceiveTimeout { });
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -104,7 +104,7 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
         }
     }
 
-    return BytesResult::failure(::Backend::receiveTimeout());
+    return BytesResult::failure(Common::Net::ReceiveTimeout { });
 }
 
 BatchResult ShmInputChannel::receiveBatch(
@@ -113,8 +113,8 @@ BatchResult ShmInputChannel::receiveBatch(
 {
     if (!isValid() || slots.empty()) {
         return slots.empty()
-            ? BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) })
-            : BatchResult::failure({ 0, ::Backend::receiveClosed() });
+            ? BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
+            : BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
     }
 
     // Fast-path: speculative burst dequeue
@@ -127,7 +127,7 @@ BatchResult ShmInputChannel::receiveBatch(
         return BatchResult::success(count);
     }
     if (timeout.count() == 0) {
-        return BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+        return BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -163,7 +163,7 @@ BatchResult ShmInputChannel::receiveBatch(
         }
     }
 
-    return BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+    return BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::Shm

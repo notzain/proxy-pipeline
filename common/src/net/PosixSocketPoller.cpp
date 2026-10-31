@@ -10,50 +10,50 @@ namespace Common::Net {
 
 namespace {
 
-    PollerBytesResult receiveError(int error)
+    BytesResult receiveError(int error)
     {
         if (error == EBADF || error == ENOTSOCK) {
-            return PollerBytesResult::failure(pollerClosed());
+            return BytesResult::failure(ReceiveClosed { });
         }
         if (error == EAGAIN || error == EWOULDBLOCK) {
-            return PollerBytesResult::failure(pollerTimeout());
+            return BytesResult::failure(ReceiveTimeout { });
         }
-        return PollerBytesResult::failure(pollerFailure(std::error_code(error, std::generic_category())));
+        return BytesResult::failure(ReceiveFailure { std::error_code(error, std::generic_category()) });
     }
 
-    PollerBatchResult batchError(int error, std::size_t receivedCount = 0)
+    BatchResult batchError(int error, std::size_t receivedCount = 0)
     {
-        PollerError cause;
+        ReceiveError cause;
         if (error == EBADF || error == ENOTSOCK) {
-            cause = pollerClosed();
+            cause = ReceiveClosed { };
         } else if (error == EAGAIN || error == EWOULDBLOCK) {
-            cause = pollerTimeout();
+            cause = ReceiveTimeout { };
         } else {
-            cause = pollerFailure(std::error_code(error, std::generic_category()));
+            cause = ReceiveFailure { std::error_code(error, std::generic_category()) };
         }
-        return PollerBatchResult::failure({ receivedCount, std::move(cause) });
+        return BatchResult::failure({ receivedCount, std::move(cause) });
     }
 
 } // namespace
 
-PollerBytesResult PosixSocketPoller::receive(
+BytesResult PosixSocketPoller::receive(
     int socketFd,
     Common::Compat::span<std::byte> destination,
     Timeout timeout,
     SocketAddress* outSourceAddress)
 {
     if (socketFd < 0) {
-        return PollerBytesResult::failure(pollerClosed());
+        return BytesResult::failure(ReceiveClosed { });
     }
     if (destination.empty()) {
-        return PollerBytesResult::failure(pollerFailure(std::make_error_code(std::errc::invalid_argument)));
+        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
 
     sockaddr_storage ss { };
     socklen_t addrLen = sizeof(ss);
     sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
     socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
-    auto readDatagram = [&]() -> PollerBytesResult {
+    auto readDatagram = [&]() -> BytesResult {
         ssize_t bytes = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destination.data()),
@@ -65,13 +65,13 @@ PollerBytesResult PosixSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&ss, addrLen);
             }
-            return PollerBytesResult::success(static_cast<std::size_t>(bytes));
+            return BytesResult::success(static_cast<std::size_t>(bytes));
         }
         return receiveError(errno);
     };
 
     auto directResult = readDatagram();
-    if (directResult.hasValue() || !isPollerTimeout(directResult.error())) {
+    if (directResult.hasValue() || !directResult.error().is<ReceiveTimeout>()) {
         return directResult;
     }
     if (timeout.count() <= 0) {
@@ -84,16 +84,16 @@ PollerBytesResult PosixSocketPoller::receive(
     int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
     int ret = ::poll(&pfd, 1, timeoutMs);
     if (ret == 0) {
-        return PollerBytesResult::failure(pollerTimeout());
+        return BytesResult::failure(ReceiveTimeout { });
     }
     if (ret < 0) {
         return receiveError(errno);
     }
     if (pfd.revents & POLLNVAL) {
-        return PollerBytesResult::failure(pollerClosed());
+        return BytesResult::failure(ReceiveClosed { });
     }
     if (pfd.revents & POLLHUP) {
-        return PollerBytesResult::failure(pollerClosed());
+        return BytesResult::failure(ReceiveClosed { });
     }
     if (pfd.revents & POLLERR) {
         int socketError = 0;
@@ -104,26 +104,26 @@ PollerBytesResult PosixSocketPoller::receive(
         if (socketError != 0) {
             return receiveError(socketError);
         }
-        return PollerBytesResult::failure(pollerFailure(std::make_error_code(std::errc::io_error)));
+        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::io_error) });
     }
     if (!(pfd.revents & POLLIN)) {
-        return PollerBytesResult::failure(pollerFailure(std::make_error_code(std::errc::io_error)));
+        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::io_error) });
     }
 
     return readDatagram();
 }
 
-PollerBatchResult PosixSocketPoller::receiveBatch(
+BatchResult PosixSocketPoller::receiveBatch(
     int socketFd,
     Common::Compat::span<PollerBufferSlot> slots,
     Timeout timeout,
     Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0) {
-        return PollerBatchResult::failure({ 0, pollerClosed() });
+        return BatchResult::failure({ 0, ReceiveClosed { } });
     }
     if (slots.empty()) {
-        return PollerBatchResult::failure({ 0, pollerFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     std::size_t count = 0;
@@ -155,7 +155,7 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
                 outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
             }
         }
-        return PollerBatchResult::success(static_cast<std::size_t>(received));
+        return BatchResult::success(static_cast<std::size_t>(received));
     }
     if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         return batchError(errno);
@@ -189,8 +189,8 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
 
     if (count > 0 || timeout.count() <= 0) {
         return count > 0
-            ? PollerBatchResult::success(count)
-            : PollerBatchResult::failure({ 0, pollerTimeout() });
+            ? BatchResult::success(count)
+            : BatchResult::failure({ 0, ReceiveTimeout { } });
     }
 
     pollfd pfd { };
@@ -199,13 +199,13 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
     int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
     int ret = ::poll(&pfd, 1, timeoutMs);
     if (ret == 0) {
-        return PollerBatchResult::failure({ 0, pollerTimeout() });
+        return BatchResult::failure({ 0, ReceiveTimeout { } });
     }
     if (ret < 0) {
         return batchError(errno);
     }
     if (pfd.revents & POLLNVAL || pfd.revents & POLLHUP) {
-        return PollerBatchResult::failure({ 0, pollerClosed() });
+        return BatchResult::failure({ 0, ReceiveClosed { } });
     }
     if (pfd.revents & POLLERR) {
         int socketError = 0;
@@ -215,10 +215,10 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
         }
         return socketError != 0
             ? batchError(socketError)
-            : PollerBatchResult::failure({ 0, pollerFailure(std::make_error_code(std::errc::io_error)) });
+            : BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
     }
     if (!(pfd.revents & POLLIN)) {
-        return PollerBatchResult::failure({ 0, pollerFailure(std::make_error_code(std::errc::io_error)) });
+        return BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
     }
 
 #if defined(__linux__)
@@ -233,8 +233,8 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
         }
     }
     return received > 0
-        ? PollerBatchResult::success(static_cast<std::size_t>(received))
-        : PollerBatchResult::failure({ 0, pollerTimeout() });
+        ? BatchResult::success(static_cast<std::size_t>(received))
+        : BatchResult::failure({ 0, ReceiveTimeout { } });
 #else
     while (count < maxBatch) {
         sockaddr_storage ss { };
@@ -261,8 +261,8 @@ PollerBatchResult PosixSocketPoller::receiveBatch(
         break;
     }
     return count > 0
-        ? PollerBatchResult::success(count)
-        : PollerBatchResult::failure({ 0, pollerTimeout() });
+        ? BatchResult::success(count)
+        : BatchResult::failure({ 0, ReceiveTimeout { } });
 #endif
 }
 

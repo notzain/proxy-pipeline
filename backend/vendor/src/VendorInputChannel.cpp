@@ -48,24 +48,24 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
     return true;
 }
 
-::Backend::BytesResult VendorInputChannel::receiveSlot(
+Common::Net::BytesResult VendorInputChannel::receiveSlot(
     ::Backend::BufferSlot& slot,
     Timeout timeout)
 {
     slot.reset();
 
     if (!m_receiver) {
-        return ::Backend::BytesResult::failure(::Backend::ReceiveClosed { });
+        return Common::Net::BytesResult::failure(Common::Net::ReceiveClosed { });
     }
 
     if (!m_manager) {
         Proxy::Log::error("[VendorInputChannel] VendorManager not initialized");
-        return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+        return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
     }
 
     Sdk::VendorMessage rawMsg;
     if (!m_receiver->receive(&rawMsg, static_cast<int>(timeout.count()))) {
-        return ::Backend::BytesResult::failure(::Backend::ReceiveTimeout { });
+        return Common::Net::BytesResult::failure(Common::Net::ReceiveTimeout { });
     }
 
     // Acquire a stationary relay node from the channel's private pool (zero heap allocation on hot path)
@@ -74,7 +74,7 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
         Proxy::Log::error("[VendorInputChannel] Relay pool exhausted for channel '{}', dropping message ID {}",
             name(), rawMsg.getId());
         m_manager->drop(rawMsg);
-        return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+        return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
     }
 
     node->message = std::move(rawMsg);
@@ -91,7 +91,7 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
                 filePath, node->message.getId());
             m_manager->drop(node->message);
             m_relayPool->release(node);
-            return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+            return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
         }
         if (fileSize > 0) {
             node->mapping = Common::Io::MappedFile::open(filePath);
@@ -100,7 +100,7 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
                     filePath, node->message.getId());
                 m_manager->drop(node->message);
                 m_relayPool->release(node);
-                return ::Backend::BytesResult::failure(::Backend::ReceiveFailure { });
+                return Common::Net::BytesResult::failure(Common::Net::ReceiveFailure { });
             }
         }
     }
@@ -114,7 +114,7 @@ bool VendorInputChannel::providesOwnMemory() const noexcept
         &VendorRelayNode::recycle);
 
     slot.assignLeased(view, ::Backend::Lease(std::move(token)));
-    return ::Backend::BytesResult::success(slot.size);
+    return Common::Net::BytesResult::success(slot.size);
 }
 
 } // namespace Backend::Vendor

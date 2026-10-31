@@ -63,14 +63,14 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                         nullptr);
                 }
 
-                if (result.hasValue() || ::Backend::isReceiveTimeout(result.error().cause)) {
+                if (result.hasValue() || result.error().cause.is<Common::Net::ReceiveTimeout>()) {
                     return;
                 }
-                if (::Backend::isReceiveClosed(result.error().cause)) {
+                if (result.error().cause.is<Common::Net::ReceiveClosed>()) {
                     Proxy::Log::error("[SequentialStrategy] Input channel '{}' is closed", channel.name());
                 } else {
                     Proxy::Log::error("[SequentialStrategy] Input channel '{}' failed: {}",
-                        channel.name(), ::Backend::receiveErrorMessage(result.error().cause));
+                        channel.name(), result.error().cause.message());
                 }
                 m_running.store(false, std::memory_order_release);
             });

@@ -123,7 +123,7 @@ TEST_CASE("Core::Simulation::MockInputChannel and MockOutputChannel pipeline sim
     // Message 2 should not be returned yet because clock has not advanced
     auto msg2Pending = inChannel.receiveSlot(slot, std::chrono::milliseconds(0));
     REQUIRE_FALSE(msg2Pending.hasValue());
-    CHECK(Backend::isReceiveTimeout(msg2Pending.error()));
+    CHECK(msg2Pending.error().is<Common::Net::ReceiveTimeout>());
 
     // Advance clock by 50 microseconds
     clock.advance(std::chrono::microseconds(50));

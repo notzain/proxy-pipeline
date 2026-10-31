@@ -29,8 +29,8 @@
 
 namespace {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 void sendTestUdpDatagram(const std::string& host, std::uint16_t port, std::string_view payload)
 {
@@ -111,7 +111,7 @@ public:
             slot.size = count;
             return BytesResult::success(count);
         }
-        return BytesResult::failure(::Backend::receiveTimeout());
+        return BytesResult::failure(Common::Net::ReceiveTimeout { });
     }
 
     BatchResult receiveBatch(
@@ -123,7 +123,7 @@ public:
             BytesResult result = receiveSlot(slots[count], timeout);
             if (result.hasValue()) {
                 count++;
-            } else if (::Backend::isReceiveTimeout(result.error())) {
+            } else if (result.error().is<Common::Net::ReceiveTimeout>()) {
                 break;
             } else {
                 return BatchResult::failure({ count, result.error() });
@@ -131,7 +131,7 @@ public:
         }
         return count > 0
             ? BatchResult::success(count)
-            : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+            : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
     }
 
 private:

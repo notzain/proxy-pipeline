@@ -1,5 +1,4 @@
 #include "backend/uds/UdsInputChannel.hpp"
-#include "backend/channel/PollerResultBridge.hpp"
 #include "common/net/ISocketPoller.hpp"
 #include "log/Log.hpp"
 
@@ -87,7 +86,7 @@ BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
+            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
         }
     }
 
@@ -96,10 +95,10 @@ BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
         if (result.hasValue()) {
             slot.size = result.value();
         }
-        return ::Backend::fromPollerBytesResult(result);
+        return result;
     }
 
-    return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
+    return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
 }
 
 BatchResult UdsInputChannel::receiveBatch(
@@ -109,12 +108,12 @@ BatchResult UdsInputChannel::receiveBatch(
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
+            return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
         }
     }
 
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     if (m_poller) {
@@ -135,10 +134,10 @@ BatchResult UdsInputChannel::receiveBatch(
             slots[i].size = pollerSlots[i].size;
         }
 
-        return ::Backend::fromPollerBatchResult(result);
+        return result;
     }
 
-    return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
+    return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
 }
 
 } // namespace Proxy::Backend::Uds

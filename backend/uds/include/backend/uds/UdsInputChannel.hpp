@@ -7,8 +7,8 @@
 
 namespace Proxy::Backend::Uds {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Input channel for receiving datagrams on a bound Unix Domain Socket.

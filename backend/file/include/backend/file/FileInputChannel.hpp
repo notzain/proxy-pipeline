@@ -5,7 +5,7 @@
 
 namespace Proxy::Backend::File {
 
-using ::Backend::BytesResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Input channel for file-based backend watching a directory.

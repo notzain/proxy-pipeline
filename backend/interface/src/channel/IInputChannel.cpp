@@ -19,32 +19,32 @@ bool IInputChannel::providesOwnMemory() const noexcept
     return false;
 }
 
-BatchResult IInputChannel::receiveBatch(
+Common::Net::BatchResult IInputChannel::receiveBatch(
     Common::Compat::span<BufferSlot> slots,
     Timeout timeout)
 {
     if (slots.empty()) {
-        return BatchResult::failure({ 0, receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return Common::Net::BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
-    BytesResult firstResult = receiveSlot(slots[0], timeout);
+    Common::Net::BytesResult firstResult = receiveSlot(slots[0], timeout);
     if (!firstResult.hasValue()) {
-        return BatchResult::failure({ 0, firstResult.error() });
+        return Common::Net::BatchResult::failure({ 0, firstResult.error() });
     }
     std::size_t count = 1;
 
     constexpr Timeout zeroTimeout { 0 };
     while (count < slots.size()) {
-        BytesResult nextResult = receiveSlot(slots[count], zeroTimeout);
+        Common::Net::BytesResult nextResult = receiveSlot(slots[count], zeroTimeout);
         if (!nextResult.hasValue()) {
-            if (!isReceiveTimeout(nextResult.error())) {
-                return BatchResult::failure({ count, nextResult.error() });
+            if (!nextResult.error().is<Common::Net::ReceiveTimeout>()) {
+                return Common::Net::BatchResult::failure({ count, nextResult.error() });
             }
             break;
         }
         ++count;
     }
-    return BatchResult::success(count);
+    return Common::Net::BatchResult::success(count);
 }
 
 } // namespace Backend

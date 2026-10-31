@@ -12,8 +12,8 @@
 
 namespace Core::Net {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Standalone UDP message reception channel implementing Backend::IInputChannel.
@@ -51,12 +51,12 @@ public:
     /**
      * @brief Reads a datagram and serializes an in-place envelope directly into slot.buffer.
      */
-    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
+    Common::Net::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
 
     /**
      * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.
      */
-    ::Backend::BatchResult receiveBatch(
+    Common::Net::BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

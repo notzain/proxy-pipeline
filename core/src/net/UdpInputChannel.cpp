@@ -1,5 +1,4 @@
 #include "core/net/UdpInputChannel.hpp"
-#include "backend/channel/PollerResultBridge.hpp"
 #include "backend/message/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
 #include "common/net/ISocketPoller.hpp"
@@ -153,33 +152,33 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-Backend::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
+Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
     slot.size = 0;
     const auto destination = slot.buffer;
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
+            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
         }
     }
 
     if (destination.size() <= EnvelopePreambleSize) {
-        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
     if (!m_poller) {
-        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
+        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
     }
 
     Common::Net::SocketAddress clientAddr;
-    Common::Net::PollerBytesResult receiveResult = m_poller->receive(
+    Common::Net::BytesResult receiveResult = m_poller->receive(
         m_socketFd.get(),
         destination.subspan(EnvelopePreambleSize),
         timeout,
         &clientAddr);
 
     if (!receiveResult.hasValue()) {
-        return ::Backend::fromPollerBytesResult(receiveResult);
+        return receiveResult;
     }
 
     writeEnvelopePreamble(destination, receiveResult.value(), clientAddr, m_boundAddr);
@@ -187,22 +186,22 @@ Backend::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, T
     return BytesResult::success(slot.size);
 }
 
-Backend::BatchResult UdpInputChannel::receiveBatch(
+Common::Net::BatchResult UdpInputChannel::receiveBatch(
     Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
+            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
         }
     }
 
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
     if (!m_poller) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
+        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
     }
 
     constexpr std::size_t MaxBatch = 32;
@@ -213,12 +212,12 @@ Backend::BatchResult UdpInputChannel::receiveBatch(
 
     for (std::size_t i = 0; i < batchSize; ++i) {
         if (slots[i].buffer.size() <= EnvelopePreambleSize) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
         }
         payloadSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
     }
 
-    Common::Net::PollerBatchResult result = m_poller->receiveBatch(
+    Common::Net::BatchResult result = m_poller->receiveBatch(
         m_socketFd.get(),
         Common::Compat::span<Common::Net::PollerBufferSlot>(payloadSlots.data(), batchSize),
         timeout,
@@ -230,7 +229,7 @@ Backend::BatchResult UdpInputChannel::receiveBatch(
         slots[i].size = EnvelopePreambleSize + payloadSlots[i].size;
     }
 
-    return ::Backend::fromPollerBatchResult(result);
+    return result;
 }
 
 int UdpInputChannel::getNativeSocket() const noexcept

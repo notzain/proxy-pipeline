@@ -109,10 +109,11 @@ graph TD
 ## 3. Tasks / Checklist
 
 - [x] Retain `IBackend` and `IConfig` in `backend/` root (`backend/IBackend.hpp`, `backend/IConfig.hpp`).
-- [x] Partition channel interfaces into `backend/channel/` (`IInputChannel.hpp`, `IOutputChannel.hpp`, `ReceiveResult.hpp`).
+- [x] Partition channel interfaces into `backend/channel/` (`IInputChannel.hpp`, `IOutputChannel.hpp`).
 - [x] Group buffer and lifetime abstractions under `backend/memory/` (`BufferSlot.hpp`, `Lease.hpp`, `Settlement.hpp`, `SettlementToken.hpp`).
 - [x] Group message and framing types under `backend/message/` (`EnvelopeHeader.hpp`, `MessageResult.hpp`, `MessageView.hpp`, `MetadataTraits.hpp`, `PayloadFormat.hpp`, `ProtocolId.hpp`).
 - [x] Move `SocketAddress` and `ISocketPoller` into `Common::Net` (`common/include/common/net/`, `common/src/net/`).
+- [x] Unify `PollerResult` and `ReceiveResult` into `Common::Net::ReceiveResult` (`common/include/common/net/ReceiveResult.hpp`) with `ReceiveError::error_message()` member function; eliminate all external bridge shims and standalone helper functions.
 - [x] Make `liburing` conditionally compiled and linked via Conan options (`with_liburing`) and CMake options (`PROXY_ENABLE_LIBURING`).
 - [x] Move `Result.hpp` to `common/include/common/types/Result.hpp` under `Common::Types`.
 - [x] Move `UdpMetadata.hpp` to `core/include/core/net/UdpMetadata.hpp` under `Core::Net`.

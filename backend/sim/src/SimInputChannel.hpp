@@ -5,8 +5,8 @@
 
 namespace Proxy::Backend::Sim {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Simulation input channel supporting IPC ingestion and event emission.

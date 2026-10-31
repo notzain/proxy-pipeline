@@ -8,8 +8,8 @@
 
 namespace Proxy::Backend::Socket {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Input channel for receiving UDP datagrams on a bound host and port.

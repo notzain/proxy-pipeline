@@ -6,8 +6,8 @@
 
 namespace Proxy::Backend::Shm {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 class ShmRingBuffer;
 

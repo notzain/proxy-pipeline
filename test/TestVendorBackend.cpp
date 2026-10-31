@@ -578,7 +578,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         public:
             using Backend::Vendor::VendorInputChannel::VendorInputChannel;
 
-            Backend::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
+            Common::Net::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
             {
                 sawNonEmptyTargetBuffer = sawNonEmptyTargetBuffer || !slot.buffer.empty();
                 return Backend::Vendor::VendorInputChannel::receiveSlot(slot, timeout);

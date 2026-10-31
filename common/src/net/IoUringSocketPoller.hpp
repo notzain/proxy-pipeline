@@ -14,12 +14,12 @@ public:
     IoUringSocketPoller();
     ~IoUringSocketPoller() override;
 
-    PollerBytesResult receive(
+    BytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    PollerBatchResult receiveBatch(
+    BatchResult receiveBatch(
         int socketFd,
         Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,

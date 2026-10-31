@@ -39,7 +39,7 @@ IoUringSocketPoller::~IoUringSocketPoller()
     }
 }
 
-PollerBytesResult IoUringSocketPoller::receive(
+BytesResult IoUringSocketPoller::receive(
     int socketFd,
     Common::Compat::span<std::byte> destination,
     Timeout timeout,
@@ -47,10 +47,10 @@ PollerBytesResult IoUringSocketPoller::receive(
 {
     if (!m_impl || !m_impl->initialized || socketFd < 0 || destination.empty()) {
         if (socketFd < 0) {
-            return PollerBytesResult::failure(pollerClosed());
+            return BytesResult::failure(ReceiveClosed { });
         }
         if (destination.empty()) {
-            return PollerBytesResult::failure(pollerFailure(std::make_error_code(std::errc::invalid_argument)));
+            return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
         }
         PosixSocketPoller fallback;
         return fallback.receive(socketFd, destination, timeout, outSourceAddress);
@@ -75,24 +75,24 @@ PollerBytesResult IoUringSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&directSs, addrLen);
             }
-            return PollerBytesResult::success(static_cast<std::size_t>(directBytes));
+            return BytesResult::success(static_cast<std::size_t>(directBytes));
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (errno == EBADF || errno == ENOTSOCK) {
-                return PollerBytesResult::failure(pollerClosed());
+                return BytesResult::failure(ReceiveClosed { });
             }
-            return PollerBytesResult::failure(pollerFailure(std::error_code(errno, std::generic_category())));
+            return BytesResult::failure(ReceiveFailure { std::error_code(errno, std::generic_category()) });
         }
     }
 
     if (timeout.count() == 0) {
-        return PollerBytesResult::failure(pollerTimeout());
+        return BytesResult::failure(ReceiveTimeout { });
     }
 
     struct io_uring_sqe* sqe = io_uring_get_sqe(&m_impl->ring);
     if (!sqe) {
-        return PollerBytesResult::failure(
-            pollerFailure(std::make_error_code(std::errc::resource_unavailable_try_again)));
+        return BytesResult::failure(
+            ReceiveFailure { std::make_error_code(std::errc::resource_unavailable_try_again) });
     }
 
     constexpr std::uint64_t kRecvUserData = 1;
@@ -116,7 +116,7 @@ PollerBytesResult IoUringSocketPoller::receive(
 
     int ret = io_uring_submit(&m_impl->ring);
     if (ret < 0) {
-        return PollerBytesResult::failure(pollerFailure(std::error_code(-ret, std::generic_category())));
+        return BytesResult::failure(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
     }
 
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -127,7 +127,7 @@ PollerBytesResult IoUringSocketPoller::receive(
     struct io_uring_cqe* cqe = nullptr;
     ret = io_uring_wait_cqe_timeout(&m_impl->ring, &cqe, &ts);
 
-    PollerBytesResult receiveResult = PollerBytesResult::failure(pollerTimeout());
+    BytesResult receiveResult = BytesResult::failure(ReceiveTimeout { });
 
     if (ret < 0) {
         // Timeout or interruption: cancel the in-flight recvmsg SQE and reap all CQEs
@@ -150,15 +150,15 @@ PollerBytesResult IoUringSocketPoller::receive(
             const auto tag = io_uring_cqe_get_data64(drainCqe);
             if (tag == kRecvUserData) {
                 if (drainCqe->res >= 0) {
-                    receiveResult = PollerBytesResult::success(static_cast<std::size_t>(drainCqe->res));
+                    receiveResult = BytesResult::success(static_cast<std::size_t>(drainCqe->res));
                     if (outSourceAddress) {
                         outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
                     }
                 } else if (-drainCqe->res != ECANCELED && -drainCqe->res != EAGAIN) {
-                    receiveResult = PollerBytesResult::failure(
+                    receiveResult = BytesResult::failure(
                         (-drainCqe->res == EBADF || -drainCqe->res == ENOTSOCK)
-                            ? pollerClosed()
-                            : pollerFailure(std::error_code(-drainCqe->res, std::generic_category())));
+                            ? ReceiveError(ReceiveClosed { })
+                            : ReceiveError(ReceiveFailure { std::error_code(-drainCqe->res, std::generic_category()) }));
                 }
                 recvReaped = true;
             } else if (tag == kCancelUserData) {
@@ -166,23 +166,23 @@ PollerBytesResult IoUringSocketPoller::receive(
             }
             io_uring_cqe_seen(&m_impl->ring, drainCqe);
         }
-        if (!receiveResult.hasValue() && !isPollerTimeout(receiveResult.error()) && ret != -ETIME) {
-            return PollerBytesResult::failure(pollerFailure(std::error_code(-ret, std::generic_category())));
+        if (!receiveResult.hasValue() && !receiveResult.error().is<ReceiveTimeout>() && ret != -ETIME) {
+            return BytesResult::failure(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
         }
         return receiveResult;
     }
 
     if (cqe) {
         if (cqe->res >= 0) {
-            receiveResult = PollerBytesResult::success(static_cast<std::size_t>(cqe->res));
+            receiveResult = BytesResult::success(static_cast<std::size_t>(cqe->res));
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
             }
         } else if (-cqe->res != ECANCELED && -cqe->res != EAGAIN) {
-            receiveResult = PollerBytesResult::failure(
+            receiveResult = BytesResult::failure(
                 (-cqe->res == EBADF || -cqe->res == ENOTSOCK)
-                    ? pollerClosed()
-                    : pollerFailure(std::error_code(-cqe->res, std::generic_category())));
+                    ? ReceiveError(ReceiveClosed { })
+                    : ReceiveError(ReceiveFailure { std::error_code(-cqe->res, std::generic_category()) }));
         }
         io_uring_cqe_seen(&m_impl->ring, cqe);
     }
@@ -190,7 +190,7 @@ PollerBytesResult IoUringSocketPoller::receive(
     return receiveResult;
 }
 
-PollerBatchResult IoUringSocketPoller::receiveBatch(
+BatchResult IoUringSocketPoller::receiveBatch(
     int socketFd,
     Common::Compat::span<PollerBufferSlot> slots,
     Timeout timeout,
