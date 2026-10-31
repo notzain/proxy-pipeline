@@ -16,7 +16,7 @@ Common::Net::BytesResult InProcInputChannel::receiveSlot(::Backend::BufferSlot& 
 {
     slot.size = 0;
     if (!m_ring) {
-        return Common::Net::BytesResult::failure(Common::Net::ReceiveClosed { });
+        return Common::Net::BytesResult::err(Common::Net::ReceiveClosed { });
     }
 
     std::size_t copiedBytes = 0;
@@ -33,10 +33,10 @@ Common::Net::BytesResult InProcInputChannel::receiveSlot(::Backend::BufferSlot& 
 
     if (drained > 0 && found) {
         slot.size = copiedBytes;
-        return Common::Net::BytesResult::success(copiedBytes);
+        return Common::Net::BytesResult::ok(copiedBytes);
     }
 
-    return Common::Net::BytesResult::failure(Common::Net::ReceiveTimeout { });
+    return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });
 }
 
 Common::Net::BatchResult InProcInputChannel::receiveBatch(
@@ -44,11 +44,11 @@ Common::Net::BatchResult InProcInputChannel::receiveBatch(
     Timeout)
 {
     if (!m_ring) {
-        return Common::Net::BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
+        return Common::Net::BatchResult::err({ 0, Common::Net::ReceiveClosed { } });
     }
 
     if (slots.empty()) {
-        return Common::Net::BatchResult::success(0);
+        return Common::Net::BatchResult::ok(0);
     }
 
     std::size_t count = 0;
@@ -63,10 +63,10 @@ Common::Net::BatchResult InProcInputChannel::receiveBatch(
     });
 
     if (count > 0) {
-        return Common::Net::BatchResult::success(count);
+        return Common::Net::BatchResult::ok(count);
     }
 
-    return Common::Net::BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+    return Common::Net::BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::InProc

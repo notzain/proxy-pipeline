@@ -47,7 +47,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                 auto slots = scratch.prepareSync(*channelPtr);
                 auto result = channelPtr->receiveBatch(slots, channelTimeout);
 
-                const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
+                const std::size_t batchCount = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
                 if (batchCount > 0) {
                     batch.clear();
                     for (std::size_t i = 0; i < batchCount; ++i) {
@@ -62,15 +62,15 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                         invalidEnvelopeCount,
                         m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }
-                if (result.hasValue() || result.error().cause.is<Common::Net::ReceiveTimeout>()) {
+                if (result.isOk() || result.unwrapErr().cause.is<Common::Net::ReceiveTimeout>()) {
                     continue;
                 }
-                if (result.error().cause.is<Common::Net::ReceiveClosed>()) {
+                if (result.unwrapErr().cause.is<Common::Net::ReceiveClosed>()) {
                     Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' is closed", channelName);
                     break;
                 }
                 Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' failed: {}",
-                    channelName, result.error().cause.message());
+                    channelName, result.unwrapErr().cause.message());
                 break;
             }
 

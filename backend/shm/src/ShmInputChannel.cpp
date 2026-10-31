@@ -52,7 +52,7 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
     slot.size = 0;
     const auto destination = slot.buffer;
     if (!isValid()) {
-        return BytesResult::failure(Common::Net::ReceiveClosed { });
+        return BytesResult::err(Common::Net::ReceiveClosed { });
     }
 
     // Fast-path: non-blocking immediate dequeue
@@ -63,10 +63,10 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
     }
     if (bytes > 0) {
         slot.size = bytes;
-        return BytesResult::success(bytes);
+        return BytesResult::ok(bytes);
     }
     if (timeout.count() == 0) {
-        return BytesResult::failure(Common::Net::ReceiveTimeout { });
+        return BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -81,7 +81,7 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
             slot.size = bytes;
-            return BytesResult::success(bytes);
+            return BytesResult::ok(bytes);
         }
     }
 
@@ -100,11 +100,11 @@ BytesResult ShmInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
             slot.size = bytes;
-            return BytesResult::success(bytes);
+            return BytesResult::ok(bytes);
         }
     }
 
-    return BytesResult::failure(Common::Net::ReceiveTimeout { });
+    return BytesResult::err(Common::Net::ReceiveTimeout { });
 }
 
 BatchResult ShmInputChannel::receiveBatch(
@@ -113,8 +113,8 @@ BatchResult ShmInputChannel::receiveBatch(
 {
     if (!isValid() || slots.empty()) {
         return slots.empty()
-            ? BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
-            : BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
+            ? BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
+            : BatchResult::err({ 0, Common::Net::ReceiveClosed { } });
     }
 
     // Fast-path: speculative burst dequeue
@@ -124,10 +124,10 @@ BatchResult ShmInputChannel::receiveBatch(
         ShmSignaler::notifyOne(m_ring->notFullSync());
     }
     if (count > 0) {
-        return BatchResult::success(count);
+        return BatchResult::ok(count);
     }
     if (timeout.count() == 0) {
-        return BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+        return BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
     }
 
     auto start = std::chrono::steady_clock::now();
@@ -141,7 +141,7 @@ BatchResult ShmInputChannel::receiveBatch(
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return BatchResult::success(count);
+            return BatchResult::ok(count);
         }
     }
 
@@ -159,11 +159,11 @@ BatchResult ShmInputChannel::receiveBatch(
             if (wasFull) {
                 ShmSignaler::notifyOne(m_ring->notFullSync());
             }
-            return BatchResult::success(count);
+            return BatchResult::ok(count);
         }
     }
 
-    return BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+    return BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::Shm

@@ -17,12 +17,12 @@ namespace {
     BytesResult receiveError(int error)
     {
         if (error == EBADF || error == ENOTSOCK) {
-            return BytesResult::failure(ReceiveClosed { });
+            return BytesResult::err(ReceiveClosed { });
         }
         if (error == EAGAIN || error == EWOULDBLOCK) {
-            return BytesResult::failure(ReceiveTimeout { });
+            return BytesResult::err(ReceiveTimeout { });
         }
-        return BytesResult::failure(ReceiveFailure { std::error_code(error, std::generic_category()) });
+        return BytesResult::err(ReceiveFailure { std::error_code(error, std::generic_category()) });
     }
 
 } // namespace
@@ -65,10 +65,10 @@ BytesResult KqueueSocketPoller::receive(
     SocketAddress* outSourceAddress)
 {
     if (m_kqueueFd < 0 || socketFd < 0) {
-        return BytesResult::failure(ReceiveClosed { });
+        return BytesResult::err(ReceiveClosed { });
     }
     if (destination.empty()) {
-        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
+        return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
 
     sockaddr_storage address { };
@@ -87,17 +87,17 @@ BytesResult KqueueSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&address, addressLength);
             }
-            return BytesResult::success(static_cast<std::size_t>(bytes));
+            return BytesResult::ok(static_cast<std::size_t>(bytes));
         }
         return receiveError(errno);
     };
 
     auto result = readDatagram();
-    if (result.hasValue() || !result.error().is<ReceiveTimeout>() || timeout.count() <= 0) {
+    if (result.isOk() || !result.unwrapErr().is<ReceiveTimeout>() || timeout.count() <= 0) {
         return result;
     }
     if (!registerSocket(socketFd)) {
-        return BytesResult::failure(ReceiveFailure { std::error_code(errno, std::generic_category()) });
+        return BytesResult::err(ReceiveFailure { std::error_code(errno, std::generic_category()) });
     }
 
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -108,7 +108,7 @@ BytesResult KqueueSocketPoller::receive(
         return receiveError(errno);
     }
     if (eventCount == 0) {
-        return BytesResult::failure(ReceiveTimeout { });
+        return BytesResult::err(ReceiveTimeout { });
     }
 
     for (int i = 0; i < eventCount; ++i) {
@@ -116,7 +116,7 @@ BytesResult KqueueSocketPoller::receive(
             continue;
         }
         if (events[i].flags & EV_EOF) {
-            return BytesResult::failure(ReceiveClosed { });
+            return BytesResult::err(ReceiveClosed { });
         }
         if (events[i].flags & EV_ERROR) {
             return receiveError(static_cast<int>(events[i].data));
@@ -124,7 +124,7 @@ BytesResult KqueueSocketPoller::receive(
         return readDatagram();
     }
 
-    return BytesResult::failure(ReceiveTimeout { });
+    return BytesResult::err(ReceiveTimeout { });
 }
 
 BatchResult KqueueSocketPoller::receiveBatch(
@@ -134,7 +134,7 @@ BatchResult KqueueSocketPoller::receiveBatch(
     Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0) {
-        return BatchResult::failure({ 0, ReceiveClosed { } });
+        return BatchResult::err({ 0, ReceiveClosed { } });
     }
     return ISocketPoller::receiveBatch(socketFd, slots, timeout, outSourceAddresses);
 }

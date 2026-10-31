@@ -47,10 +47,10 @@ BytesResult IoUringSocketPoller::receive(
 {
     if (!m_impl || !m_impl->initialized || socketFd < 0 || destination.empty()) {
         if (socketFd < 0) {
-            return BytesResult::failure(ReceiveClosed { });
+            return BytesResult::err(ReceiveClosed { });
         }
         if (destination.empty()) {
-            return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
+            return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
         }
         PosixSocketPoller fallback;
         return fallback.receive(socketFd, destination, timeout, outSourceAddress);
@@ -75,23 +75,23 @@ BytesResult IoUringSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&directSs, addrLen);
             }
-            return BytesResult::success(static_cast<std::size_t>(directBytes));
+            return BytesResult::ok(static_cast<std::size_t>(directBytes));
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (errno == EBADF || errno == ENOTSOCK) {
-                return BytesResult::failure(ReceiveClosed { });
+                return BytesResult::err(ReceiveClosed { });
             }
-            return BytesResult::failure(ReceiveFailure { std::error_code(errno, std::generic_category()) });
+            return BytesResult::err(ReceiveFailure { std::error_code(errno, std::generic_category()) });
         }
     }
 
     if (timeout.count() == 0) {
-        return BytesResult::failure(ReceiveTimeout { });
+        return BytesResult::err(ReceiveTimeout { });
     }
 
     struct io_uring_sqe* sqe = io_uring_get_sqe(&m_impl->ring);
     if (!sqe) {
-        return BytesResult::failure(
+        return BytesResult::err(
             ReceiveFailure { std::make_error_code(std::errc::resource_unavailable_try_again) });
     }
 
@@ -116,7 +116,7 @@ BytesResult IoUringSocketPoller::receive(
 
     int ret = io_uring_submit(&m_impl->ring);
     if (ret < 0) {
-        return BytesResult::failure(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
+        return BytesResult::err(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
     }
 
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -127,7 +127,7 @@ BytesResult IoUringSocketPoller::receive(
     struct io_uring_cqe* cqe = nullptr;
     ret = io_uring_wait_cqe_timeout(&m_impl->ring, &cqe, &ts);
 
-    BytesResult receiveResult = BytesResult::failure(ReceiveTimeout { });
+    BytesResult receiveResult = BytesResult::err(ReceiveTimeout { });
 
     if (ret < 0) {
         // Timeout or interruption: cancel the in-flight recvmsg SQE and reap all CQEs
@@ -150,12 +150,12 @@ BytesResult IoUringSocketPoller::receive(
             const auto tag = io_uring_cqe_get_data64(drainCqe);
             if (tag == kRecvUserData) {
                 if (drainCqe->res >= 0) {
-                    receiveResult = BytesResult::success(static_cast<std::size_t>(drainCqe->res));
+                    receiveResult = BytesResult::ok(static_cast<std::size_t>(drainCqe->res));
                     if (outSourceAddress) {
                         outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
                     }
                 } else if (-drainCqe->res != ECANCELED && -drainCqe->res != EAGAIN) {
-                    receiveResult = BytesResult::failure(
+                    receiveResult = BytesResult::err(
                         (-drainCqe->res == EBADF || -drainCqe->res == ENOTSOCK)
                             ? ReceiveError(ReceiveClosed { })
                             : ReceiveError(ReceiveFailure { std::error_code(-drainCqe->res, std::generic_category()) }));
@@ -166,20 +166,20 @@ BytesResult IoUringSocketPoller::receive(
             }
             io_uring_cqe_seen(&m_impl->ring, drainCqe);
         }
-        if (!receiveResult.hasValue() && !receiveResult.error().is<ReceiveTimeout>() && ret != -ETIME) {
-            return BytesResult::failure(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
+        if (!receiveResult.isOk() && !receiveResult.unwrapErr().is<ReceiveTimeout>() && ret != -ETIME) {
+            return BytesResult::err(ReceiveFailure { std::error_code(-ret, std::generic_category()) });
         }
         return receiveResult;
     }
 
     if (cqe) {
         if (cqe->res >= 0) {
-            receiveResult = BytesResult::success(static_cast<std::size_t>(cqe->res));
+            receiveResult = BytesResult::ok(static_cast<std::size_t>(cqe->res));
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
             }
         } else if (-cqe->res != ECANCELED && -cqe->res != EAGAIN) {
-            receiveResult = BytesResult::failure(
+            receiveResult = BytesResult::err(
                 (-cqe->res == EBADF || -cqe->res == ENOTSOCK)
                     ? ReceiveError(ReceiveClosed { })
                     : ReceiveError(ReceiveFailure { std::error_code(-cqe->res, std::generic_category()) }));

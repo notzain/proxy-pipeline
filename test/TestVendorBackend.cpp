@@ -276,7 +276,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         {
             Backend::BufferSlot slot { Common::Memory::MutableByteView(buffer), 0 };
             auto result = inputChannel.receiveSlot(slot, std::chrono::milliseconds(10));
-            REQUIRE(result.hasValue());
+            REQUIRE(result.isOk());
             REQUIRE(slot.lease.active());
             REQUIRE(mockManager->droppedIds.empty());
             REQUIRE(mockManager->finalizedIds.empty());
@@ -306,7 +306,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         mockSender->failSends = true;
 
         Backend::BufferSlot slot { };
-        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).isOk());
         Backend::MessageView view(slot.filledSpan());
         view.attachLease(slot.lease);
 
@@ -327,7 +327,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         mockReceiver->enqueue(4502, "Cross Manager");
 
         Backend::BufferSlot slot { };
-        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).isOk());
         Backend::MessageView view(slot.filledSpan());
         view.attachLease(slot.lease);
 
@@ -403,7 +403,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         mockReceiver->enqueue(6006, "Original Vendor Payload");
 
         Backend::BufferSlot slot { };
-        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).isOk());
         Backend::MessageView view(slot.filledSpan());
         view.attachLease(slot.lease);
 
@@ -506,8 +506,8 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         {
             Backend::BufferSlot slot { };
             auto res = inputChannel.receiveSlot(slot, std::chrono::milliseconds(10));
-            REQUIRE(res.hasValue());
-            CHECK(res.value() == fileContent.size());
+            REQUIRE(res.isOk());
+            CHECK(res.unwrap() == fileContent.size());
             CHECK(slot.isLeased());
 
             const auto view = slot.filledSpan();
@@ -619,7 +619,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
 
         Backend::BufferSlot slot { };
         auto res = inputChannel.receiveSlot(slot, std::chrono::milliseconds(10));
-        REQUIRE_FALSE(res.hasValue());
+        REQUIRE_FALSE(res.isOk());
         CHECK_FALSE(slot.lease.active());
         REQUIRE(mockManager->droppedIds.size() == 1);
         CHECK(mockManager->droppedIds.front() == 9003);

@@ -10,33 +10,33 @@ BatchResult ISocketPoller::receiveBatch(
     Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+        return BatchResult::err({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     SocketAddress* firstAddr = (!outSourceAddresses.empty()) ? &outSourceAddresses[0] : nullptr;
     BytesResult firstResult = receive(socketFd, slots[0].buffer, timeout, firstAddr);
-    if (!firstResult.hasValue()) {
+    if (!firstResult.isOk()) {
         slots[0].size = 0;
-        return BatchResult::failure({ 0, firstResult.error() });
+        return BatchResult::err({ 0, firstResult.unwrapErr() });
     }
-    slots[0].size = firstResult.value();
+    slots[0].size = firstResult.unwrap();
     std::size_t count = 1;
 
     constexpr Timeout zeroTimeout { 0 };
     while (count < slots.size()) {
         SocketAddress* nextAddr = (count < outSourceAddresses.size()) ? &outSourceAddresses[count] : nullptr;
         BytesResult nextResult = receive(socketFd, slots[count].buffer, zeroTimeout, nextAddr);
-        if (!nextResult.hasValue()) {
+        if (!nextResult.isOk()) {
             slots[count].size = 0;
-            if (!nextResult.error().is<ReceiveTimeout>()) {
-                return BatchResult::failure({ count, nextResult.error() });
+            if (!nextResult.unwrapErr().is<ReceiveTimeout>()) {
+                return BatchResult::err({ count, nextResult.unwrapErr() });
             }
             break;
         }
-        slots[count].size = nextResult.value();
+        slots[count].size = nextResult.unwrap();
         ++count;
     }
-    return BatchResult::success(count);
+    return BatchResult::ok(count);
 }
 
 } // namespace Common::Net

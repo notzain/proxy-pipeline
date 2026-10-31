@@ -125,10 +125,10 @@ BytesResult SimInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
 {
     slot.size = 0;
     BatchResult result = receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), timeout);
-    if (!result.hasValue()) {
-        return BytesResult::failure(result.error().cause);
+    if (!result.isOk()) {
+        return BytesResult::err(result.unwrapErr().cause);
     }
-    return BytesResult::success(slot.size);
+    return BytesResult::ok(slot.size);
 }
 
 BatchResult SimInputChannel::receiveBatch(
@@ -137,8 +137,8 @@ BatchResult SimInputChannel::receiveBatch(
 {
     if (slots.empty() || m_serverFd < 0) {
         return slots.empty()
-            ? BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
-            : BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
+            ? BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
+            : BatchResult::err({ 0, Common::Net::ReceiveClosed { } });
     }
 
     std::size_t count = 0;
@@ -162,9 +162,9 @@ BatchResult SimInputChannel::receiveBatch(
 
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (errno == EBADF || errno == ENOTSOCK) {
-                return BatchResult::failure({ count, Common::Net::ReceiveClosed { } });
+                return BatchResult::err({ count, Common::Net::ReceiveClosed { } });
             }
-            return BatchResult::failure({ count, Common::Net::ReceiveFailure { std::error_code(errno, std::generic_category()) } });
+            return BatchResult::err({ count, Common::Net::ReceiveFailure { std::error_code(errno, std::generic_category()) } });
         }
 
         if (count > 0 || timeout.count() <= 0) {
@@ -180,8 +180,8 @@ BatchResult SimInputChannel::receiveBatch(
     }
 
     return count > 0
-        ? BatchResult::success(count)
-        : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+        ? BatchResult::ok(count)
+        : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::Sim

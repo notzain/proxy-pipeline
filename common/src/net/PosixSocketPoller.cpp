@@ -13,12 +13,12 @@ namespace {
     BytesResult receiveError(int error)
     {
         if (error == EBADF || error == ENOTSOCK) {
-            return BytesResult::failure(ReceiveClosed { });
+            return BytesResult::err(ReceiveClosed { });
         }
         if (error == EAGAIN || error == EWOULDBLOCK) {
-            return BytesResult::failure(ReceiveTimeout { });
+            return BytesResult::err(ReceiveTimeout { });
         }
-        return BytesResult::failure(ReceiveFailure { std::error_code(error, std::generic_category()) });
+        return BytesResult::err(ReceiveFailure { std::error_code(error, std::generic_category()) });
     }
 
     BatchResult batchError(int error, std::size_t receivedCount = 0)
@@ -31,7 +31,7 @@ namespace {
         } else {
             cause = ReceiveFailure { std::error_code(error, std::generic_category()) };
         }
-        return BatchResult::failure({ receivedCount, std::move(cause) });
+        return BatchResult::err({ receivedCount, std::move(cause) });
     }
 
 } // namespace
@@ -43,10 +43,10 @@ BytesResult PosixSocketPoller::receive(
     SocketAddress* outSourceAddress)
 {
     if (socketFd < 0) {
-        return BytesResult::failure(ReceiveClosed { });
+        return BytesResult::err(ReceiveClosed { });
     }
     if (destination.empty()) {
-        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
+        return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
 
     sockaddr_storage ss { };
@@ -65,13 +65,13 @@ BytesResult PosixSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&ss, addrLen);
             }
-            return BytesResult::success(static_cast<std::size_t>(bytes));
+            return BytesResult::ok(static_cast<std::size_t>(bytes));
         }
         return receiveError(errno);
     };
 
     auto directResult = readDatagram();
-    if (directResult.hasValue() || !directResult.error().is<ReceiveTimeout>()) {
+    if (directResult.isOk() || !directResult.unwrapErr().is<ReceiveTimeout>()) {
         return directResult;
     }
     if (timeout.count() <= 0) {
@@ -84,16 +84,16 @@ BytesResult PosixSocketPoller::receive(
     int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
     int ret = ::poll(&pfd, 1, timeoutMs);
     if (ret == 0) {
-        return BytesResult::failure(ReceiveTimeout { });
+        return BytesResult::err(ReceiveTimeout { });
     }
     if (ret < 0) {
         return receiveError(errno);
     }
     if (pfd.revents & POLLNVAL) {
-        return BytesResult::failure(ReceiveClosed { });
+        return BytesResult::err(ReceiveClosed { });
     }
     if (pfd.revents & POLLHUP) {
-        return BytesResult::failure(ReceiveClosed { });
+        return BytesResult::err(ReceiveClosed { });
     }
     if (pfd.revents & POLLERR) {
         int socketError = 0;
@@ -104,10 +104,10 @@ BytesResult PosixSocketPoller::receive(
         if (socketError != 0) {
             return receiveError(socketError);
         }
-        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::io_error) });
+        return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::io_error) });
     }
     if (!(pfd.revents & POLLIN)) {
-        return BytesResult::failure(ReceiveFailure { std::make_error_code(std::errc::io_error) });
+        return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::io_error) });
     }
 
     return readDatagram();
@@ -120,10 +120,10 @@ BatchResult PosixSocketPoller::receiveBatch(
     Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0) {
-        return BatchResult::failure({ 0, ReceiveClosed { } });
+        return BatchResult::err({ 0, ReceiveClosed { } });
     }
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
+        return BatchResult::err({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
     std::size_t count = 0;
@@ -155,7 +155,7 @@ BatchResult PosixSocketPoller::receiveBatch(
                 outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
             }
         }
-        return BatchResult::success(static_cast<std::size_t>(received));
+        return BatchResult::ok(static_cast<std::size_t>(received));
     }
     if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         return batchError(errno);
@@ -189,8 +189,8 @@ BatchResult PosixSocketPoller::receiveBatch(
 
     if (count > 0 || timeout.count() <= 0) {
         return count > 0
-            ? BatchResult::success(count)
-            : BatchResult::failure({ 0, ReceiveTimeout { } });
+            ? BatchResult::ok(count)
+            : BatchResult::err({ 0, ReceiveTimeout { } });
     }
 
     pollfd pfd { };
@@ -199,13 +199,13 @@ BatchResult PosixSocketPoller::receiveBatch(
     int timeoutMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
     int ret = ::poll(&pfd, 1, timeoutMs);
     if (ret == 0) {
-        return BatchResult::failure({ 0, ReceiveTimeout { } });
+        return BatchResult::err({ 0, ReceiveTimeout { } });
     }
     if (ret < 0) {
         return batchError(errno);
     }
     if (pfd.revents & POLLNVAL || pfd.revents & POLLHUP) {
-        return BatchResult::failure({ 0, ReceiveClosed { } });
+        return BatchResult::err({ 0, ReceiveClosed { } });
     }
     if (pfd.revents & POLLERR) {
         int socketError = 0;
@@ -215,10 +215,10 @@ BatchResult PosixSocketPoller::receiveBatch(
         }
         return socketError != 0
             ? batchError(socketError)
-            : BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
+            : BatchResult::err({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
     }
     if (!(pfd.revents & POLLIN)) {
-        return BatchResult::failure({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
+        return BatchResult::err({ 0, ReceiveFailure { std::make_error_code(std::errc::io_error) } });
     }
 
 #if defined(__linux__)
@@ -233,8 +233,8 @@ BatchResult PosixSocketPoller::receiveBatch(
         }
     }
     return received > 0
-        ? BatchResult::success(static_cast<std::size_t>(received))
-        : BatchResult::failure({ 0, ReceiveTimeout { } });
+        ? BatchResult::ok(static_cast<std::size_t>(received))
+        : BatchResult::err({ 0, ReceiveTimeout { } });
 #else
     while (count < maxBatch) {
         sockaddr_storage ss { };
@@ -261,8 +261,8 @@ BatchResult PosixSocketPoller::receiveBatch(
         break;
     }
     return count > 0
-        ? BatchResult::success(count)
-        : BatchResult::failure({ 0, ReceiveTimeout { } });
+        ? BatchResult::ok(count)
+        : BatchResult::err({ 0, ReceiveTimeout { } });
 #endif
 }
 

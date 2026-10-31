@@ -109,9 +109,9 @@ public:
             std::size_t count = std::min(slot.buffer.size(), msg.size());
             std::memcpy(slot.buffer.data(), msg.data(), count);
             slot.size = count;
-            return BytesResult::success(count);
+            return BytesResult::ok(count);
         }
-        return BytesResult::failure(Common::Net::ReceiveTimeout { });
+        return BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
     BatchResult receiveBatch(
@@ -121,17 +121,17 @@ public:
         std::size_t count = 0;
         while (count < slots.size()) {
             BytesResult result = receiveSlot(slots[count], timeout);
-            if (result.hasValue()) {
+            if (result.isOk()) {
                 count++;
-            } else if (result.error().is<Common::Net::ReceiveTimeout>()) {
+            } else if (result.unwrapErr().is<Common::Net::ReceiveTimeout>()) {
                 break;
             } else {
-                return BatchResult::failure({ count, result.error() });
+                return BatchResult::err({ count, result.unwrapErr() });
             }
         }
         return count > 0
-            ? BatchResult::success(count)
-            : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
+            ? BatchResult::ok(count)
+            : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
     }
 
 private:
@@ -328,8 +328,8 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         Backend::BufferSlot slot { buffer, 0 };
         auto receiveResult = channel.receiveSlot(slot, std::chrono::milliseconds(500));
 
-        REQUIRE(receiveResult.hasValue());
-        REQUIRE(receiveResult.value() > expectedPayload.size());
+        REQUIRE(receiveResult.isOk());
+        REQUIRE(receiveResult.unwrap() > expectedPayload.size());
         auto view = Backend::MessageView::from(slot.filledSpan());
         REQUIRE(view.has_value());
         CHECK(view->protocol() == Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol);
