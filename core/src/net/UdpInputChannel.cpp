@@ -23,18 +23,9 @@ namespace {
     constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Backend::UdpMetadata);
 
     /**
-     * @brief Retrieves current system time in nanoseconds since UNIX epoch.
-     */
-    std::uint64_t getCurrentTimeNs()
-    {
-        return static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count());
-    }
-
-    /**
      * @brief Writes the 18-byte envelope header and UdpMetadata preamble into destination.
+     *
+     * Automatically stamps current UTC time (system_clock since UNIX epoch) via writeEnvelopeHeader.
      *
      * @param destination Target buffer span to receive the preamble.
      * @param payloadSize Length of the incoming datagram payload.
@@ -51,8 +42,7 @@ namespace {
             destination,
             Backend::MetadataTraits<Backend::UdpMetadata>::protocol,
             static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)),
-            static_cast<std::uint32_t>(payloadSize),
-            getCurrentTimeNs());
+            static_cast<std::uint32_t>(payloadSize));
 
         Backend::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();

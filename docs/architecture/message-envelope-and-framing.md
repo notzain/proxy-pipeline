@@ -81,4 +81,8 @@ sequenceDiagram
    - Strongly-typed metadata is accessed via `view.getMetadata<T>()` through traits (`MetadataTraits<T>`) using alignment-safe copies.
 3. **Open Protocol Identification**:
    - Replaced fixed enum identifiers with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` aligned with standard IANA 8-bit protocol numbers (e.g. `IPPROTO_UDP` = 17, `RawProtocol` = 0) and `MetadataTraits<T>`, allowing custom applications to declare protocol types without central changes.
+4. **Clock Domain Specification for `timestampNs`**:
+   - The 64-bit `timestampNs` field in `EnvelopeHeader` records **nanoseconds since UNIX epoch (`std::chrono::system_clock`)**.
+   - **Cross-Host and Distributed Tracing**: Because `MessageEnvelope` traverses physical network sockets (UDP, TCP) and inter-process boundaries where producer and consumer processes may run on separate hosts or containers without a shared monotonic timebase, epoch wall-clock time is required for distributed correlation and simulation replay (e.g. PCAP captures, JSON traces).
+   - **Intra-Host Monotonic Latency**: For internal hop timeouts, poller deadlines, and ring buffer synchronization, channels and execution strategies strictly use `std::chrono::steady_clock` to prevent clock shifts or NTP skew from causing deadlocks or erratic timeout behavior.
 

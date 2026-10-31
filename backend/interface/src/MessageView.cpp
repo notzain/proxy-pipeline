@@ -6,21 +6,6 @@
 
 namespace Backend {
 
-namespace {
-
-    /**
-     * @brief Retrieves current system time in nanoseconds since UNIX epoch.
-     */
-    std::uint64_t getCurrentTimeNs()
-    {
-        return static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count());
-    }
-
-} // namespace
-
 std::size_t MessageView::packInto(
     Common::Compat::span<std::byte> destination,
     ProtocolId protocol,
@@ -33,13 +18,20 @@ std::size_t MessageView::packInto(
         return 0;
     }
 
-    std::uint64_t ts = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
-    writeEnvelopeHeader(
-        destination,
-        protocol,
-        static_cast<std::uint16_t>(metadata.size()),
-        static_cast<std::uint32_t>(payload.size()),
-        ts);
+    if (timestampNs != 0) {
+        writeEnvelopeHeader(
+            destination,
+            protocol,
+            static_cast<std::uint16_t>(metadata.size()),
+            static_cast<std::uint32_t>(payload.size()),
+            timestampNs);
+    } else {
+        writeEnvelopeHeader(
+            destination,
+            protocol,
+            static_cast<std::uint16_t>(metadata.size()),
+            static_cast<std::uint32_t>(payload.size()));
+    }
 
     std::byte* dst = destination.data();
     if (!metadata.empty()) {

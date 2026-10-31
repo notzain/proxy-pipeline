@@ -1061,4 +1061,20 @@ TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelop
     CHECK(optView->metadata().size() == metaLen);
     CHECK(optView->payload().size() == payloadLen);
     CHECK(optView->timestampNs() == timestamp);
+
+    // Verify UtcTimePoint overload and default timestamp parameter
+    const auto beforeUtc = Common::Compat::nowUtc();
+    const std::size_t writtenDefault = Backend::writeEnvelopeHeader(
+        Common::Compat::span<std::byte>(buffer.data(), buffer.size()),
+        protocol,
+        metaLen,
+        payloadLen);
+    const auto afterUtc = Common::Compat::nowUtc();
+
+    REQUIRE(writtenDefault == 18);
+    std::memcpy(fullFrame.data(), buffer.data(), 18);
+    auto optViewDefault = Backend::MessageView::from(fullFrame);
+    REQUIRE(optViewDefault.has_value());
+    CHECK(optViewDefault->timestampNs() >= Common::Compat::toEpochNs(beforeUtc));
+    CHECK(optViewDefault->timestampNs() <= Common::Compat::toEpochNs(afterUtc));
 }

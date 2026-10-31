@@ -1,6 +1,7 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
+#include "common/compat/Time.hpp"
 #include "common/memory/Borrow.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
@@ -62,9 +63,7 @@ void IHandler::processBatch(
 {
     auto& latencyHist = Telemetry::MetricsRegistry::instance().latencyHistogram(
         "message_processing_duration_us", "Message transit and processing duration in microseconds");
-    uint64_t nowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-            .count());
+    const uint64_t nowNs = Common::Compat::toEpochNs(Common::Compat::nowUtc());
     for (const auto& message : messages) {
         if (message.timestampNs() > 0 && nowNs >= message.timestampNs()) {
             double durationUs = static_cast<double>(nowNs - message.timestampNs()) / 1000.0;
