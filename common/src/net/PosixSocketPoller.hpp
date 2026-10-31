@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/socket/ISocketPoller.hpp"
+#include "common/net/ISocketPoller.hpp"
 
-namespace Backend {
+namespace Common::Net {
 
 /**
  * @brief Standard POSIX poll() based socket poller implementation.
@@ -12,16 +12,16 @@ public:
     PosixSocketPoller() = default;
     ~PosixSocketPoller() override = default;
 
-    BytesResult receive(
+    PollerBytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    BatchResult receiveBatch(
+    PollerBatchResult receiveBatch(
         int socketFd,
-        Common::Compat::span<BufferSlot> slots,
+        Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
 };
 
-} // namespace Backend
+} // namespace Common::Net

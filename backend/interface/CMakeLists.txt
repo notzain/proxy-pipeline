@@ -12,15 +12,6 @@ if(NOT TARGET backend-interface)
       "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
   )
 
-  if(APPLE)
-      list(FILTER SOURCES EXCLUDE REGEX ".*/IoUringSocketPoller\\..*")
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      list(FILTER SOURCES EXCLUDE REGEX ".*/KqueueSocketPoller\\..*")
-      find_package(liburing REQUIRED)
-  else()
-      list(FILTER SOURCES EXCLUDE REGEX ".*/(IoUring|Kqueue)SocketPoller\\..*")
-  endif()
-
   add_library(backend-interface ${SOURCES})
 
   target_include_directories(backend-interface
@@ -33,14 +24,9 @@ if(NOT TARGET backend-interface)
 
   target_link_libraries(backend-interface PUBLIC common::common)
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      target_link_libraries(backend-interface PRIVATE liburing::liburing)
-  endif()
-
   target_compile_features(backend-interface PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 
   if(NOT TARGET backend-interface::backend-interface)
     add_library(backend-interface::backend-interface ALIAS backend-interface)
   endif()
 endif()
-

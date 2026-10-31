@@ -59,8 +59,8 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
         const auto meta = message.getMetadata<Core::Net::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
             const auto originAddr = (meta->addressFamily == 6)
-                ? ::Backend::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)
-                : ::Backend::SocketAddress::fromIpv4Net(meta->srcIp, meta->srcPort);
+                ? Common::Net::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)
+                : Common::Net::SocketAddress::fromIpv4Net(meta->srcIp, meta->srcPort);
 
             if (Proxy::Log::shouldLog(Proxy::Log::Level::Debug)) {
                 Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Replying {} payload bytes directly to origin client {}",

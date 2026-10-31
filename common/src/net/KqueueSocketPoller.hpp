@@ -2,9 +2,9 @@
 
 #pragma once
 
-#include "backend/socket/ISocketPoller.hpp"
+#include "common/net/ISocketPoller.hpp"
 
-namespace Backend {
+namespace Common::Net {
 
 /**
  * @brief kqueue-based event driver for BSD and macOS systems.
@@ -14,14 +14,14 @@ public:
     KqueueSocketPoller();
     ~KqueueSocketPoller() override;
 
-    BytesResult receive(
+    PollerBytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    BatchResult receiveBatch(
+    PollerBatchResult receiveBatch(
         int socketFd,
-        Common::Compat::span<BufferSlot> slots,
+        Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
 
@@ -32,6 +32,6 @@ private:
     bool registerSocket(int socketFd);
 };
 
-} // namespace Backend
+} // namespace Common::Net
 
 #endif // __APPLE__ || BSD

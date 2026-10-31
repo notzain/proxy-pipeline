@@ -2,9 +2,9 @@
 
 #pragma once
 
-#include "backend/socket/ISocketPoller.hpp"
+#include "common/net/ISocketPoller.hpp"
 
-namespace Backend {
+namespace Common::Net {
 
 /**
  * @brief io_uring-based high-performance asynchronous poller for Linux.
@@ -14,14 +14,14 @@ public:
     IoUringSocketPoller();
     ~IoUringSocketPoller() override;
 
-    BytesResult receive(
+    PollerBytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
         SocketAddress* outSourceAddress = nullptr) override;
-    BatchResult receiveBatch(
+    PollerBatchResult receiveBatch(
         int socketFd,
-        Common::Compat::span<BufferSlot> slots,
+        Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
 
@@ -30,6 +30,6 @@ private:
     RingImpl* m_impl { nullptr };
 };
 
-} // namespace Backend
+} // namespace Common::Net
 
 #endif // __linux__

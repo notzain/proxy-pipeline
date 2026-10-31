@@ -34,15 +34,27 @@ Historically, `backend/interface` stored all interfaces, message types, poller p
   - `MetadataTraits.hpp`: Trait registry mapping metadata structs to wire `ProtocolId`.
   - `PayloadFormat.hpp`: Wire format enum (`Enveloped` vs `Raw`).
   - `ProtocolId.hpp`: Extensible wire protocol identifiers.
-- **`backend/socket/`**:
-  - `ISocketPoller.hpp` / `ISocketPoller.cpp` / `SocketPollerFactory.cpp`: Cross-platform I/O polling abstraction.
+
+### 2.2 Relocation to `Common::Net` & Conditional `liburing`
+- **`Common::Net`**:
   - `SocketAddress.hpp` / `SocketAddress.cpp`: IPv4, IPv6, and Unix domain address endpoint.
+  - `ISocketPoller.hpp` / `ISocketPoller.cpp` / `SocketPollerFactory.cpp`: Cross-platform I/O polling abstraction.
   - `PosixSocketPoller.*`, `KqueueSocketPoller.*`, `IoUringSocketPoller.*`: Platform polling engines.
+  - `PollerBufferSlot.hpp`: Minimal `{ span<byte> buffer; size_t size; }` buffer slot for polling engines decoupled from `Backend::BufferSlot`.
+  - `PollerTypes.hpp`: Low-level polling results (`BytesResult`, `BatchResult`, `ReceiveError`).
+- **Conditional `liburing`**:
+  - `common/conanfile.py` and `common/CMakeLists.txt` support option `with_liburing` (enabled by default on Linux, disabled on macOS/BSD/Windows).
+  - Controlled by preprocessor macros `PROXY_ENABLE_LIBURING` and `PROXY_HAS_LIBURING`.
 
 ```mermaid
 graph TD
     subgraph Common ["common"]
         Result["Common::Types::Result&lt;T, E&gt;"]
+        subgraph Common_Net ["Common::Net"]
+            SA["SocketAddress"]
+            ISP["ISocketPoller"]
+            PBS["PollerBufferSlot"]
+        end
     end
 
     subgraph Backend_Interface ["backend-interface (Backend)"]
@@ -67,10 +79,6 @@ graph TD
             MR["MessageResult"]
             MT["MetadataTraits"]
         end
-        subgraph Socket_Domain ["socket/"]
-            ISP["ISocketPoller"]
-            SA["SocketAddress"]
-        end
     end
 
     subgraph Core_Net ["core/net"]
@@ -84,12 +92,16 @@ graph TD
     ST --> S
     MV --> L
     MT -.-> UM
+    ISP -.-> PBS
+    IC_In -.-> ISP
 ```
 
-### 2.2 Relocated Primitives
+### 2.3 Relocated Primitives
 1. **`Result<T, E>` -> `Common::Types::Result<T, E>`**:
    Moved to `common/include/common/types/Result.hpp` under namespace `Common::Types`.
-2. **`UdpMetadata` -> `Core::Net::UdpMetadata`**:
+2. **`SocketAddress` & `ISocketPoller` -> `Common::Net`**:
+   Moved to `common/include/common/net/` and `common/src/net/` under namespace `Common::Net`.
+3. **`UdpMetadata` -> `Core::Net::UdpMetadata`**:
    Moved to `core/include/core/net/UdpMetadata.hpp` under namespace `Core::Net`. `Backend::MetadataTraits<Core::Net::UdpMetadata>` is specialized alongside the definition, keeping `backend-interface` 100% agnostic to concrete protocols.
 
 ---
@@ -100,7 +112,8 @@ graph TD
 - [x] Partition channel interfaces into `backend/channel/` (`IInputChannel.hpp`, `IOutputChannel.hpp`, `ReceiveResult.hpp`).
 - [x] Group buffer and lifetime abstractions under `backend/memory/` (`BufferSlot.hpp`, `Lease.hpp`, `Settlement.hpp`, `SettlementToken.hpp`).
 - [x] Group message and framing types under `backend/message/` (`EnvelopeHeader.hpp`, `MessageResult.hpp`, `MessageView.hpp`, `MetadataTraits.hpp`, `PayloadFormat.hpp`, `ProtocolId.hpp`).
-- [x] Group socket polling and endpoint abstractions under `backend/socket/` (`ISocketPoller.hpp`, `SocketAddress.hpp`).
+- [x] Move `SocketAddress` and `ISocketPoller` into `Common::Net` (`common/include/common/net/`, `common/src/net/`).
+- [x] Make `liburing` conditionally compiled and linked via Conan options (`with_liburing`) and CMake options (`PROXY_ENABLE_LIBURING`).
 - [x] Move `Result.hpp` to `common/include/common/types/Result.hpp` under `Common::Types`.
 - [x] Move `UdpMetadata.hpp` to `core/include/core/net/UdpMetadata.hpp` under `Core::Net`.
 - [x] Update all includes across `backend/*`, `core`, `handler/*`, `test/*`, `benchmark`, and documentation.

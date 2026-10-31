@@ -10,19 +10,19 @@
 #include <system_error>
 #include <unistd.h>
 
-namespace Backend {
+namespace Common::Net {
 
 namespace {
 
-    BytesResult receiveError(int error)
+    PollerBytesResult receiveError(int error)
     {
         if (error == EBADF || error == ENOTSOCK) {
-            return BytesResult::failure(receiveClosed());
+            return PollerBytesResult::failure(pollerClosed());
         }
         if (error == EAGAIN || error == EWOULDBLOCK) {
-            return BytesResult::failure(receiveTimeout());
+            return PollerBytesResult::failure(pollerTimeout());
         }
-        return BytesResult::failure(receiveFailure(std::error_code(error, std::generic_category())));
+        return PollerBytesResult::failure(pollerFailure(std::error_code(error, std::generic_category())));
     }
 
 } // namespace
@@ -58,24 +58,24 @@ bool KqueueSocketPoller::registerSocket(int socketFd)
     return true;
 }
 
-BytesResult KqueueSocketPoller::receive(
+PollerBytesResult KqueueSocketPoller::receive(
     int socketFd,
     Common::Compat::span<std::byte> destination,
     Timeout timeout,
     SocketAddress* outSourceAddress)
 {
     if (m_kqueueFd < 0 || socketFd < 0) {
-        return BytesResult::failure(receiveClosed());
+        return PollerBytesResult::failure(pollerClosed());
     }
     if (destination.empty()) {
-        return BytesResult::failure(receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+        return PollerBytesResult::failure(pollerFailure(std::make_error_code(std::errc::invalid_argument)));
     }
 
     sockaddr_storage address { };
     socklen_t addressLength = sizeof(address);
     sockaddr* addressPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&address) : nullptr;
     socklen_t* addressLengthPtr = outSourceAddress ? &addressLength : nullptr;
-    auto readDatagram = [&]() -> BytesResult {
+    auto readDatagram = [&]() -> PollerBytesResult {
         ssize_t bytes = ::recvfrom(
             socketFd,
             reinterpret_cast<char*>(destination.data()),
@@ -87,17 +87,17 @@ BytesResult KqueueSocketPoller::receive(
             if (outSourceAddress) {
                 outSourceAddress->setFromNative(&address, addressLength);
             }
-            return BytesResult::success(static_cast<std::size_t>(bytes));
+            return PollerBytesResult::success(static_cast<std::size_t>(bytes));
         }
         return receiveError(errno);
     };
 
     auto result = readDatagram();
-    if (result.hasValue() || !isReceiveTimeout(result.error()) || timeout.count() <= 0) {
+    if (result.hasValue() || !isPollerTimeout(result.error()) || timeout.count() <= 0) {
         return result;
     }
     if (!registerSocket(socketFd)) {
-        return BytesResult::failure(receiveFailure(std::error_code(errno, std::generic_category())));
+        return PollerBytesResult::failure(pollerFailure(std::error_code(errno, std::generic_category())));
     }
 
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count();
@@ -108,7 +108,7 @@ BytesResult KqueueSocketPoller::receive(
         return receiveError(errno);
     }
     if (eventCount == 0) {
-        return BytesResult::failure(receiveTimeout());
+        return PollerBytesResult::failure(pollerTimeout());
     }
 
     for (int i = 0; i < eventCount; ++i) {
@@ -116,7 +116,7 @@ BytesResult KqueueSocketPoller::receive(
             continue;
         }
         if (events[i].flags & EV_EOF) {
-            return BytesResult::failure(receiveClosed());
+            return PollerBytesResult::failure(pollerClosed());
         }
         if (events[i].flags & EV_ERROR) {
             return receiveError(static_cast<int>(events[i].data));
@@ -124,21 +124,21 @@ BytesResult KqueueSocketPoller::receive(
         return readDatagram();
     }
 
-    return BytesResult::failure(receiveTimeout());
+    return PollerBytesResult::failure(pollerTimeout());
 }
 
-BatchResult KqueueSocketPoller::receiveBatch(
+PollerBatchResult KqueueSocketPoller::receiveBatch(
     int socketFd,
-    Common::Compat::span<BufferSlot> slots,
+    Common::Compat::span<PollerBufferSlot> slots,
     Timeout timeout,
     Common::Compat::span<SocketAddress> outSourceAddresses)
 {
     if (socketFd < 0) {
-        return BatchResult::failure({ 0, receiveClosed() });
+        return PollerBatchResult::failure({ 0, pollerClosed() });
     }
     return ISocketPoller::receiveBatch(socketFd, slots, timeout, outSourceAddresses);
 }
 
-} // namespace Backend
+} // namespace Common::Net
 
 #endif // __APPLE__ || BSD

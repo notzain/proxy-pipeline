@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace Backend {
+namespace Common::Net {
 
 /**
  * @brief Network address family enumeration.
@@ -95,4 +95,4 @@ private:
     std::uint8_t m_ipv6[16] { 0 };
 };
 
-} // namespace Backend
+} // namespace Common::Net

@@ -1,19 +1,20 @@
 #pragma once
 
-#include "backend/channel/IInputChannel.hpp"
-#include "backend/memory/BufferSlot.hpp"
-#include "backend/socket/SocketAddress.hpp"
 #include "common/compat/Span.hpp"
+#include "common/net/PollerBufferSlot.hpp"
+#include "common/net/PollerResult.hpp"
+#include "common/net/SocketAddress.hpp"
+#include <chrono>
 #include <memory>
 
-namespace Backend {
+namespace Common::Net {
 
 /**
  * @brief Abstract interface for platform-specific asynchronous/readiness socket and file descriptor polling drivers.
  */
 class ISocketPoller {
 public:
-    using Timeout = IInputChannel::Timeout;
+    using Timeout = std::chrono::milliseconds;
 
     virtual ~ISocketPoller() = default;
 
@@ -26,7 +27,7 @@ public:
      * @param outSourceAddress Optional pointer to record sender's address.
      * @return Typed result distinguishing received data, timeout, closure, and errors.
      */
-    virtual BytesResult receive(
+    virtual PollerBytesResult receive(
         int socketFd,
         Common::Compat::span<std::byte> destination,
         Timeout timeout,
@@ -43,9 +44,9 @@ public:
      * @param outSourceAddresses Optional span to record sender addresses.
      * @return Typed result containing the packet count or the receive status.
      */
-    virtual BatchResult receiveBatch(
+    virtual PollerBatchResult receiveBatch(
         int socketFd,
-        Common::Compat::span<BufferSlot> slots,
+        Common::Compat::span<PollerBufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { });
 };
@@ -59,4 +60,4 @@ public:
  */
 [[nodiscard]] std::unique_ptr<ISocketPoller> createSocketPoller();
 
-} // namespace Backend
+} // namespace Common::Net

@@ -1,17 +1,14 @@
 #pragma once
 
 #include "backend/channel/IInputChannel.hpp"
-#include "backend/socket/SocketAddress.hpp"
 #include "common/compat/Span.hpp"
 #include "common/io/UniqueFd.hpp"
+#include "common/net/ISocketPoller.hpp"
+#include "common/net/SocketAddress.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
-
-namespace Backend {
-class ISocketPoller;
-} // namespace Backend
 
 namespace Core::Net {
 
@@ -86,8 +83,8 @@ private:
     std::uint16_t m_port { 0 };
     std::size_t m_receiveBufferSize { 8 * 1024 * 1024 };
     Common::Io::UniqueFd m_socketFd;
-    ::Backend::SocketAddress m_boundAddr;
-    std::unique_ptr<::Backend::ISocketPoller> m_poller;
+    Common::Net::SocketAddress m_boundAddr;
+    std::unique_ptr<Common::Net::ISocketPoller> m_poller;
 };
 
 } // namespace Core::Net

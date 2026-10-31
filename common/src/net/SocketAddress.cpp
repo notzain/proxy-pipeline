@@ -1,10 +1,10 @@
-#include "backend/socket/SocketAddress.hpp"
+#include "common/net/SocketAddress.hpp"
 #include <arpa/inet.h>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-namespace Backend {
+namespace Common::Net {
 
 SocketAddress::SocketAddress() noexcept
     : m_family(AddressFamily::Unknown)
@@ -171,4 +171,4 @@ std::size_t SocketAddress::toNative(void* sockaddrPtr, std::size_t maxLen) const
     return 0;
 }
 
-} // namespace Backend
+} // namespace Common::Net

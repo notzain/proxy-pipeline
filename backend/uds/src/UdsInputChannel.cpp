@@ -1,5 +1,6 @@
 #include "backend/uds/UdsInputChannel.hpp"
-#include "backend/socket/ISocketPoller.hpp"
+#include "backend/channel/PollerResultBridge.hpp"
+#include "common/net/ISocketPoller.hpp"
 #include "log/Log.hpp"
 
 #include <cerrno>
@@ -16,7 +17,7 @@ namespace Proxy::Backend::Uds {
 UdsInputChannel::UdsInputChannel(std::string name, std::string socketPath)
     : ::Backend::IInputChannel(std::move(name))
     , m_socketPath(std::move(socketPath))
-    , m_poller(::Backend::createSocketPoller())
+    , m_poller(::Common::Net::createSocketPoller())
 {
     openAndBindSocket();
 }
@@ -95,7 +96,7 @@ BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
         if (result.hasValue()) {
             slot.size = result.value();
         }
-        return result;
+        return ::Backend::fromPollerBytesResult(result);
     }
 
     return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
@@ -112,8 +113,29 @@ BatchResult UdsInputChannel::receiveBatch(
         }
     }
 
+    if (slots.empty()) {
+        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+    }
+
     if (m_poller) {
-        return m_poller->receiveBatch(m_socketFd, slots, timeout);
+        constexpr std::size_t MaxBatch = 64;
+        const std::size_t batchSize = std::min(slots.size(), MaxBatch);
+        std::array<Common::Net::PollerBufferSlot, MaxBatch> pollerSlots;
+        for (std::size_t i = 0; i < batchSize; ++i) {
+            pollerSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer, 0 };
+        }
+
+        auto result = m_poller->receiveBatch(
+            m_socketFd,
+            Common::Compat::span<Common::Net::PollerBufferSlot>(pollerSlots.data(), batchSize),
+            timeout);
+
+        const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
+        for (std::size_t i = 0; i < receivedCount; ++i) {
+            slots[i].size = pollerSlots[i].size;
+        }
+
+        return ::Backend::fromPollerBatchResult(result);
     }
 
     return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });

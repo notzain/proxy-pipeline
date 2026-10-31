@@ -1,10 +1,10 @@
 #include "backend/message/EnvelopeHeader.hpp"
 #include "backend/message/MessageView.hpp"
-#include "backend/socket/ISocketPoller.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
+#include "common/net/ISocketPoller.hpp"
 #include "core/handler/ExecutionModel.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
@@ -173,10 +173,10 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
     REQUIRE(receiveFailure != nullptr);
     CHECK(receiveFailure->code == std::make_error_code(std::errc::permission_denied));
 
-    auto poller = Backend::createSocketPoller();
+    auto poller = Common::Net::createSocketPoller();
     auto closedPoller = poller->receive(-1, buffer, std::chrono::milliseconds(0));
     REQUIRE_FALSE(closedPoller.hasValue());
-    CHECK(Backend::isReceiveClosed(closedPoller.error()));
+    CHECK(Common::Net::isPollerClosed(closedPoller.error()));
 
     auto batchTimeout = timeoutChannel.receiveBatch(Common::Compat::span<::Backend::BufferSlot>(&slot, 1), std::chrono::milliseconds(0));
     REQUIRE_FALSE(batchTimeout.hasValue());

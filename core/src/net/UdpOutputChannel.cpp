@@ -54,9 +54,9 @@ void UdpOutputChannel::closeSocket()
     m_socketFdV6.reset();
 }
 
-int UdpOutputChannel::ensureSocketForFamily(::Backend::AddressFamily family)
+int UdpOutputChannel::ensureSocketForFamily(Common::Net::AddressFamily family)
 {
-    if (family == ::Backend::AddressFamily::Ipv6) {
+    if (family == Common::Net::AddressFamily::Ipv6) {
         if (!m_socketFdV6) {
             m_socketFdV6.reset(::socket(AF_INET6, SOCK_DGRAM, 0));
             if (!m_socketFdV6) {
@@ -84,11 +84,11 @@ int UdpOutputChannel::ensureSocketForFamily(::Backend::AddressFamily family)
 void UdpOutputChannel::openSocket()
 {
     closeSocket();
-    ensureSocketForFamily(::Backend::AddressFamily::Ipv4);
+    ensureSocketForFamily(Common::Net::AddressFamily::Ipv4);
 
     if (!m_defaultHost.empty() && m_defaultPort != 0) {
-        m_defaultAddr = ::Backend::SocketAddress::fromString(m_defaultHost, m_defaultPort);
-        if (m_defaultAddr.family() != ::Backend::AddressFamily::Unknown) {
+        m_defaultAddr = Common::Net::SocketAddress::fromString(m_defaultHost, m_defaultPort);
+        if (m_defaultAddr.family() != Common::Net::AddressFamily::Unknown) {
             ensureSocketForFamily(m_defaultAddr.family());
             m_hasDefaultAddr = true;
             Proxy::Log::info("[UdpOutputChannel] Configured default target UDP {}:{}", m_defaultHost, m_defaultPort);
@@ -180,7 +180,7 @@ std::size_t UdpOutputChannel::sendBatch(Common::Compat::span<const Common::Compa
 #endif
 }
 
-bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const ::Backend::SocketAddress& destination)
+bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const Common::Net::SocketAddress& destination)
 {
     int fd = ensureSocketForFamily(destination.family());
     if (fd < 0) {
@@ -212,13 +212,13 @@ bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, con
 
 bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, std::uint32_t ipNetworkOrder, std::uint16_t portNetworkOrder)
 {
-    return sendTo(message, ::Backend::SocketAddress::fromIpv4Net(ipNetworkOrder, portNetworkOrder));
+    return sendTo(message, Common::Net::SocketAddress::fromIpv4Net(ipNetworkOrder, portNetworkOrder));
 }
 
 bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, const std::string& host, std::uint16_t port)
 {
-    auto addr = ::Backend::SocketAddress::fromString(host, port);
-    if (addr.family() == ::Backend::AddressFamily::Unknown) {
+    auto addr = Common::Net::SocketAddress::fromString(host, port);
+    if (addr.family() == Common::Net::AddressFamily::Unknown) {
         Proxy::Log::error("[UdpOutputChannel] Invalid target IP: {}", host);
         return false;
     }
