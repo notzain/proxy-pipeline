@@ -227,15 +227,140 @@ Run the pipeline:
 
 ---
 
-## 5. Implementing a New Transport Backend
+## 5. Implementing and Registering a New Transport Backend
 
-To add a new transport (e.g. `backend/rdma/` or `backend/nats/`):
+To add a new transport backend (for example, `backend/rdma/` or `backend/nats/`):
 
-1. **Implement `IInputChannel`**: Provide `receive(span<byte>, timeout)` and `receiveBatch(span<BufferSlot>, timeout)`.
-2. **Implement `IOutputChannel`**: Provide `send(span<byte>)` and `sendBatch(span<span<byte>>)`.
-3. **Implement `IBackend`**: Factory with `createInputChannel(name, config)` and `createOutputChannel(name, config)`.
-4. **Register with Conan and CMake**:
-   - Add backend to root `conanfile.py`.
-   - Call `proxy_register_backend(backend-newname newname)` in `CMakeLists.txt`.
-   - `ProxyBackends.cmake` will automatically discover the backend and generate binaries for every existing handler.
+### Step 1: Create the Backend Directory Structure
+Create a dedicated subfolder under `backend/<name>/` (e.g., `backend/rdma/`):
+```
+backend/rdma/
+├── CMakeLists.txt
+├── conanfile.py
+├── include/
+│   └── rdma/
+│       ├── RdmaBackend.hpp
+│       ├── RdmaInputChannel.hpp
+│       └── RdmaOutputChannel.hpp
+└── src/
+    ├── RdmaBackend.cpp
+    ├── RdmaInputChannel.cpp
+    └── RdmaOutputChannel.cpp
+```
+
+### Step 2: Implement Channels and Backend Contract
+1. **`IInputChannel`**: Implement `receive(std::chrono::milliseconds timeout)` and optional batch reception returning `ReceiveResult`.
+2. **`IOutputChannel`**: Implement `send(Common::Compat::span<const std::byte> message)` and batch transmission.
+3. **`IBackend`**: Implement `createInputChannel(std::string_view name, const IConfig& config)`, `createOutputChannel(std::string_view name, const IConfig& config)`, and `configure(const IConfig& config)`. Provide the exported factory `Backend::createBackend()`.
+
+### Step 3: Write Backend `CMakeLists.txt`
+In `backend/<name>/CMakeLists.txt`, declare the library target using globbing and link `backend-interface::backend-interface` and `proxylog::proxylog`:
+```cmake
+cmake_minimum_required(VERSION 4.0)
+project(backend-rdma LANGUAGES CXX)
+
+if(NOT TARGET backend-interface::backend-interface)
+  find_package(backend-interface REQUIRED)
+endif()
+
+if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
+  find_package(proxylog REQUIRED)
+endif()
+
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+)
+
+add_library(backend-rdma ${SOURCES})
+
+target_include_directories(backend-rdma
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(backend-rdma
+    PUBLIC
+        backend-interface::backend-interface
+        proxylog::proxylog
+)
+
+target_compile_features(backend-rdma PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
+
+if(NOT TARGET backend-rdma::backend-rdma)
+  add_library(backend-rdma::backend-rdma ALIAS backend-rdma)
+endif()
+```
+
+### Step 4: Write Backend `conanfile.py`
+Create `backend/<name>/conanfile.py` to package the backend into the Conan cache and set the backend properties for dynamic discovery:
+```python
+import os
+from conan import ConanFile
+from conan.tools.cmake import CMake, CMakeDeps, CMakeToolchain, cmake_layout
+from conan.tools.files import copy
+
+class BackendRdmaConan(ConanFile):
+    name = "backend-rdma"
+    version = "0.1.0"
+    package_type = "library"
+    settings = "os", "arch", "compiler", "build_type"
+    options = {"shared": [True, False], "fPIC": [True, False]}
+    default_options = {"shared": False, "fPIC": True}
+    exports_sources = "CMakeLists.txt", "src/*", "include/*"
+
+    def layout(self):
+        cmake_layout(self)
+
+    def requirements(self):
+        self.requires("backend-interface/0.1.0", transitive_headers=True)
+        self.requires("proxylog/0.1.0")
+
+    def package_info(self):
+        self.cpp_info.libs = ["backend-rdma"]
+        self.cpp_info.set_property("cmake_file_name", "backend-rdma")
+        self.cpp_info.set_property("cmake_target_name", "backend-rdma::backend-rdma")
+        self.cpp_info.set_property("proxy_component", "backend")
+        self.cpp_info.set_property("backend_name", "rdma")
+```
+
+### Step 5: Register with Root `conanfile.py`
+In the root `conanfile.py`, register the new option and dependency requirement:
+1. Under `options` and `default_options`:
+   ```python
+   "backend_rdma": [True, False],
+   ```
+   ```python
+   "backend_rdma": True,
+   ```
+2. Under `requirements(self)`:
+   ```python
+   if self.options.backend_rdma:
+       self.requires("backend-rdma/0.1.0")
+   ```
+
+*Note: Root `conanfile.py` automatically detects and exports any in-tree recipes (`backend/*`) into the local Conan cache at configure time via `ProxyConan.init()`. You do not need to run manual `conan export` commands.*
+
+### Step 6: Configure and Build
+Configure and build with CMake. Conan's generator writes `ConanBackends.cmake`, and `proxy_discover_backends()` automatically binds `backend-rdma` to generate `<handler_name>_rdma` for every handler in the codebase:
+```bash
+# Configure (e.g. Debug preset)
+cmake --preset debug
+
+# Build all targets (or a specific handler with the new backend)
+cmake --build --preset debug
+
+# Or build the specific handler with the new backend
+cmake --build --preset debug --target print_handler_rdma
+
+# Verify that the target was generated and compiled
+./build/debug/bin/print_handler_rdma --help
+```
+*Tip: If you are building with manual CMake commands instead of presets, pass `-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=cmake/conan_provider.cmake` during configuration.*
+
+
 

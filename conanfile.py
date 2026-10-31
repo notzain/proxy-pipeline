@@ -1,4 +1,6 @@
 import os
+import subprocess
+from pathlib import Path
 
 from conan import ConanFile
 from conan.tools.cmake import CMakeDeps, CMakeToolchain, cmake_layout
@@ -10,6 +12,37 @@ class ProxyConan(ConanFile):
     version = "0.1.0"
     package_type = "application"
     settings = "os", "compiler", "build_type", "arch"
+
+    def init(self):
+        self._export_in_tree_recipes()
+
+    def _export_in_tree_recipes(self):
+        root = Path(self.recipe_folder).resolve()
+        order = [
+            root / "common",
+            root / "log",
+            root / "backend" / "interface",
+            root / "core",
+        ]
+        seen = set(order)
+        backend_dir = root / "backend"
+        if backend_dir.is_dir():
+            for sub in sorted(backend_dir.glob("*")):
+                if sub.is_dir() and (sub / "conanfile.py").exists() and sub not in seen:
+                    order.append(sub)
+                    seen.add(sub)
+
+        for path in order:
+            if path.is_dir() and (path / "conanfile.py").exists():
+                try:
+                    subprocess.run(
+                        ["conan", "export", str(path)],
+                        check=True,
+                        capture_output=True,
+                    )
+                except Exception as e:
+                    self.output.warning(f"Could not auto-export {path.name}: {e}")
+
 
     options = {
         "backend_file": [True, False],
