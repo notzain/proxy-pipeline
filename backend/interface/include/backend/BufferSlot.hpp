@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/Lease.hpp"
+#include "backend/PayloadFormat.hpp"
 #include "common/compat/Span.hpp"
 #include <cstddef>
 
@@ -9,33 +10,57 @@ namespace Backend {
 /**
  * @brief Cohesive target buffer, received byte counter and ownership lease for vectorized batch ingress.
  *
- * Encapsulates the target memory buffer and tracks the number of bytes transferred into it.
- * Replaces parallel destination and size spans in `IInputChannel::receiveBatch` and `ISocketPoller::receiveBatch`.
+ * A slot is in exactly one of two states:
+ * - **Written** (default): the transport copied an enveloped frame into `buffer`; `size` holds the byte count.
+ * - **Leased**: the transport exposes externally owned, read-only raw payload memory whose lifetime is
+ *   bound to `lease` (see `assignLeased()`). `buffer` is untouched.
  *
- * Transports whose messages are owned by an external API attach a `Lease` that the consumer must
- * settle (or move onward) once the message has been processed. Transports owning their buffers leave
- * it empty.
+ * Consumers (execution strategies) call `reset()` before every receive so no stale leased view can
+ * survive into the next message. Transports owning their buffers leave `lease` empty.
  */
 struct BufferSlot {
     Common::Compat::span<std::byte> buffer { };
     std::size_t size { 0 };
     Lease lease { };
 
-    /**
-     * @brief Returns a non-owning span over the populated bytes.
-     */
-    [[nodiscard]] Common::Compat::span<const std::byte> filledSpan() const noexcept
-    {
-        return buffer.subspan(0, size);
-    }
+    BufferSlot() noexcept = default;
 
     /**
-     * @brief Returns a mutable span over the populated bytes.
+     * @brief Constructs a written-mode slot targeting @p target.
      */
-    [[nodiscard]] Common::Compat::span<std::byte> filledSpan() noexcept
-    {
-        return buffer.subspan(0, size);
-    }
+    BufferSlot(Common::Compat::span<std::byte> target, std::size_t filled = 0) noexcept;
+
+    BufferSlot(BufferSlot&&) noexcept = default;
+    BufferSlot& operator=(BufferSlot&&) noexcept = default;
+
+    /**
+     * @brief Returns the slot to the empty written state, releasing any lease still attached.
+     */
+    void reset() noexcept;
+
+    /**
+     * @brief Switches the slot to leased mode, exposing @p view (owned by @p owner) as a raw payload.
+     */
+    void assignLeased(Common::Compat::span<const std::byte> view, Lease owner) noexcept;
+
+    /**
+     * @brief Returns true if the slot references leased external memory rather than `buffer`.
+     */
+    [[nodiscard]] bool isLeased() const noexcept;
+
+    /**
+     * @brief Returns how the populated bytes must be interpreted (`Raw` when leased, `Enveloped` otherwise).
+     */
+    [[nodiscard]] PayloadFormat format() const noexcept;
+
+    /**
+     * @brief Returns a non-owning span over the populated bytes (leased view or filled prefix of `buffer`).
+     */
+    [[nodiscard]] Common::Compat::span<const std::byte> filledSpan() const noexcept;
+
+private:
+    Common::Compat::span<const std::byte> m_leasedView { };
+    bool m_leased { false };
 };
 
 } // namespace Backend

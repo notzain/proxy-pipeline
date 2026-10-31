@@ -33,6 +33,15 @@ public:
     [[nodiscard]] std::string_view name() const noexcept;
 
     /**
+     * @brief Returns true if this channel supplies its own payload memory via leased views (`slot.assignLeased(...)`)
+     *        and never writes into `slot.buffer`.
+     *
+     * Execution strategies query this capability to skip allocating 64 KB / 1 MB scratch buffers
+     * (`receiveBuffer`, `batchBuffers`, `prepareInline`) for channels that manage their own memory.
+     */
+    [[nodiscard]] virtual bool providesOwnMemory() const noexcept;
+
+    /**
      * @brief Receives one message into a buffer slot, attaching an ownership lease if the transport requires settlement.
      *
      * Core zero-copy reception primitive implemented by transport channels. On success `slot.size` holds the

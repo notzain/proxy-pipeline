@@ -8,8 +8,10 @@ namespace Backend::Vendor {
 
 VendorOutputChannel::VendorOutputChannel(
     std::string name,
+    std::shared_ptr<Sdk::VendorManager> manager,
     std::shared_ptr<Sdk::VendorSender> sender)
     : ::Backend::IOutputChannel(std::move(name))
+    , m_manager(std::move(manager))
     , m_sender(std::move(sender))
 {
 }
@@ -46,11 +48,18 @@ bool VendorOutputChannel::send(const ::Backend::MessageView& message)
         return false;
     }
 
-    if (auto state = message.consumeLeaseState()) {
-        if (auto* vendorState = dynamic_cast<VendorLeaseState*>(state.get())) {
-            Sdk::VendorMessage origMsg = vendorState->takeMessage();
-            return m_sender->send(origMsg);
+    // Consuming forward: only valid for an unconsumed message produced by the same VendorManager.
+    // The message is marked consumed only after the sender accepted it, so a failed send leaves the
+    // lease armed and the handler's settlement still finalizes or drops the original message.
+    // NOTE: assumes VendorSender::send(const VendorMessage&) does not invalidate the message's
+    // in-memory payload, which subsequent fan-out channels still read through the zero-copy view.
+    auto* vendorState = dynamic_cast<VendorLeaseState*>(message.leaseState().get());
+    if (vendorState && !vendorState->isConsumed() && m_manager && vendorState->belongsTo(*m_manager)) {
+        if (!m_sender->send(vendorState->message())) {
+            return false;
         }
+        vendorState->markConsumed();
+        return true;
     }
 
     const auto payloadSpan = message.payload();

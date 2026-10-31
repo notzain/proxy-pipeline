@@ -1,8 +1,10 @@
 #pragma once
 
 #include "backend/Lease.hpp"
+#include "backend/PayloadFormat.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/BufferSlice.hpp"
+#include "common/memory/DynamicBuffer.hpp"
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -18,7 +20,7 @@ namespace Core::Threading {
  * Utilizes small buffer optimization (SBO) with an inline buffer sized to a full ingress
  * batch slot (2048 bytes), so channel pollers can receive datagrams directly into ring slot
  * memory (zero-copy forwarding). Larger (jumbo) payloads spill to a zero-copy pooled BufferSlice
- * or heap fallback.
+ * or heap fallback held in a DynamicBuffer variant.
  */
 class MessageTask {
 public:
@@ -35,6 +37,13 @@ public:
      * @brief Assigns a zero-copy pooled slice directly without heap allocation.
      */
     void assignSlice(std::string_view name, Common::Memory::BufferSlice slice, std::size_t size);
+
+    /**
+     * @brief Assigns a leased raw payload: an externally owned read-only view together with the Lease owning it.
+     *
+     * Binding both in one call guarantees the view can never outlive (or be detached from) its owner.
+     */
+    void assignLeased(std::string_view name, Common::Compat::span<const std::byte> view, Backend::Lease owner) noexcept;
 
     /**
      * @brief Prepares the task for an in-place write and returns its writable inline buffer.
@@ -77,6 +86,11 @@ public:
     [[nodiscard]] Common::Compat::span<const std::byte> payload() const noexcept;
 
     /**
+     * @brief Returns how payload() must be interpreted (`Raw` for leased views, `Enveloped` otherwise).
+     */
+    [[nodiscard]] Backend::PayloadFormat format() const noexcept;
+
+    /**
      * @brief Attaches the transport ownership lease travelling with this message.
      */
     void setLease(Backend::Lease lease) noexcept;
@@ -93,8 +107,9 @@ private:
     std::string m_channelName;
     std::array<std::byte, SmallBufferSize> m_inlineBuffer;
     std::size_t m_inlineSize { 0 };
-    Common::Memory::BufferSlice m_pooledSlice;
-    std::vector<std::byte> m_heapBuffer;
+    Common::Memory::DynamicBuffer m_spillBuffer;
+    Common::Compat::span<const std::byte> m_leasedView { };
+    bool m_leased { false };
     mutable Backend::Lease m_lease;
 };
 

@@ -1,8 +1,10 @@
 #include "core/threading/DedicatedThreadStrategy.hpp"
+#include "IngressBatchScratch.hpp"
 #include "MessageDispatcher.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
+#include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <array>
@@ -35,34 +37,28 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         m_workerThreads.emplace_back([this, &handler, channelName = channel.name(), channelPtr, channelTimeout](Common::Compat::stop_token stoken) {
             Proxy::Log::debug("[DedicatedThreadStrategy] Poller thread started for channel '{}'", channelName);
 
-            // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams without truncation.
-            // Allocated once on the heap when the thread starts to prevent thread stack overflow,
-            // while keeping the buffer resident across polling loops with zero per-message allocations.
-            auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, 16>>();
-            std::array<::Backend::BufferSlot, 16> batchSlots;
-            for (std::size_t i = 0; i < 16; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
-            }
-            std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
-            std::array<::Backend::Lease, 16> leases;
+            // Thread-private 16-slot scratch buffer; never allocated if this channel provides its own memory.
+            Detail::IngressBatchScratch<16> scratch;
+            Common::Memory::ParallelArray<16, Common::Compat::span<const std::byte>, ::Backend::PayloadFormat, ::Backend::Lease> batch;
             std::size_t invalidEnvelopeCount = 0;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
-                auto result = channelPtr->receiveBatch(
-                    Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), batchSlots.size()),
-                    channelTimeout);
+                // Synchronous dispatch: handler consumes the batch on this thread before the next poll.
+                auto slots = scratch.prepareSync(*channelPtr);
+                auto result = channelPtr->receiveBatch(slots, channelTimeout);
 
                 const std::size_t batchCount = result.hasValue() ? result.value() : result.error().receivedCount;
                 if (batchCount > 0) {
+                    batch.clear();
                     for (std::size_t i = 0; i < batchCount; ++i) {
-                        rawMessages[i] = Common::Memory::ByteView((*batchBuffers)[i].data(), batchSlots[i].size);
-                        leases[i] = std::move(batchSlots[i].lease);
+                        batch.push_back(slots[i].filledSpan(), slots[i].format(), std::move(slots[i].lease));
                     }
                     Detail::dispatchReceivedBatch(
                         handler,
                         channelName,
-                        Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), batchCount),
-                        Common::Compat::span<::Backend::Lease>(leases.data(), batchCount),
+                        batch.span<0>(),
+                        batch.span<1>(),
+                        batch.span<2>(),
                         invalidEnvelopeCount,
                         m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }

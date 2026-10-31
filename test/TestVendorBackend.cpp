@@ -8,11 +8,15 @@
 #include "common/memory/MutableByteView.hpp"
 #include "core/handler/HandlerRunner.hpp"
 #include "core/handler/IHandler.hpp"
+#include "core/threading/DedicatedThreadStrategy.hpp"
 #include "core/threading/SequentialStrategy.hpp"
 #include "core/threading/SimpleExecutionStrategy.hpp"
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <cstdio>
 #include <deque>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -26,6 +30,12 @@ public:
     {
         std::lock_guard lock(m_mutex);
         m_queue.emplace_back(id, std::move(payload));
+    }
+
+    void enqueueFile(std::uint64_t id, std::string filePath)
+    {
+        std::lock_guard lock(m_mutex);
+        m_queue.push_back(Backend::Vendor::Sdk::VendorMessage::fromFile(id, std::move(filePath)));
     }
 
     bool receive(Backend::Vendor::Sdk::VendorMessage* outMsg, int /*timeoutMs*/) override
@@ -49,6 +59,9 @@ public:
     bool send(const Backend::Vendor::Sdk::VendorMessage& msg) override
     {
         std::lock_guard lock(m_mutex);
+        if (failSends) {
+            return false;
+        }
         sentPayloads.push_back(msg.getPayload());
         sentMessages.push_back(msg);
         return true;
@@ -61,6 +74,7 @@ public:
     }
 
     mutable std::mutex m_mutex;
+    bool failSends { false };
     std::vector<std::string> sentPayloads;
     std::vector<Backend::Vendor::Sdk::VendorMessage> sentMessages;
 };
@@ -276,7 +290,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
 
     SECTION("VendorOutputChannel strips envelope header when sending enveloped message")
     {
-        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockSender);
+        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
         const std::string payload = "Clean Vendor Egress Payload";
         auto envelope = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(payload));
 
@@ -285,11 +299,78 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         REQUIRE(mockSender->sentPayloads.front() == payload);
     }
 
+    SECTION("Failed consuming send leaves Lease armed so settlement still finalizes the VendorMessage")
+    {
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver);
+        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
+        mockReceiver->enqueue(4501, "Send Fails");
+        mockSender->failSends = true;
+
+        Backend::BufferSlot slot { };
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        Backend::MessageView view(slot.filledSpan());
+        view.attachLease(slot.lease);
+
+        CHECK_FALSE(outputChannel.send(view));
+        REQUIRE(slot.lease.active());
+        slot.lease.ack();
+
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 4501);
+        CHECK(mockManager->droppedIds.empty());
+    }
+
+    SECTION("Consuming forward is refused across different VendorManagers and falls back to a payload copy")
+    {
+        auto otherManager = std::make_shared<MockVendorManager>();
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver);
+        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", otherManager, mockSender);
+        mockReceiver->enqueue(4502, "Cross Manager");
+
+        Backend::BufferSlot slot { };
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        Backend::MessageView view(slot.filledSpan());
+        view.attachLease(slot.lease);
+
+        REQUIRE(outputChannel.send(view));
+        REQUIRE(mockSender->sentMessages.size() == 1);
+        CHECK(mockSender->sentMessages.front().getId() == 0);
+        CHECK(mockSender->sentPayloads.front() == "Cross Manager");
+
+        slot.lease.ack();
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 4502);
+    }
+
+    SECTION("Raw leased payload resembling a Proxy envelope is delivered verbatim and never parsed")
+    {
+        VendorTestHandler handler(backend, /*shouldDrop=*/false);
+        handler.registerInputChannel(std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver));
+
+        const auto envelope = Backend::MessageEnvelope::packRaw(Common::Memory::ByteView(std::string_view("inner")));
+        const std::string envelopeBytes(reinterpret_cast<const char*>(envelope.data()), envelope.size());
+        mockReceiver->enqueue(4503, envelopeBytes);
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::SimpleExecutionStrategy>());
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockManager->finalizedCount() == 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        runner.stop();
+        runner.wait();
+
+        REQUIRE(handler.receivedPayloads.size() == 1);
+        CHECK(handler.receivedPayloads.front() == envelopeBytes);
+    }
+
     SECTION("Consuming forward sends exact received VendorMessage object and skips finalize/drop")
     {
         VendorForwardHandler handler(backend);
         auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver);
-        auto outputChannel = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out", mockSender);
+        auto outputChannel = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out", mockManager, mockSender);
         handler.registerInputChannel(std::move(inputChannel));
         handler.addOutputChannel(handler.registerOutputChannel(std::move(outputChannel)));
 
@@ -321,8 +402,8 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         auto secondSender = std::make_shared<MockVendorSender>();
         VendorForwardHandler handler(backend);
         auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver);
-        auto outChan1 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_1", mockSender);
-        auto outChan2 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_2", secondSender);
+        auto outChan1 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_1", mockManager, mockSender);
+        auto outChan2 = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out_2", mockManager, secondSender);
 
         handler.registerInputChannel(std::move(inputChannel));
         handler.addOutputChannel(handler.registerOutputChannel(std::move(outChan1)));
@@ -353,5 +434,177 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
 
         CHECK(mockManager->finalizedIds.empty());
         CHECK(mockManager->droppedIds.empty());
+    }
+
+    SECTION("Mode A (byte pointer + length) delivers oversized >64KB payload zero-copy across ThreadPoolStrategy without truncation")
+    {
+        VendorTestHandler handler(backend, /*shouldDrop=*/false);
+        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver);
+        handler.registerInputChannel(std::move(inputChannel));
+
+        const std::string largePayload(100000, 'Z'); // 100 KB (> 2048 B SBO and > 65535 B batch buffer)
+        mockReceiver->enqueue(8001, largePayload);
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::ThreadPoolStrategy>(2, false, true));
+
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockManager->finalizedCount() == 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        REQUIRE(handler.receivedPayloads.size() == 1);
+        CHECK(handler.receivedPayloads.front().size() == largePayload.size());
+        CHECK(handler.receivedPayloads.front() == largePayload);
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 8001);
+    }
+
+    SECTION("Mode B (payload file path <= pool block size) reads file into VendorBackend BufferPool and releases block on settle")
+    {
+        Backend::Vendor::VendorBackend pooledBackend(mockManager, /*poolBlockSize=*/4096, /*poolBlockCount=*/4);
+        REQUIRE(pooledBackend.bufferPool()->available() == 4);
+
+        const auto tempFile = std::filesystem::temp_directory_path() / "vendor_mode_b_pooled_test.dat";
+        const std::string fileContent = "File-backed vendor payload loaded into BufferPool slice";
+        {
+            std::ofstream out(tempFile, std::ios::binary);
+            out.write(fileContent.data(), static_cast<std::streamsize>(fileContent.size()));
+        }
+
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", pooledBackend, mockReceiver);
+        mockReceiver->enqueueFile(9001, tempFile.string());
+
+        {
+            Backend::BufferSlot slot { };
+            auto res = inputChannel.receiveSlot(slot, std::chrono::milliseconds(10));
+            REQUIRE(res.hasValue());
+            CHECK(res.value() == fileContent.size());
+            CHECK(slot.isLeased());
+
+            // While the Lease is active, 1 block from VendorBackend's BufferPool is held by VendorLeaseState
+            CHECK(pooledBackend.bufferPool()->available() == 3);
+
+            const auto view = slot.filledSpan();
+            std::string receivedStr(reinterpret_cast<const char*>(view.data()), view.size());
+            CHECK(receivedStr == fileContent);
+
+            slot.lease.ack();
+        }
+
+        // Once settled and destroyed, the BufferSlice is returned to VendorBackend's BufferPool
+        CHECK(pooledBackend.bufferPool()->available() == 4);
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 9001);
+
+        std::filesystem::remove(tempFile);
+    }
+
+    SECTION("Mode B (oversized payload file path > pool block size) falls back to heap buffer and forwards original file-backed VendorMessage")
+    {
+        Backend::Vendor::VendorBackend smallPoolBackend(mockManager, /*poolBlockSize=*/1024, /*poolBlockCount=*/2);
+
+        const auto tempFile = std::filesystem::temp_directory_path() / "vendor_mode_b_oversized_test.dat";
+        const std::string largeFileContent(8192, 'F'); // 8 KB > 1 KB pool block size
+        {
+            std::ofstream out(tempFile, std::ios::binary);
+            out.write(largeFileContent.data(), static_cast<std::streamsize>(largeFileContent.size()));
+        }
+
+        VendorForwardHandler handler(smallPoolBackend);
+        auto inputChannel = std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", smallPoolBackend, mockReceiver);
+        auto outputChannel = std::make_unique<Backend::Vendor::VendorOutputChannel>("vendor_out", mockManager, mockSender);
+        handler.registerInputChannel(std::move(inputChannel));
+        handler.addOutputChannel(handler.registerOutputChannel(std::move(outputChannel)));
+
+        mockReceiver->enqueueFile(9002, tempFile.string());
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::DedicatedThreadStrategy>(true));
+
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockSender->sentCount() == 0 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        REQUIRE(mockSender->sentMessages.size() == 1);
+        CHECK(mockSender->sentMessages.front().getId() == 9002);
+        CHECK(mockSender->sentMessages.front().getPayloadFilePath() == tempFile.string());
+        CHECK(mockManager->finalizedIds.empty());
+        CHECK(mockManager->droppedIds.empty());
+
+        std::filesystem::remove(tempFile);
+    }
+
+    SECTION("Shared BufferPool is owned by IBackend and providesOwnMemory() skips strategy scratch buffers")
+    {
+        Backend::Vendor::VendorBackend defaultBackend(mockManager);
+        REQUIRE(defaultBackend.bufferPool() != nullptr);
+        CHECK(defaultBackend.bufferPool() == defaultBackend.bufferPool());
+
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", defaultBackend, mockReceiver);
+        CHECK(inputChannel.providesOwnMemory());
+
+        // Verify that strategies pass empty slot.buffer when providesOwnMemory() is true
+        class BufferInspectInputChannel : public Backend::Vendor::VendorInputChannel {
+        public:
+            using Backend::Vendor::VendorInputChannel::VendorInputChannel;
+
+            Backend::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
+            {
+                sawNonEmptyTargetBuffer = sawNonEmptyTargetBuffer || !slot.buffer.empty();
+                return Backend::Vendor::VendorInputChannel::receiveSlot(slot, timeout);
+            }
+
+            std::atomic<bool> sawNonEmptyTargetBuffer { false };
+        };
+
+        auto inspectChannel = std::make_unique<BufferInspectInputChannel>("vendor_in", defaultBackend, mockReceiver);
+        auto* inspectPtr = inspectChannel.get();
+
+        VendorTestHandler handler(defaultBackend, /*shouldDrop=*/false);
+        handler.registerInputChannel(std::move(inspectChannel));
+
+        mockReceiver->enqueue(9501, "Zero-Scratch Msg 1");
+        mockReceiver->enqueue(9502, "Zero-Scratch Msg 2");
+
+        Core::Handler::HandlerRunner runner(handler);
+        runner.setExecutionStrategy(std::make_unique<Core::Threading::ThreadPoolStrategy>(2, /*strictFifo=*/false, true));
+        runner.startAsync(false);
+
+        auto start = std::chrono::steady_clock::now();
+        while (mockManager->finalizedCount() < 2 && std::chrono::steady_clock::now() - start < std::chrono::seconds(2)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        runner.stop();
+        runner.wait();
+
+        CHECK_FALSE(inspectPtr->sawNonEmptyTargetBuffer.load());
+        CHECK(handler.receivedCount() == 2);
+    }
+
+    SECTION("Mode B missing payload file drops VendorMessage and returns ReceiveFailure")
+    {
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver);
+        mockReceiver->enqueueFile(9003, "/nonexistent/path/vendor_missing_payload_9003.dat");
+
+        Backend::BufferSlot slot { };
+        auto res = inputChannel.receiveSlot(slot, std::chrono::milliseconds(10));
+        REQUIRE_FALSE(res.hasValue());
+        CHECK_FALSE(slot.lease.active());
+        REQUIRE(mockManager->droppedIds.size() == 1);
+        CHECK(mockManager->droppedIds.front() == 9003);
+        CHECK(mockManager->finalizedIds.empty());
     }
 }

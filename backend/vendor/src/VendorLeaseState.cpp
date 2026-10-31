@@ -6,15 +6,17 @@ namespace Backend::Vendor {
 
 VendorLeaseState::VendorLeaseState(
     Sdk::VendorMessage message,
-    std::shared_ptr<Sdk::VendorManager> manager) noexcept
+    std::shared_ptr<Sdk::VendorManager> manager,
+    Common::Memory::DynamicBuffer buffer) noexcept
     : m_message(std::move(message))
     , m_manager(std::move(manager))
+    , m_buffer(std::move(buffer))
 {
 }
 
 void VendorLeaseState::settle(::Backend::Settlement outcome) noexcept
 {
-    if (!m_manager) {
+    if (!m_manager || m_consumed) {
         return;
     }
 
@@ -32,9 +34,36 @@ void VendorLeaseState::settle(::Backend::Settlement outcome) noexcept
     }
 }
 
-Sdk::VendorMessage VendorLeaseState::takeMessage() noexcept
+Common::Compat::span<const std::byte> VendorLeaseState::payloadView() const noexcept
 {
-    return std::move(m_message);
+    if (Common::Memory::hasData(m_buffer)) {
+        return Common::Memory::spanOf(m_buffer);
+    }
+    const auto bytePayload = m_message.getBytePayload();
+    if (bytePayload.data != nullptr) {
+        return Common::Compat::span<const std::byte>(bytePayload.data, bytePayload.length);
+    }
+    return { };
+}
+
+const Sdk::VendorMessage& VendorLeaseState::message() const noexcept
+{
+    return m_message;
+}
+
+bool VendorLeaseState::belongsTo(const Sdk::VendorManager& manager) const noexcept
+{
+    return m_manager.get() == &manager;
+}
+
+void VendorLeaseState::markConsumed() noexcept
+{
+    m_consumed = true;
+}
+
+bool VendorLeaseState::isConsumed() const noexcept
+{
+    return m_consumed;
 }
 
 } // namespace Backend::Vendor

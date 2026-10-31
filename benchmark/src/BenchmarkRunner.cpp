@@ -24,6 +24,30 @@ Backend::MessageResult BenchmarkReceiver::onMessageReceived(std::string_view, co
     return Backend::Consumed { };
 }
 
+void BenchmarkReceiver::onBatchReceived(
+    std::string_view,
+    Common::Compat::span<const Backend::MessageView> messages,
+    Common::Compat::span<Backend::MessageResult> outResults)
+{
+    const auto now = std::chrono::steady_clock::now();
+    const auto count = std::min(messages.size(), outResults.size());
+    std::size_t totalBytes = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        totalBytes += messages[i].payload().size();
+        outResults[i] = Backend::Consumed { };
+    }
+
+    {
+        std::lock_guard lock(m_mutex);
+        m_receiveTimestamps.insert(m_receiveTimestamps.end(), count, now);
+        m_bytesReceived += totalBytes;
+    }
+
+    if (m_receiveTimestamps.size() >= m_expectedCount) {
+        m_cv.notify_all();
+    }
+}
+
 bool BenchmarkReceiver::waitForCompletion(std::chrono::milliseconds timeout, std::chrono::milliseconds idleDrainTimeout)
 {
     std::unique_lock lock(m_mutex);

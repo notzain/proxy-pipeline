@@ -1,9 +1,9 @@
 #pragma once
 
 #include "common/memory/BufferSlice.hpp"
-#include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -13,9 +13,10 @@ namespace Common::Memory {
 /**
  * @brief High-performance lock-free fixed-block memory slab pool.
  *
- * Pre-allocates a contiguous pool of 64-byte aligned blocks (e.g. 64 KB per block).
- * Acquiring a slice is wait-free via an atomic free-stack or bitmask/index ring,
- * completely avoiding malloc/free overhead during high-frequency datagram bursts.
+ * Pre-allocates a contiguous pool of blocks (e.g. 64 KB per block).
+ * Acquiring and releasing slices are lock-free via a 64-bit tagged Treiber free-list
+ * (32-bit ABA tag + 32-bit next-index), completely eliminating spinlock contention
+ * across concurrent poller and worker threads.
  */
 class BufferPool : public std::enable_shared_from_this<BufferPool> {
 public:
@@ -45,14 +46,31 @@ public:
     [[nodiscard]] std::size_t available() const noexcept;
 
 private:
+    static constexpr std::uint32_t InvalidIndex = 0xFFFFFFFFU;
+
+    [[nodiscard]] static constexpr std::uint64_t packHead(std::uint32_t tag, std::uint32_t index) noexcept
+    {
+        return (static_cast<std::uint64_t>(tag) << 32U) | static_cast<std::uint64_t>(index);
+    }
+
+    [[nodiscard]] static constexpr std::uint32_t unpackTag(std::uint64_t head) noexcept
+    {
+        return static_cast<std::uint32_t>(head >> 32U);
+    }
+
+    [[nodiscard]] static constexpr std::uint32_t unpackIndex(std::uint64_t head) noexcept
+    {
+        return static_cast<std::uint32_t>(head & 0xFFFFFFFFULL);
+    }
+
     std::size_t m_blockSize;
     std::size_t m_blockCount;
     std::vector<std::byte> m_storage;
 
-    // Free stack implemented as an array of block indices with an atomic head
-    std::vector<std::size_t> m_freeIndices;
-    alignas(64) std::atomic<std::size_t> m_freeTop { 0 };
-    alignas(64) std::atomic<std::size_t> m_lock { 0 };
+    // Lock-free tagged Treiber stack of free block indices
+    std::vector<std::uint32_t> m_nextFree;
+    alignas(64) std::atomic<std::uint64_t> m_head { packHead(0, InvalidIndex) };
+    alignas(64) std::atomic<std::size_t> m_available { 0 };
 };
 
 } // namespace Common::Memory

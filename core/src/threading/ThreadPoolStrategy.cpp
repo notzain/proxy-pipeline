@@ -1,10 +1,13 @@
 #include "core/threading/ThreadPoolStrategy.hpp"
+#include "IngressBatchScratch.hpp"
 #include "MessageDispatcher.hpp"
+#include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
 #include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
+#include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -57,6 +60,9 @@ namespace {
     {
         const std::size_t drainCount = tasks.size();
         std::size_t batchStart = 0;
+        Common::Memory::ParallelArray<16, Common::Compat::span<const std::byte>, ::Backend::PayloadFormat, ::Backend::Lease> batch;
+
+        // Group consecutive tasks from the same input channel so IHandler::processBatch() runs vectorized.
         while (batchStart < drainCount) {
             std::string_view chName = tasks[batchStart].channelName();
             std::size_t batchEnd = batchStart + 1;
@@ -64,17 +70,19 @@ namespace {
                 ++batchEnd;
             }
             std::size_t spanCount = batchEnd - batchStart;
-            std::array<Common::Compat::span<const std::byte>, 16> rawMessages;
-            std::array<::Backend::Lease, 16> leases;
+            batch.clear();
             for (std::size_t k = 0; k < spanCount; ++k) {
-                rawMessages[k] = Common::Memory::ByteView(tasks[batchStart + k].payload());
-                leases[k] = std::move(tasks[batchStart + k].lease());
+                batch.push_back(
+                    Common::Memory::ByteView(tasks[batchStart + k].payload()),
+                    tasks[batchStart + k].format(),
+                    std::move(tasks[batchStart + k].lease()));
             }
             Detail::dispatchReceivedBatch(
                 handler,
                 chName,
-                Common::Compat::span<const Common::Compat::span<const std::byte>>(rawMessages.data(), spanCount),
-                Common::Compat::span<::Backend::Lease>(leases.data(), spanCount),
+                batch.span<0>(),
+                batch.span<1>(),
+                batch.span<2>(),
                 invalidEnvelopeCount,
                 handlerMutex);
             batchStart = batchEnd;
@@ -118,37 +126,39 @@ namespace {
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
-        if (sharedQueue) {
-            constexpr std::size_t maxBatch = 16;
-            auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
-            std::array<::Backend::BufferSlot, maxBatch> batchSlots;
-            for (std::size_t i = 0; i < maxBatch; ++i) {
-                batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
-            }
+        constexpr std::size_t maxBatch = 16;
+        const bool ownMemory = channel.providesOwnMemory();
 
-            auto result = channel.receiveBatch(
-                Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
-                timeout);
+        // Path A (MPMC sharedQueue): Poller cannot write in-place into an MPMC ring slot without blocking
+        // other producers, so we pre-attach BufferSlices and move completed MessageTasks into sharedQueue.
+        if (sharedQueue) {
+            thread_local Detail::IngressBatchScratch<maxBatch> tl_scratch;
+            auto batchSlots = tl_scratch.preparePooled(channel, bufferPool);
+
+            auto result = channel.receiveBatch(batchSlots, timeout);
             const bool failed = channelFailed(channelName, result);
             const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+            tl_scratch.releaseUnusedFrom(received);
             if (failed && received == 0) {
                 return false;
             }
 
             for (std::size_t i = 0; i < received; ++i) {
                 MessageTask task;
-                const std::size_t msgSize = batchSlots[i].size;
-                if (msgSize > MessageTask::SmallBufferSize && bufferPool) {
-                    if (auto slice = bufferPool->acquire()) {
-                        std::memcpy(slice->data(), (*batchBuffers)[i].data(), msgSize);
-                        task.assignSlice(channelName, std::move(*slice), msgSize);
-                    } else {
-                        task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
-                    }
+                if (batchSlots[i].isLeased()) {
+                    // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
+                    const auto view = batchSlots[i].filledSpan();
+                    task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
+                } else if (auto& preSlice = tl_scratch.slice(i); preSlice.has_value()) {
+                    // Kernel wrote directly into the BufferSlice; move the slice handle in O(1) (no memcpy).
+                    task.assignSlice(channelName, std::move(*preSlice), batchSlots[i].size);
+                    preSlice.reset();
+                    task.setLease(std::move(batchSlots[i].lease));
                 } else {
-                    task.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[i].data(), msgSize));
+                    // Pool was exhausted: copy from fallback scratch buffer.
+                    task.assign(channelName, batchSlots[i].filledSpan());
+                    task.setLease(std::move(batchSlots[i].lease));
                 }
-                task.setLease(std::move(batchSlots[i].lease));
 
                 if (!sharedQueue->tryPush(std::move(task))) {
                     sharedQueue->push(std::move(task), stoken);
@@ -157,15 +167,18 @@ namespace {
             return !failed;
         }
 
-        constexpr std::size_t maxBatch = 16;
         bool hasOversized = false;
         bool receiveFailed = false;
 
+        // Path B (SPSC per-worker queues): Claim contiguous SPSC slots and let the transport write directly
+        // into each slot's 2 KB inline buffer (zero copies, zero pool atomics).
         auto fillSlots = [&](Common::Compat::span<MessageTask> slots) -> std::size_t {
             std::array<::Backend::BufferSlot, maxBatch> inPlaceSlots;
             const std::size_t n = std::min(slots.size(), maxBatch);
-            for (std::size_t i = 0; i < n; ++i) {
-                inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
+            if (!ownMemory) {
+                for (std::size_t i = 0; i < n; ++i) {
+                    inPlaceSlots[i] = ::Backend::BufferSlot { slots[i].prepareInline(channelName), 0 };
+                }
             }
             auto result = channel.receiveBatch(
                 Common::Compat::span<::Backend::BufferSlot>(inPlaceSlots.data(), n),
@@ -173,15 +186,23 @@ namespace {
             receiveFailed = channelFailed(channelName, result) || receiveFailed;
             const std::size_t nReceived = result.hasValue() ? result.value() : result.error().receivedCount;
             for (std::size_t i = 0; i < nReceived; ++i) {
+                if (inPlaceSlots[i].isLeased()) {
+                    const auto view = inPlaceSlots[i].filledSpan();
+                    slots[i].assignLeased(channelName, view, std::move(inPlaceSlots[i].lease));
+                    continue;
+                }
                 slots[i].commitInline(inPlaceSlots[i].size);
-                slots[i].setLease(std::move(inPlaceSlots[i].lease));
+                // PosixSocketPoller peeks before draining if a datagram > 2 KB is at the head of the socket,
+                // leaving it unread; flag it so we drain it into a 64 KB BufferSlice right after.
                 if (inPlaceSlots[i].size == MessageTask::SmallBufferSize) {
                     hasOversized = true;
                 }
+                slots[i].setLease(std::move(inPlaceSlots[i].lease));
             }
             return nReceived;
         };
 
+        // Round-robin probe for a worker queue with free space; block on the primary queue only if all are full.
         const std::size_t numWorkers = queues.size();
         const std::size_t start = nextWorker.fetch_add(1, std::memory_order_relaxed);
         QueueType* targetQueue = nullptr;
@@ -203,31 +224,37 @@ namespace {
             return false;
         }
 
+        // Drain the oversized (> 2 KB) datagram that did not fit into the inline SPSC slot directly into a BufferSlice.
         if (hasOversized && targetQueue) {
-            std::array<std::byte, 65535> jumboBuf;
-            ::Backend::BufferSlot jumboSlot { Common::Memory::MutableByteView(jumboBuf), 0 };
+            thread_local Detail::IngressBatchScratch<1> tl_jumboScratch;
+            auto& jumboSlot = tl_jumboScratch.preparePooled(channel, bufferPool)[0];
             constexpr Handler::IHandler::Timeout zeroTimeout { 0 };
             auto jumboResult = channel.receiveSlot(jumboSlot, zeroTimeout);
             if (!jumboResult.hasValue() && channelFailed(channelName, jumboResult.error())) {
+                tl_jumboScratch.releaseUnusedFrom(0);
                 return false;
             }
             std::size_t jumboBytes = jumboResult.hasValue() ? jumboResult.value() : 0;
-            if (jumboBytes > 0) {
+            if (jumboBytes > 0 || jumboSlot.isLeased()) {
                 targetQueue->pushBatch(
                     1,
                     [&](MessageTask& slot, std::size_t) {
-                        slot.setLease(std::move(jumboSlot.lease));
-                        if (jumboBytes > MessageTask::SmallBufferSize && bufferPool) {
-                            if (auto slice = bufferPool->acquire()) {
-                                std::memcpy(slice->data(), jumboBuf.data(), jumboBytes);
-                                slot.assignSlice(channelName, std::move(*slice), jumboBytes);
-                                return;
-                            }
+                        if (jumboSlot.isLeased()) {
+                            const auto view = jumboSlot.filledSpan();
+                            slot.assignLeased(channelName, view, std::move(jumboSlot.lease));
+                            return;
                         }
-                        slot.assign(channelName, Common::Compat::span<const std::byte>(jumboBuf.data(), jumboBytes));
+                        slot.setLease(std::move(jumboSlot.lease));
+                        if (auto& preSlice = tl_jumboScratch.slice(0); preSlice.has_value()) {
+                            slot.assignSlice(channelName, std::move(*preSlice), jumboBytes);
+                            preSlice.reset();
+                            return;
+                        }
+                        slot.assign(channelName, jumboSlot.filledSpan());
                     },
                     stoken);
             }
+            tl_jumboScratch.releaseUnusedFrom(0);
         }
         return true;
     }
@@ -246,21 +273,17 @@ namespace {
     {
         constexpr std::size_t maxBatch = 16;
 
-        // Sized to 16 slots x 65,535 B (~1 MB) to receive max UDP/UDS datagrams for flow inspection without truncation.
-        // Sized to maxBatch x 65,535 B to receive full datagram batches without truncation.
-        // Allocated on the heap to prevent thread stack overflow, while avoiding recurring allocations in the poll loop.
-        auto batchBuffers = std::make_unique<std::array<std::array<std::byte, 65535>, maxBatch>>();
-        std::array<::Backend::BufferSlot, maxBatch> batchSlots;
-        for (std::size_t i = 0; i < maxBatch; ++i) {
-            batchSlots[i] = ::Backend::BufferSlot { Common::Memory::MutableByteView((*batchBuffers)[i]), 0 };
-        }
+        // Strict FIFO must inspect packet headers (IP/port) BEFORE choosing which worker SPSC queue to push to,
+        // so we cannot write directly into a worker's SPSC ring before receiveBatch(). Instead, we pre-attach
+        // BufferSlices so the kernel writes once into pool memory, then route each contiguous flow run to its worker.
+        thread_local Detail::IngressBatchScratch<maxBatch> tl_scratch;
+        auto batchSlots = tl_scratch.preparePooled(channel, bufferPool);
 
-        auto result = channel.receiveBatch(
-            Common::Compat::span<::Backend::BufferSlot>(batchSlots.data(), maxBatch),
-            timeout);
+        auto result = channel.receiveBatch(batchSlots, timeout);
 
         const bool failed = channelFailed(channelName, result);
         const std::size_t received = result.hasValue() ? result.value() : result.error().receivedCount;
+        tl_scratch.releaseUnusedFrom(received);
         if (failed && received == 0) {
             return false;
         }
@@ -268,15 +291,16 @@ namespace {
             return !failed;
         }
 
+        // Coalesce consecutive packets that hash to the same worker into a single pushBatch() call.
         const std::size_t numWorkers = queues.size();
         std::size_t runStart = 0;
         while (runStart < received) {
-            Common::Memory::ByteView firstSpan((*batchBuffers)[runStart].data(), batchSlots[runStart].size);
+            Common::Memory::ByteView firstSpan(batchSlots[runStart].filledSpan());
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
-                Common::Memory::ByteView nextSpan((*batchBuffers)[runEnd].data(), batchSlots[runEnd].size);
+                Common::Memory::ByteView nextSpan(batchSlots[runEnd].filledSpan());
                 if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
                     break;
                 }
@@ -288,16 +312,26 @@ namespace {
                 runCount,
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
-                    const std::size_t pktSize = batchSlots[pktIdx].size;
+                    if (batchSlots[pktIdx].isLeased()) {
+                        const auto view = batchSlots[pktIdx].filledSpan();
+                        slot.assignLeased(channelName, view, std::move(batchSlots[pktIdx].lease));
+                        return;
+                    }
                     slot.setLease(std::move(batchSlots[pktIdx].lease));
-                    if (pktSize > MessageTask::SmallBufferSize && bufferPool) {
-                        if (auto slice = bufferPool->acquire()) {
-                            std::memcpy(slice->data(), (*batchBuffers)[pktIdx].data(), pktSize);
-                            slot.assignSlice(channelName, std::move(*slice), pktSize);
+                    const std::size_t pktSize = batchSlots[pktIdx].size;
+                    if (auto& preSlice = tl_scratch.slice(pktIdx); preSlice.has_value()) {
+                        // Keep > 2 KB payloads in their BufferSlice (0 copies); copy <= 2 KB into the inline slot
+                        // so the 64 KB pool block is returned to the pool immediately via preSlice.reset().
+                        if (pktSize > MessageTask::SmallBufferSize) {
+                            slot.assignSlice(channelName, std::move(*preSlice), pktSize);
+                            preSlice.reset();
                             return;
                         }
+                        slot.assign(channelName, preSlice->span().subspan(0, pktSize));
+                        preSlice.reset();
+                        return;
                     }
-                    slot.assign(channelName, Common::Compat::span<const std::byte>((*batchBuffers)[pktIdx].data(), pktSize));
+                    slot.assign(channelName, batchSlots[pktIdx].filledSpan());
                 },
                 stoken);
 
@@ -328,7 +362,6 @@ ThreadPoolStrategy::ThreadPoolStrategy(
     if (!m_strictFifo) {
         m_sharedQueue = std::make_unique<SharedQueueType>();
     }
-    m_bufferPool = std::make_shared<Common::Memory::BufferPool>(65536, 256);
 }
 
 void ThreadPoolStrategy::setStrictFifo(bool enable) noexcept
@@ -353,6 +386,7 @@ ThreadPoolStrategy::~ThreadPoolStrategy()
 void ThreadPoolStrategy::start(Handler::IHandler& handler)
 {
     m_running.store(true, std::memory_order_release);
+    m_bufferPool = handler.backend().bufferPool();
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();

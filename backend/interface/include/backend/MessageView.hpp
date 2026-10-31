@@ -73,6 +73,11 @@ public:
      */
     [[nodiscard]] std::unique_ptr<ILeaseState> consumeLeaseState() const noexcept;
 
+    /**
+     * @brief Returns a non-owning observer pointer to the attached lease state, or nullptr if none.
+     */
+    [[nodiscard]] Common::Memory::ObserverPtr<ILeaseState> leaseState() const noexcept;
+
     template <typename T>
     [[nodiscard]] const T* getMetadata() const noexcept
     {

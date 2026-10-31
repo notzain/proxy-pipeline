@@ -1,4 +1,5 @@
 #include "core/threading/SimpleExecutionStrategy.hpp"
+#include "IngressBatchScratch.hpp"
 #include "MessageDispatcher.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
@@ -26,9 +27,8 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
     Proxy::Log::info("[SimpleExecutionStrategy] Starting deterministic polling loop for {} channel(s)", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
-        // Pre-allocated stack buffer for single datagram reception to maintain 100% predictable trace/debug stacks
-        std::array<std::byte, 65535> receiveBuffer;
-        ::Backend::BufferSlot slot { Common::Memory::MutableByteView(receiveBuffer), 0 };
+        // Single-slot scratch buffer reused across polls; skipped if the channel owns its memory (e.g. Vendor).
+        Detail::IngressBatchScratch<1> scratch;
         std::size_t invalidEnvelopeCount = 0;
 
         while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
@@ -37,17 +37,21 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                     return;
                 }
 
+                // Reset slot state and bind caller buffer only if the channel writes into caller memory.
+                auto& slot = scratch.prepareSync(channel)[0];
                 auto result = channel.receiveSlot(slot, channelTimeout);
 
                 if (result.hasValue()) {
                     const std::size_t receivedBytes = result.value();
-                    if (receivedBytes > 0) {
-                        auto msgSpan = Common::Memory::ByteView(receiveBuffer.data(), receivedBytes);
+                    if (receivedBytes > 0 || slot.isLeased()) {
+                        auto msgSpan = slot.filledSpan();
                         std::array<Common::Compat::span<const std::byte>, 1> batch { msgSpan };
+                        const std::array<::Backend::PayloadFormat, 1> formats { slot.format() };
                         Detail::dispatchReceivedBatch(
                             handler,
                             channel.name(),
                             Common::Compat::span<const Common::Compat::span<const std::byte>>(batch.data(), batch.size()),
+                            Common::Compat::span<const ::Backend::PayloadFormat>(formats.data(), formats.size()),
                             Common::Compat::span<::Backend::Lease>(&slot.lease, 1),
                             invalidEnvelopeCount,
                             nullptr);

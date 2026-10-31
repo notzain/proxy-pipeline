@@ -1,8 +1,9 @@
 #include "MessageDispatcher.hpp"
 #include "backend/MessageView.hpp"
+#include "common/memory/ParallelArray.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
-#include <array>
+#include <optional>
 #include <utility>
 
 namespace Core::Threading::Detail {
@@ -11,6 +12,7 @@ void dispatchReceivedBatch(
     Handler::IHandler& handler,
     std::string_view channelName,
     Common::Compat::span<const Common::Compat::span<const std::byte>> rawMessages,
+    Common::Compat::span<const ::Backend::PayloadFormat> formats,
     Common::Compat::span<::Backend::Lease> leases,
     std::size_t& invalidEnvelopeCount,
     std::mutex* handlerMutex)
@@ -22,15 +24,18 @@ void dispatchReceivedBatch(
     static auto& s_droppedCounter = Telemetry::MetricsRegistry::instance().counter(
         "messages_dropped_total", "Total malformed messages dropped");
 
-    std::array<Backend::MessageView, 16> views;
-    std::array<Backend::Lease, 16> validLeases;
+    Common::Memory::ParallelArray<16, Backend::MessageView, Backend::Lease> validBatch;
     const bool hasLeases = !leases.empty();
-    std::size_t validViews = 0;
     std::size_t batchBytes = 0;
 
     for (std::size_t i = 0; i < rawMessages.size(); ++i) {
         const auto rawMessage = rawMessages[i];
-        auto optView = Backend::MessageView::from(rawMessage);
+        const bool isRaw = !formats.empty() && formats[i] == Backend::PayloadFormat::Raw;
+        // Raw payloads (e.g. leased vendor memory) carry no wire header and are never parsed as envelopes,
+        // so a payload that happens to resemble a header cannot be misinterpreted.
+        auto optView = isRaw
+            ? std::optional<Backend::MessageView>(Backend::MessageView(rawMessage))
+            : Backend::MessageView::from(rawMessage);
         if (!optView) {
             if (hasLeases) {
                 leases[i].reject();
@@ -45,23 +50,24 @@ void dispatchReceivedBatch(
         }
 
         if (hasLeases) {
-            validLeases[validViews] = std::move(leases[i]);
-            optView->attachLease(validLeases[validViews]);
+            validBatch.push_back(*optView, std::move(leases[i]));
+            validBatch.get<0>(validBatch.size() - 1).attachLease(validBatch.get<1>(validBatch.size() - 1));
+        } else {
+            validBatch.push_back(*optView, Backend::Lease { });
         }
-        views[validViews++] = *optView;
         batchBytes += rawMessage.size();
     }
 
-    if (validViews == 0) {
+    if (validBatch.empty()) {
         return;
     }
 
-    s_msgCounter.increment(validViews);
+    s_msgCounter.increment(validBatch.size());
     s_bytesCounter.increment(batchBytes);
 
-    const auto messages = Common::Compat::span<const Backend::MessageView>(views.data(), validViews);
+    const auto messages = validBatch.span<0>();
     const auto batchLeases = hasLeases
-        ? Common::Compat::span<Backend::Lease>(validLeases.data(), validViews)
+        ? validBatch.span<1>()
         : Common::Compat::span<Backend::Lease>();
     if (handlerMutex) {
         std::lock_guard lock(*handlerMutex);

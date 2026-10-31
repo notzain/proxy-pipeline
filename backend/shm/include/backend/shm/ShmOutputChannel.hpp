@@ -2,7 +2,6 @@
 
 #include "backend/IOutputChannel.hpp"
 #include <memory>
-#include <mutex>
 #include <string>
 
 namespace Proxy::Backend::Shm {
@@ -38,7 +37,6 @@ public:
 private:
     std::string m_destPath;
     std::unique_ptr<ShmRingBuffer> m_ring;
-    mutable std::mutex m_sendMutex;
 };
 
 } // namespace Proxy::Backend::Shm

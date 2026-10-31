@@ -5,6 +5,7 @@
 #include "backend/IOutputChannel.hpp"
 #include "backend/MessageResult.hpp"
 #include "common/compat/Span.hpp"
+#include "common/memory/BufferPool.hpp"
 #include <cstddef>
 #include <memory>
 #include <string_view>
@@ -75,6 +76,19 @@ public:
      * @brief Invoked by IHandler::startAsync() once all channels are bound and the strategy loop has started.
      */
     virtual void onHandlerStarted();
+
+    /**
+     * @brief Injects a custom BufferPool into this backend.
+     */
+    void setBufferPool(std::shared_ptr<Common::Memory::BufferPool> pool) noexcept;
+
+    /**
+     * @brief Returns the shared BufferPool bound to this backend (lazily allocated on first call).
+     */
+    [[nodiscard]] std::shared_ptr<Common::Memory::BufferPool> bufferPool() const;
+
+private:
+    mutable std::shared_ptr<Common::Memory::BufferPool> m_bufferPool;
 };
 
 /**

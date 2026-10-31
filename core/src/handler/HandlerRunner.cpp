@@ -48,6 +48,17 @@ HandlerRunner::~HandlerRunner()
 
 bool HandlerRunner::configure(const Config::Configuration& config)
 {
+    const auto defaultPool = m_handler.backend().bufferPool();
+    const auto blockSize = static_cast<std::size_t>(
+        config.getOr<std::uint64_t>("memory.pool_block_size", defaultPool->blockSize()));
+    const auto blockCount = static_cast<std::size_t>(
+        config.getOr<std::uint64_t>("memory.pool_block_count", defaultPool->blockCount()));
+    if (blockSize != defaultPool->blockSize() || blockCount != defaultPool->blockCount()) {
+        m_handler.backend().setBufferPool(std::make_shared<Common::Memory::BufferPool>(
+            blockSize > 0 ? blockSize : Common::Memory::BufferPool::DefaultBlockSize,
+            blockCount > 0 ? blockCount : Common::Memory::BufferPool::DefaultBlockCount));
+    }
+
     setExecutionModel(parseExecutionModel(config));
     configureTelemetry(config);
     return m_handler.configure(config);

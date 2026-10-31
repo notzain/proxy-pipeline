@@ -67,9 +67,13 @@ bool ShmRingBuffer::isValid() const noexcept
 
 void ShmRingBuffer::mapMemory(std::size_t capacity)
 {
-    std::size_t totalBytes = sizeof(ShmHeader) + (capacity * sizeof(ShmSlot));
-    // Align total mapped size to 4KB page boundary
-    m_mappedSize = (totalBytes + 4095) & ~static_cast<std::size_t>(4095);
+    unmapMemory();
+
+    bool isNewlyCreated = false;
+    struct stat st { };
+    if (::stat(m_path.c_str(), &st) != 0 || st.st_size == 0) {
+        isNewlyCreated = true;
+    }
 
     m_fd = ::open(m_path.c_str(), O_RDWR | O_CREAT, 0666);
     if (m_fd < 0) {
@@ -77,25 +81,20 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
         return;
     }
 
-    struct stat st { };
-    if (::fstat(m_fd, &st) < 0) {
-        Proxy::Log::error("[ShmRingBuffer] Failed to fstat shared memory file '{}': {}", m_path, std::strerror(errno));
-        ::close(m_fd);
-        m_fd = -1;
-        return;
-    }
+    std::size_t totalBytes = sizeof(ShmHeader) + (capacity * sizeof(ShmSlot));
+    m_mappedSize = totalBytes;
 
-    bool isNewlyCreated = (st.st_size < static_cast<off_t>(m_mappedSize));
-    if (isNewlyCreated) {
-        if (::ftruncate(m_fd, static_cast<off_t>(m_mappedSize)) < 0) {
-            Proxy::Log::error("[ShmRingBuffer] Failed to ftruncate file '{}' to size {}: {}", m_path, m_mappedSize, std::strerror(errno));
+    if (isNewlyCreated || static_cast<std::size_t>(st.st_size) < totalBytes) {
+        if (::ftruncate(m_fd, static_cast<off_t>(totalBytes)) != 0) {
+            Proxy::Log::error("[ShmRingBuffer] Failed to truncate shared memory file '{}' to {} bytes: {}",
+                m_path, totalBytes, std::strerror(errno));
             ::close(m_fd);
             m_fd = -1;
             return;
         }
     }
 
-    m_mappedMemory = ::mmap(nullptr, m_mappedSize, PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
+    m_mappedMemory = ::mmap(nullptr, totalBytes, PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
     if (m_mappedMemory == MAP_FAILED) {
         Proxy::Log::error("[ShmRingBuffer] Failed to mmap shared memory file '{}': {}", m_path, std::strerror(errno));
         m_mappedMemory = nullptr;
@@ -114,6 +113,11 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
         m_header->slotPayloadSize = static_cast<uint32_t>(MaxPayloadBytes);
         m_header->writeIndex.store(0, std::memory_order_relaxed);
         m_header->readIndex.store(0, std::memory_order_relaxed);
+
+        for (uint32_t i = 0; i < capacity; ++i) {
+            m_slots[i].sequence.store(i, std::memory_order_relaxed);
+            m_slots[i].length = 0;
+        }
 
         ShmSignaler::init(&m_header->notEmptySync);
         ShmSignaler::init(&m_header->notFullSync);
@@ -140,25 +144,31 @@ bool ShmRingBuffer::push(Common::Compat::span<const std::byte> message, bool* wa
         return false;
     }
 
-    uint64_t w = m_header->writeIndex.load(std::memory_order_relaxed);
-    uint64_t r = m_header->readIndex.load(std::memory_order_acquire);
+    const uint32_t mask = m_header->capacity - 1;
+    uint64_t pos = m_header->writeIndex.load(std::memory_order_relaxed);
 
-    if (w - r >= m_header->capacity) {
-        return false;
+    while (true) {
+        ShmSlot& slot = m_slots[pos & mask];
+        const uint64_t seq = slot.sequence.load(std::memory_order_acquire);
+        const int64_t diff = static_cast<int64_t>(seq) - static_cast<int64_t>(pos);
+
+        if (diff == 0) {
+            if (m_header->writeIndex.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+                if (wasEmpty) {
+                    const uint64_t r = m_header->readIndex.load(std::memory_order_relaxed);
+                    *wasEmpty = (pos == r);
+                }
+                slot.length = static_cast<uint32_t>(message.size());
+                std::memcpy(slot.payload, message.data(), message.size());
+                slot.sequence.store(pos + 1, std::memory_order_release);
+                return true;
+            }
+        } else if (diff < 0) {
+            return false;
+        } else {
+            pos = m_header->writeIndex.load(std::memory_order_relaxed);
+        }
     }
-
-    if (wasEmpty) {
-        *wasEmpty = (w == r);
-    }
-
-    uint32_t slotIdx = static_cast<uint32_t>(w & (m_header->capacity - 1));
-    ShmSlot& slot = m_slots[slotIdx];
-
-    slot.length = static_cast<uint32_t>(message.size());
-    std::memcpy(slot.payload, message.data(), message.size());
-
-    m_header->writeIndex.store(w + 1, std::memory_order_release);
-    return true;
 }
 
 std::size_t ShmRingBuffer::pushBatch(Common::Compat::span<const Common::Compat::span<const std::byte>> messages, bool* wasEmpty)
@@ -167,38 +177,18 @@ std::size_t ShmRingBuffer::pushBatch(Common::Compat::span<const Common::Compat::
         return 0;
     }
 
-    uint64_t w = m_header->writeIndex.load(std::memory_order_relaxed);
-    uint64_t r = m_header->readIndex.load(std::memory_order_acquire);
-
-    uint64_t occupied = (w >= r) ? (w - r) : 0;
-    uint64_t available = (m_header->capacity > occupied) ? (m_header->capacity - occupied) : 0;
-    std::size_t toWrite = std::min<std::size_t>(messages.size(), available);
-
-    if (toWrite == 0) {
-        return 0;
-    }
-
-    if (wasEmpty) {
-        *wasEmpty = (w == r);
-    }
-
-    uint32_t mask = m_header->capacity - 1;
-    for (std::size_t i = 0; i < toWrite; ++i) {
-        const auto& msg = messages[i];
-        if (msg.size() > MaxPayloadBytes) {
-            toWrite = i;
+    std::size_t count = 0;
+    for (const auto& msg : messages) {
+        bool slotWasEmpty = false;
+        if (!push(msg, &slotWasEmpty)) {
             break;
         }
-        uint32_t slotIdx = static_cast<uint32_t>((w + i) & mask);
-        ShmSlot& slot = m_slots[slotIdx];
-        slot.length = static_cast<uint32_t>(msg.size());
-        std::memcpy(slot.payload, msg.data(), msg.size());
+        if (count == 0 && wasEmpty) {
+            *wasEmpty = slotWasEmpty;
+        }
+        ++count;
     }
-
-    if (toWrite > 0) {
-        m_header->writeIndex.store(w + toWrite, std::memory_order_release);
-    }
-    return toWrite;
+    return count;
 }
 
 std::size_t ShmRingBuffer::popInto(Common::Compat::span<std::byte> destination, bool* wasFull)
@@ -207,25 +197,31 @@ std::size_t ShmRingBuffer::popInto(Common::Compat::span<std::byte> destination, 
         return 0;
     }
 
-    uint64_t r = m_header->readIndex.load(std::memory_order_relaxed);
-    uint64_t w = m_header->writeIndex.load(std::memory_order_acquire);
+    const uint32_t mask = m_header->capacity - 1;
+    uint64_t pos = m_header->readIndex.load(std::memory_order_relaxed);
 
-    if (r >= w) {
-        return 0;
+    while (true) {
+        ShmSlot& slot = m_slots[pos & mask];
+        const uint64_t seq = slot.sequence.load(std::memory_order_acquire);
+        const int64_t diff = static_cast<int64_t>(seq) - static_cast<int64_t>(pos + 1);
+
+        if (diff == 0) {
+            if (m_header->readIndex.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+                if (wasFull) {
+                    const uint64_t w = m_header->writeIndex.load(std::memory_order_relaxed);
+                    *wasFull = (w - pos >= m_header->capacity);
+                }
+                const std::size_t bytesToCopy = std::min<std::size_t>(slot.length, destination.size());
+                std::memcpy(destination.data(), slot.payload, bytesToCopy);
+                slot.sequence.store(pos + m_header->capacity, std::memory_order_release);
+                return bytesToCopy;
+            }
+        } else if (diff < 0) {
+            return 0;
+        } else {
+            pos = m_header->readIndex.load(std::memory_order_relaxed);
+        }
     }
-
-    if (wasFull) {
-        *wasFull = (w - r >= m_header->capacity);
-    }
-
-    uint32_t slotIdx = static_cast<uint32_t>(r & (m_header->capacity - 1));
-    const ShmSlot& slot = m_slots[slotIdx];
-
-    std::size_t bytesToCopy = std::min<std::size_t>(slot.length, destination.size());
-    std::memcpy(destination.data(), slot.payload, bytesToCopy);
-
-    m_header->readIndex.store(r + 1, std::memory_order_release);
-    return bytesToCopy;
 }
 
 std::size_t ShmRingBuffer::popBatch(
@@ -236,31 +232,20 @@ std::size_t ShmRingBuffer::popBatch(
         return 0;
     }
 
-    uint64_t r = m_header->readIndex.load(std::memory_order_relaxed);
-    uint64_t w = m_header->writeIndex.load(std::memory_order_acquire);
-
-    if (r >= w) {
-        return 0;
+    std::size_t count = 0;
+    for (auto& slot : slots) {
+        bool slotWasFull = false;
+        const std::size_t n = popInto(slot.buffer, &slotWasFull);
+        if (n == 0) {
+            break;
+        }
+        slot.size = n;
+        if (count == 0 && wasFull) {
+            *wasFull = slotWasFull;
+        }
+        ++count;
     }
-
-    if (wasFull) {
-        *wasFull = (w - r >= m_header->capacity);
-    }
-
-    uint64_t ready = w - r;
-    std::size_t toRead = std::min(slots.size(), static_cast<std::size_t>(ready));
-
-    uint32_t mask = m_header->capacity - 1;
-    for (std::size_t i = 0; i < toRead; ++i) {
-        uint32_t slotIdx = static_cast<uint32_t>((r + i) & mask);
-        const ShmSlot& slot = m_slots[slotIdx];
-        std::size_t bytesToCopy = std::min<std::size_t>(slot.length, slots[i].buffer.size());
-        std::memcpy(slots[i].buffer.data(), slot.payload, bytesToCopy);
-        slots[i].size = bytesToCopy;
-    }
-
-    m_header->readIndex.store(r + toRead, std::memory_order_release);
-    return toRead;
+    return count;
 }
 
 std::size_t ShmRingBuffer::size() const noexcept
@@ -268,8 +253,8 @@ std::size_t ShmRingBuffer::size() const noexcept
     if (!isValid()) {
         return 0;
     }
-    uint64_t w = m_header->writeIndex.load(std::memory_order_relaxed);
-    uint64_t r = m_header->readIndex.load(std::memory_order_relaxed);
+    const uint64_t w = m_header->writeIndex.load(std::memory_order_relaxed);
+    const uint64_t r = m_header->readIndex.load(std::memory_order_relaxed);
     return (w >= r) ? static_cast<std::size_t>(w - r) : 0;
 }
 
@@ -291,6 +276,10 @@ void ShmRingBuffer::reset()
     if (isValid()) {
         m_header->writeIndex.store(0, std::memory_order_release);
         m_header->readIndex.store(0, std::memory_order_release);
+        for (uint32_t i = 0; i < m_header->capacity; ++i) {
+            m_slots[i].sequence.store(i, std::memory_order_release);
+            m_slots[i].length = 0;
+        }
     }
 }
 
