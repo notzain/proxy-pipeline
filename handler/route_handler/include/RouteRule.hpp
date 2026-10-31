@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/IOutputChannel.hpp"
-#include "backend/MessageView.hpp"
-#include "backend/ProtocolId.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/message/MessageView.hpp"
+#include "backend/message/ProtocolId.hpp"
 #include "common/memory/ObserverPtr.hpp"
 #include "common/types/Variant.hpp"
 #include <cstdint>

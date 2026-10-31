@@ -3,7 +3,7 @@
 #include "common/types/Variant.hpp"
 #include <utility>
 
-namespace Backend {
+namespace Common::Types {
 
 /**
  * @brief A value-or-error result with mutually exclusive alternatives.
@@ -80,4 +80,4 @@ private:
     Common::Types::Variant<Value, Error> m_storage;
 };
 
-} // namespace Backend
+} // namespace Common::Types

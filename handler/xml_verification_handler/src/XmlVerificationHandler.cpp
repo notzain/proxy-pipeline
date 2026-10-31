@@ -4,7 +4,7 @@
 
 #include "XmlSchemaValidator.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"

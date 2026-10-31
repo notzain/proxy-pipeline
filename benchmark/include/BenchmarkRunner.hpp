@@ -2,7 +2,7 @@
 
 #include "backend/IBackend.hpp"
 #include "backend/IConfig.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include "log/Log.hpp"

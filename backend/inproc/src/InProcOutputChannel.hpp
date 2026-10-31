@@ -1,7 +1,7 @@
 #pragma once
 
 #include "InProcRing.hpp"
-#include "backend/IOutputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
 #include <memory>
 #include <string>
 

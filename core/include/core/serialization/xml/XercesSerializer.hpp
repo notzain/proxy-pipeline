@@ -29,7 +29,7 @@ public:
      * @param options Formatting options (root tag name, indentation, etc.).
      * @return std::string Encoded XML string.
      */
-    static std::string serialize(const T& value, const Options& options = {})
+    static std::string serialize(const T& value, const Options& options = { })
     {
         Ir::Value ir = Ir::toIntermediate(value);
         return XercesFormat::encode(ir, options);
@@ -38,7 +38,7 @@ public:
     /**
      * @brief Functor operator for convenient serializer instances.
      */
-    std::string operator()(const T& value, const Options& options = {}) const
+    std::string operator()(const T& value, const Options& options = { }) const
     {
         return serialize(value, options);
     }
@@ -61,7 +61,7 @@ public:
      * @param options Parsing options (root tag name, etc.).
      * @return std::optional<T> Deserialized object if parsing and mapping succeed, std::nullopt otherwise.
      */
-    static std::optional<T> deserialize(std::string_view input, const Options& options = {})
+    static std::optional<T> deserialize(std::string_view input, const Options& options = { })
     {
         auto ir = XercesFormat::decode(input, options);
         if (!ir) {
@@ -73,7 +73,7 @@ public:
     /**
      * @brief Functor operator for convenient deserializer instances.
      */
-    std::optional<T> operator()(std::string_view input, const Options& options = {}) const
+    std::optional<T> operator()(std::string_view input, const Options& options = { }) const
     {
         return deserialize(input, options);
     }

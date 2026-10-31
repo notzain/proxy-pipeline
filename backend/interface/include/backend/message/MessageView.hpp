@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/Lease.hpp"
-#include "backend/MetadataTraits.hpp"
-#include "backend/ProtocolId.hpp"
+#include "backend/memory/Lease.hpp"
+#include "backend/message/MetadataTraits.hpp"
+#include "backend/message/ProtocolId.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/Borrow.hpp"
 #include "common/memory/ObserverPtr.hpp"

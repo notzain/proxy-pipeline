@@ -1,16 +1,18 @@
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+
 #pragma once
 
-#include "backend/ISocketPoller.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 
 namespace Backend {
 
 /**
- * @brief Standard POSIX poll() based socket poller implementation.
+ * @brief kqueue-based event driver for BSD and macOS systems.
  */
-class PosixSocketPoller : public ISocketPoller {
+class KqueueSocketPoller : public ISocketPoller {
 public:
-    PosixSocketPoller() = default;
-    ~PosixSocketPoller() override = default;
+    KqueueSocketPoller();
+    ~KqueueSocketPoller() override;
 
     BytesResult receive(
         int socketFd,
@@ -22,6 +24,14 @@ public:
         Common::Compat::span<BufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
+
+private:
+    int m_kqueueFd { -1 };
+    int m_registeredSocketFd { -1 };
+
+    bool registerSocket(int socketFd);
 };
 
 } // namespace Backend
+
+#endif // __APPLE__ || BSD

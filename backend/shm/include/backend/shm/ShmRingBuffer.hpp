@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/BufferSlot.hpp"
+#include "backend/memory/BufferSlot.hpp"
 #include "backend/shm/sync/ShmSignaler.hpp"
 #include "common/compat/Span.hpp"
 #include <atomic>

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "backend/MetadataTraits.hpp"
+#include "backend/message/MetadataTraits.hpp"
 #include <cstdint>
 #include <netinet/in.h>
 
-namespace Backend {
+namespace Core::Net {
 
 /**
  * @brief Network transport metadata captured by UDP Ingress and restored at UDP Egress.
@@ -24,8 +24,12 @@ struct alignas(4) UdpMetadata {
 
 static_assert(sizeof(UdpMetadata) == 48, "UdpMetadata must be exactly 48 bytes");
 
+} // namespace Core::Net
+
+namespace Backend {
+
 template <>
-struct MetadataTraits<UdpMetadata> {
+struct MetadataTraits<Core::Net::UdpMetadata> {
     static constexpr bool isRegistered = true;
     static constexpr ProtocolId protocol { static_cast<std::uint8_t>(IPPROTO_UDP) };
 };

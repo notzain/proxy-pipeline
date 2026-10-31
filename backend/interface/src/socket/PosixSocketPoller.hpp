@@ -1,18 +1,16 @@
-#if defined(__linux__)
-
 #pragma once
 
-#include "backend/ISocketPoller.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 
 namespace Backend {
 
 /**
- * @brief io_uring-based high-performance asynchronous poller for Linux.
+ * @brief Standard POSIX poll() based socket poller implementation.
  */
-class IoUringSocketPoller : public ISocketPoller {
+class PosixSocketPoller : public ISocketPoller {
 public:
-    IoUringSocketPoller();
-    ~IoUringSocketPoller() override;
+    PosixSocketPoller() = default;
+    ~PosixSocketPoller() override = default;
 
     BytesResult receive(
         int socketFd,
@@ -24,12 +22,6 @@ public:
         Common::Compat::span<BufferSlot> slots,
         Timeout timeout,
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
-
-private:
-    struct RingImpl;
-    RingImpl* m_impl { nullptr };
 };
 
 } // namespace Backend
-
-#endif // __linux__

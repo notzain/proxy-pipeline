@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/Settlement.hpp"
-#include "backend/SettlementToken.hpp"
+#include "backend/memory/Settlement.hpp"
+#include "backend/memory/SettlementToken.hpp"
 #include "common/memory/ObserverPtr.hpp"
 
 namespace Backend {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/BufferSlot.hpp"
-#include "backend/ReceiveResult.hpp"
+#include "backend/channel/ReceiveResult.hpp"
+#include "backend/memory/BufferSlot.hpp"
 #include "common/compat/Span.hpp"
 #include <chrono>
 #include <cstddef>

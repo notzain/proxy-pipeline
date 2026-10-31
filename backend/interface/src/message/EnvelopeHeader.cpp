@@ -1,4 +1,4 @@
-#include "backend/EnvelopeHeader.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
 
 namespace Backend {

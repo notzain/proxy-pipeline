@@ -1,18 +1,18 @@
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#if defined(__linux__)
 
 #pragma once
 
-#include "backend/ISocketPoller.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 
 namespace Backend {
 
 /**
- * @brief kqueue-based event driver for BSD and macOS systems.
+ * @brief io_uring-based high-performance asynchronous poller for Linux.
  */
-class KqueueSocketPoller : public ISocketPoller {
+class IoUringSocketPoller : public ISocketPoller {
 public:
-    KqueueSocketPoller();
-    ~KqueueSocketPoller() override;
+    IoUringSocketPoller();
+    ~IoUringSocketPoller() override;
 
     BytesResult receive(
         int socketFd,
@@ -26,12 +26,10 @@ public:
         Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
 
 private:
-    int m_kqueueFd { -1 };
-    int m_registeredSocketFd { -1 };
-
-    bool registerSocket(int socketFd);
+    struct RingImpl;
+    RingImpl* m_impl { nullptr };
 };
 
 } // namespace Backend
 
-#endif // __APPLE__ || BSD
+#endif // __linux__

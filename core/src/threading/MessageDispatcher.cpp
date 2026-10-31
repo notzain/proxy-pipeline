@@ -1,5 +1,5 @@
 #include "MessageDispatcher.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/ParallelArray.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"

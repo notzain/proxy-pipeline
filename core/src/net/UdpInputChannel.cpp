@@ -1,9 +1,9 @@
 #include "core/net/UdpInputChannel.hpp"
-#include "backend/EnvelopeHeader.hpp"
-#include "backend/ISocketPoller.hpp"
-#include "backend/SocketAddress.hpp"
-#include "backend/UdpMetadata.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
+#include "backend/socket/ISocketPoller.hpp"
+#include "backend/socket/SocketAddress.hpp"
 #include "common/io/WireFormat.hpp"
+#include "core/net/UdpMetadata.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -20,7 +20,7 @@ namespace Core::Net {
 
 namespace {
 
-    constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Backend::UdpMetadata);
+    constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Core::Net::UdpMetadata);
 
     /**
      * @brief Writes the 18-byte envelope header and UdpMetadata preamble into destination.
@@ -40,11 +40,11 @@ namespace {
     {
         Backend::writeEnvelopeHeader(
             destination,
-            Backend::MetadataTraits<Backend::UdpMetadata>::protocol,
-            static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)),
+            Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol,
+            static_cast<std::uint16_t>(sizeof(Core::Net::UdpMetadata)),
             static_cast<std::uint32_t>(payloadSize));
 
-        Backend::UdpMetadata meta { };
+        Core::Net::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();
         meta.dstPort = boundAddr.portNet();
         if (clientAddr.family() == Backend::AddressFamily::Ipv6) {
@@ -60,7 +60,7 @@ namespace {
             meta.dstIp = boundAddr.ipv4Net();
         }
 
-        std::memcpy(destination.data() + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Backend::UdpMetadata));
+        std::memcpy(destination.data() + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Core::Net::UdpMetadata));
     }
 
 } // namespace

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
-#include "backend/ISocketPoller.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>

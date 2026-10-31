@@ -1,12 +1,12 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/IInputChannel.hpp"
-#include "backend/IOutputChannel.hpp"
-#include "backend/MessageView.hpp"
-#include "backend/ProtocolId.hpp"
-#include "backend/UdpMetadata.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/message/MessageView.hpp"
+#include "backend/message/ProtocolId.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/net/UdpMetadata.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include <arpa/inet.h>
 #include <catch2/catch_test_macros.hpp>
@@ -160,7 +160,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         portRule.bindTargetChannel(portPtr);
         portRouter.addRule(std::move(portRule));
 
-        Backend::UdpMetadata meta;
+        Core::Net::UdpMetadata meta;
         meta.srcPort = htons(9050);
         meta.dstPort = htons(8080);
         meta.srcIp = inet_addr("127.0.0.1");

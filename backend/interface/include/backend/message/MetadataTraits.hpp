@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/ProtocolId.hpp"
+#include "backend/message/ProtocolId.hpp"
 
 namespace Backend {
 
@@ -16,4 +16,3 @@ struct MetadataTraits {
 };
 
 } // namespace Backend
-

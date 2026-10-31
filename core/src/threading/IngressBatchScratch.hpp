@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/BufferSlot.hpp"
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/memory/BufferSlot.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/BufferPool.hpp"
 #include "common/memory/BufferSlice.hpp"

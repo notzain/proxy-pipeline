@@ -81,10 +81,10 @@ Channel creation uses the backend injected into the base class (`backend()`):
 
 ```cpp
 #include "FilterHandler.hpp"
-#include "backend/IBackend.hpp"
+#include "backend/core/IBackend.hpp"
 #include "core/config/Configuration.hpp"
-#include "backend/MessageResult.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageResult.hpp"
+#include "backend/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 
@@ -152,8 +152,7 @@ In `test/TestFilterHandler.cpp`:
 #include <catch2/catch_test_macros.hpp>
 #include "handler/filter_handler/include/FilterHandler.hpp"
 #include "core/simulation/SimulationBackend.hpp"
-#include "backend/MessageEnvelope.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 
 TEST_CASE("FilterHandler drops forbidden messages and forwards valid ones", "[handler][filter]")
 {

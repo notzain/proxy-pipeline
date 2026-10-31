@@ -1,5 +1,5 @@
 #include "PosixSocketPoller.hpp"
-#include "backend/ISocketPoller.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 #include "KqueueSocketPoller.hpp"

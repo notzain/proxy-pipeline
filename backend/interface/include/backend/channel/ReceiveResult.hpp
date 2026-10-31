@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/Result.hpp"
+#include "common/types/Result.hpp"
 #include "common/types/Variant.hpp"
 #include <cstddef>
 #include <string>
@@ -23,8 +23,8 @@ struct ReceiveBatchFailure {
     ReceiveError cause;
 };
 
-using BytesResult = Result<std::size_t, ReceiveError>;
-using BatchResult = Result<std::size_t, ReceiveBatchFailure>;
+using BytesResult = Common::Types::Result<std::size_t, ReceiveError>;
+using BatchResult = Common::Types::Result<std::size_t, ReceiveBatchFailure>;
 
 [[nodiscard]] inline ReceiveError receiveTimeout()
 {

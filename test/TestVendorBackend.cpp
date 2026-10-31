@@ -1,5 +1,5 @@
-#include "backend/MessageResult.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageResult.hpp"
+#include "backend/message/MessageView.hpp"
 #include "backend/vendor/VendorBackend.hpp"
 #include "backend/vendor/VendorInputChannel.hpp"
 #include "backend/vendor/VendorOutputChannel.hpp"

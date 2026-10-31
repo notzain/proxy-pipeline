@@ -1,5 +1,5 @@
 #include "OrderValidationHandler.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
 #include "core/simulation/SimulationBackend.hpp"

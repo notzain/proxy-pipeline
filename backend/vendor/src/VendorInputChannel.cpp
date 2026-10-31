@@ -1,6 +1,6 @@
 #include "backend/vendor/VendorInputChannel.hpp"
 #include "VendorRelayNode.hpp"
-#include "backend/SettlementToken.hpp"
+#include "backend/memory/SettlementToken.hpp"
 #include "backend/vendor/VendorBackend.hpp"
 #include "common/io/MappedFile.hpp"
 #include "log/Log.hpp"

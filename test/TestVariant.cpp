@@ -130,4 +130,3 @@ TEST_CASE("Common::Types::Variant pattern matching via match()", "[common][types
         CHECK(v.index() == 0);
     }
 }
-

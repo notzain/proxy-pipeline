@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/ProtocolId.hpp"
+#include "backend/message/ProtocolId.hpp"
 #include "common/compat/Span.hpp"
 #include "common/compat/Time.hpp"
 #include <cstddef>

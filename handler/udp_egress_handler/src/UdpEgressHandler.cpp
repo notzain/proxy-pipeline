@@ -1,10 +1,10 @@
 #include "UdpEgressHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/IInputChannel.hpp"
-#include "backend/MessageView.hpp"
-#include "backend/UdpMetadata.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/net/UdpMetadata.hpp"
 #include "core/net/UdpOutputChannel.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -56,7 +56,7 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
     auto payload = message.payload();
 
     if (m_replyToOrigin) {
-        const auto meta = message.getMetadata<Backend::UdpMetadata>();
+        const auto meta = message.getMetadata<Core::Net::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
             const auto originAddr = (meta->addressFamily == 6)
                 ? ::Backend::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)

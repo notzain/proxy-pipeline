@@ -1,6 +1,6 @@
-#include "backend/IOutputChannel.hpp"
-#include "backend/EnvelopeHeader.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include <array>
 #include <utility>

@@ -20,4 +20,3 @@ UtcTimePoint fromEpochNs(std::uint64_t ns) noexcept
 }
 
 } // namespace Common::Compat
-

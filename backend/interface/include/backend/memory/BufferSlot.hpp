@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/Lease.hpp"
-#include "backend/PayloadFormat.hpp"
+#include "backend/memory/Lease.hpp"
+#include "backend/message/PayloadFormat.hpp"
 #include "common/compat/Span.hpp"
 #include <cstddef>
 

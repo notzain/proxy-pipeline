@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include <filesystem>
 
 namespace Proxy::Backend::File {

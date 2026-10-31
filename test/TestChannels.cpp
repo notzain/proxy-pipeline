@@ -1,6 +1,6 @@
-#include "backend/EnvelopeHeader.hpp"
-#include "backend/ISocketPoller.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
+#include "backend/message/MessageView.hpp"
+#include "backend/socket/ISocketPoller.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
@@ -147,10 +147,10 @@ TEST_CASE("Input channel receive results distinguish data, timeout, closure, and
 {
     std::array<std::byte, 8> buffer { };
 
-    auto successfulResult = Backend::Result<int, std::string>::success(42);
+    auto successfulResult = Common::Types::Result<int, std::string>::success(42);
     REQUIRE(successfulResult.hasValue());
     CHECK(successfulResult.value() == 42);
-    auto failedResult = Backend::Result<int, std::string>::failure("failure");
+    auto failedResult = Common::Types::Result<int, std::string>::failure("failure");
     REQUIRE_FALSE(failedResult.hasValue());
     CHECK(failedResult.error() == "failure");
 

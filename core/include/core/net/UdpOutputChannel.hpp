@@ -1,7 +1,7 @@
 #pragma once
 
-#include "backend/IOutputChannel.hpp"
-#include "backend/SocketAddress.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/socket/SocketAddress.hpp"
 #include "common/compat/Span.hpp"
 #include "common/io/UniqueFd.hpp"
 #include <cstddef>

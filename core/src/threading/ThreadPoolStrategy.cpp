@@ -2,7 +2,7 @@
 #include "IngressBatchScratch.hpp"
 #include "MessageDispatcher.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/ParallelArray.hpp"

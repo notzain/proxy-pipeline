@@ -1,6 +1,6 @@
 #include "RouteHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/ProtocolId.hpp"
+#include "backend/message/ProtocolId.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
 #include <charconv>

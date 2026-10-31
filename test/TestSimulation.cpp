@@ -1,4 +1,4 @@
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/HandlerRunner.hpp"

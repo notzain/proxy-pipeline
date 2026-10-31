@@ -1,7 +1,7 @@
 #pragma once
 
 #include "InProcRing.hpp"
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include <memory>
 #include <string>
 

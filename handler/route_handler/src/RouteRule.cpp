@@ -1,6 +1,6 @@
 #include "RouteRule.hpp"
-#include "backend/UdpMetadata.hpp"
 #include "common/compat/StringView.hpp"
+#include "core/net/UdpMetadata.hpp"
 #include <arpa/inet.h>
 #include <cstring>
 #include <string_view>
@@ -48,7 +48,7 @@ namespace {
 
         bool operator()(const MatchCriteria::ClientPort& c) const noexcept
         {
-            const auto udpMeta = message.getMetadata<Backend::UdpMetadata>();
+            const auto udpMeta = message.getMetadata<Core::Net::UdpMetadata>();
             if (!udpMeta) {
                 return false;
             }

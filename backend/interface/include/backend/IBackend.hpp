@@ -1,9 +1,9 @@
 #pragma once
 
 #include "backend/IConfig.hpp"
-#include "backend/IInputChannel.hpp"
-#include "backend/IOutputChannel.hpp"
-#include "backend/MessageResult.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/message/MessageResult.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/BufferPool.hpp"
 #include <cstddef>
