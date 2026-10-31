@@ -19,16 +19,13 @@ An encoded `MessageEnvelope` on the wire consists of three contiguous segments:
 
 ```
 +-------------------------------------------------------------------------------+
-| EnvelopeHeader (Fixed 32 bytes)                                                |
-|   Magic: uint32_t (0x50525859 - 'PRXY')                                       |
-|   Version: uint16_t (Current = 1)                                             |
-|   Flags: uint16_t (Bit 0: HasMetadata, Bit 1: IsBatch, etc.)                  |
-|   ProtocolId: uint32_t (Raw, XML, JSON, ITCH, OUCH, FIX)                       |
+| EnvelopeHeader (Fixed 18 bytes, Big-Endian)                                   |
+|   Magic: uint16_t (0x5058 - 'PX')                                             |
+|   Version: uint8_t (Current = 1)                                              |
+|   ProtocolId: uint8_t (Common::Types::StrongType<uint8_t, ProtocolIdTag>)     |
+|   MetadataLength: uint16_t (Size of metadata section in bytes)                |
 |   PayloadLength: uint32_t (Size of payload in bytes)                          |
-|   MetadataLength: uint32_t (Size of metadata section in bytes)                |
 |   TimestampNs: uint64_t (Unix epoch ingress timestamp in nanoseconds)         |
-|   PayloadCrc32: uint32_t (CRC32-C integrity checksum of payload)              |
-|   Reserved: uint32_t (Alignment padding)                                      |
 +-------------------------------------------------------------------------------+
 | Metadata Block (Variable size, indicated by MetadataLength)                   |
 |   e.g. UdpMetadata: IPv4/IPv6 source address, source port, destination port   |
@@ -62,14 +59,15 @@ sequenceDiagram
 1. **Ingress Ingestion**:
    - `UdpIngressHandler` receives a datagram from a client socket.
    - It captures the sender's `SocketAddress` and packs it into `UdpMetadata`.
-   - It constructs a `MessageEnvelope` with `ProtocolId::Xml` (or raw/configured protocol) and sends it downstream.
-2. **Intermediate Pipeline Invariance**:
+   - It constructs a `MessageEnvelope` (with `MetadataTraits<UdpMetadata>::protocol` = 17 / `IPPROTO_UDP`) and sends it downstream.
+2. **Intermediate Pipeline Invariance & Payload Mutation**:
    - Validation handlers (e.g. `XmlVerificationHandler`) unpack the envelope into a non-owning `MessageView`.
    - Business logic inspects `messageView.payload()`.
-   - When forwarding valid messages, handlers invoke `m_outputChannel->send(messageView.rawBytes())`, passing the entire envelope with metadata unchanged.
+   - If payload transformation is needed, `view.withPayload(newPayload)` generates a non-allocating rebound `MessageView` preserving protocol and metadata, which `IOutputChannel` frames on egress.
+   - When forwarding valid messages, handlers invoke `m_outputChannel->send(messageView)`, passing the entire envelope with metadata unchanged.
 3. **Egress Dispatch**:
-   - `UdpEgressHandler` checks `envelope.header().hasMetadata()`.
-   - It deserializes `UdpMetadata`, recovers the destination IP and port, and transmits the response payload back to the client.
+   - `UdpEgressHandler` queries `message.getMetadata<UdpMetadata>()`.
+   - It recovers the destination IP and port, and transmits the response payload back to the client via `m_udpOut->sendTo()`. In forward mode, `UdpEgressHandler::onBatchReceived()` vectorizes payloads using `SmallSpanBuffer` and `sendBatch()`.
 
 ---
 
@@ -79,7 +77,8 @@ sequenceDiagram
    - Header, metadata, and payload reside in a single contiguous byte span. This eliminates vector-write allocations (`writev`) and allows writing entire envelopes directly into shared memory slots (`ShmSlot`) or ring buffers with a single `memcpy`.
 2. **Non-Owning `MessageView`**:
    - When receiving a message, handlers receive a `MessageView` that points directly into the channel's receive buffer without heap allocation.
-   - Accessors (`view.payload()`, `view.metadata()`, `view.header()`) return lightweight `Common::Compat::span<const std::byte>` slices.
-3. **Hardware CRC32-C Checksum**:
-   - The header stores a CRC32-C checksum calculated over the payload. On modern x86 and ARM CPUs, this uses hardware acceleration instructions (`CRC32` / `__builtin_ia32_crc32`), verifying data integrity at wire speed.
+   - Accessors (`view.payload()`, `view.metadata()`, `view.rawBuffer()`) return lightweight `Common::Compat::span<const std::byte>` slices.
+   - Strongly-typed metadata is accessed via `view.getMetadata<T>()` through traits (`MetadataTraits<T>`) using alignment-safe copies.
+3. **Open Protocol Identification**:
+   - Replaced fixed enum identifiers with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` aligned with standard IANA 8-bit protocol numbers (e.g. `IPPROTO_UDP` = 17, `RawProtocol` = 0) and `MetadataTraits<T>`, allowing custom applications to declare protocol types without central changes.
 

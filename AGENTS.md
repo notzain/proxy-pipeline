@@ -88,7 +88,7 @@ Guidelines and conventions for AI agents and developers working on this project.
   - After touching a header or source file, remove any unused includes from that file.
   - **Memory & Type Abstractions (`Common::Memory`, `Common::Compat`, `Common::Types`)**:
     - Avoid exposing raw pointers (`T*`) for non-owning nullable or non-nullable references across API boundaries and method return signatures.
-    - Use `Common::Memory::ObserverPtr<T>` instead of raw `T*` for non-owning, nullable pointers (e.g. `leaseState()`, `state()`).
+    - Use `Common::Memory::ObserverPtr<T>` instead of raw `T*` for non-owning, nullable pointers (e.g. `token()`, `bufferPool()`).
     - Use `Common::Memory::Borrow<T>` or `Common::Memory::NotNull<T*>` for rebindable non-owning references and non-null guarantees.
     - Use `Common::Compat::span<T>` instead of pointer + length pairs.
     - Leverage `Common::Types` (e.g. `Variant`) and `Common::Memory` primitives (e.g. `ParallelArray`, `BufferSlice`) instead of bespoke ad-hoc structures.
@@ -253,12 +253,17 @@ they must be included in source files(`.cpp`) only.
 
 ## 11. Documentation Architecture & Standards (`docs/`)
 
-The `docs/` tree is divided into two distinct subdirectories:
-- **`docs/architecture/`**: System-wide architectural specifications, high-level design principles, foundational layer definitions, and overarching technical decisions.
-- **`docs/features/`**: Specific feature specifications, task tracking, and implementation records for one-off features, refactors, or fixes.
+The `docs/` tree is divided into two distinct subdirectories with strict evolutionary rules:
+- **`docs/architecture/` (Living System Specifications)**:
+  - System-wide architectural specifications, high-level design principles, foundational layer definitions, and overarching technical decisions.
+  - **In-Place Evolution**: Architectural guides and system specifications **must be updated in place** as the application evolves so they always reflect the authoritative current state of the codebase.
+- **`docs/features/` (Chronological Feature & Migration History)**:
+  - Chronological records of discrete feature implementations, migrations, refactors, and architectural fixes.
+  - **Immutability of Historical Feature Records**: **Never edit older feature documents to reflect subsequent changes**. The purpose of `docs/features/` is to preserve a historical and chronological record of how the system evolved step-by-step.
+  - When changes, refactors, or fixes are made to an existing area or feature, **always create a new chronological feature document** (e.g. `docs/features/<subsystem>/<NNN-feature-name>.md`) detailing the motivation, architecture, design decisions, and checklist for the new change, cross-referencing previous documents if helpful.
 
 ### Feature Documentation Rules (`docs/features/`)
-- Whenever adding new features or making substantial changes to an existing feature, create/update a dedicated markdown file in `docs/features/` named after the feature (e.g. `docs/features/<feature-name>.md`).
+- Whenever adding new features, non-trivial modifications, or refactoring existing pipelines, create a new numbered markdown file in `docs/features/` (e.g. `docs/features/message/015-message-pipeline-review-and-settlement-unification.md`).
 - **Required Structure & Detail Level**:
   - **Overview & Problem Statement**: Detailed high-level overview explaining **why** the feature is needed and the specific problems it solves.
   - **Architecture & How It Works**: Detailed explanation of **how** the system/feature works under the hood, illustrated with clear diagrams (using **Mermaid** or PlantUML).
