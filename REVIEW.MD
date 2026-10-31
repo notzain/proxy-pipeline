@@ -51,8 +51,8 @@ This document captures the architectural review of the message pipeline—from `
 - If `IHandler::processBatch()` can be called directly by unit tests with non-attached leases, attach leases in-place or ensure `MessageDispatcher` is the single place that binds `Lease` to `MessageView`.
 
 #### Checklist
-- [ ] Remove the redundant `leasedMessages` copy in `core/src/handler/IHandler.cpp`.
-- [ ] Verify all unit tests calling `processBatch()` directly pass with `MessageView` lease binding.
+- [x] Remove the redundant `leasedMessages` copy in `core/src/handler/IHandler.cpp`.
+- [x] Verify all unit tests calling `processBatch()` directly pass with `MessageView` lease binding.
 
 ---
 

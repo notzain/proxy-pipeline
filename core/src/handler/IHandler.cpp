@@ -6,7 +6,6 @@
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <stdexcept>
 
@@ -76,18 +75,7 @@ void IHandler::processBatch(
     Common::Memory::SmallSpanBuffer<::Backend::MessageResult, 64> resultsBuffer(messages.size());
     auto resultsSpan = resultsBuffer.span(messages.size());
     const auto settleCount = std::min(leases.size(), messages.size());
-    if (settleCount > 0) {
-        std::array<Backend::MessageView, 64> leasedMessages;
-        for (std::size_t i = 0; i < messages.size(); ++i) {
-            leasedMessages[i] = messages[i];
-            if (i < settleCount) {
-                leasedMessages[i].attachLease(leases[i]);
-            }
-        }
-        onBatchReceived(channelName, Common::Compat::span<const Backend::MessageView>(leasedMessages.data(), messages.size()), resultsSpan);
-    } else {
-        onBatchReceived(channelName, messages, resultsSpan);
-    }
+    onBatchReceived(channelName, messages, resultsSpan);
 
     if (m_backend.tracksMessageResults()) {
         for (std::size_t i = 0; i < messages.size(); ++i) {
