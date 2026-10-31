@@ -396,10 +396,10 @@ int main(int argc, char* argv[])
         std::ofstream confFile("/tmp/bench_shm.conf");
         confFile << "channel.shm_raw.path=/tmp/bench_shm_raw.dat\n";
         confFile << "channel.shm_raw.dest_path=/tmp/bench_shm_raw.dat\n";
-        confFile << "channel.shm_raw.capacity=4096\n";
+        confFile << "channel.shm_raw.capacity=16384\n";
         confFile << "channel.shm_verified.path=/tmp/bench_shm_verified.dat\n";
         confFile << "channel.shm_verified.dest_path=/tmp/bench_shm_verified.dat\n";
-        confFile << "channel.shm_verified.capacity=4096\n";
+        confFile << "channel.shm_verified.capacity=16384\n";
         confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
         confFile << "xml.input_channel=shm_raw\n";
         confFile << "xml.output_channel=shm_verified\n";
