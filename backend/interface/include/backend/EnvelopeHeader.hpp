@@ -1,6 +1,8 @@
 #pragma once
 
 #include "backend/ProtocolId.hpp"
+#include "common/compat/Span.hpp"
+#include <cstddef>
 #include <cstdint>
 
 namespace Backend {
@@ -23,5 +25,22 @@ struct EnvelopeHeader {
 #pragma pack(pop)
 
 static_assert(sizeof(EnvelopeHeader) == 18, "EnvelopeHeader must be exactly 18 bytes packed");
+
+/**
+ * @brief Serializes the standard 18-byte big-endian envelope header into @p destination.
+ *
+ * @param destination Target memory span. Must be at least sizeof(EnvelopeHeader) (18 bytes).
+ * @param protocol Transport protocol identifier.
+ * @param metadataLength Length of the metadata section in bytes.
+ * @param payloadLength Length of the application payload in bytes.
+ * @param timestampNs Ingress timestamp in nanoseconds since UNIX epoch.
+ * @return std::size_t Number of bytes written (18), or 0 if destination is too small.
+ */
+std::size_t writeEnvelopeHeader(
+    Common::Compat::span<std::byte> destination,
+    ProtocolId protocol,
+    std::uint16_t metadataLength,
+    std::uint32_t payloadLength,
+    std::uint64_t timestampNs) noexcept;
 
 } // namespace Backend

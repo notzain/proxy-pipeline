@@ -1,6 +1,7 @@
 #include "backend/sim/SimBackend.hpp"
 #include "SimInputChannel.hpp"
 #include "SimOutputChannel.hpp"
+#include "backend/MessageView.hpp"
 #include "log/ConsoleLogSink.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -17,6 +18,13 @@
 
 namespace {
 
+/**
+ * @brief Escapes non-printable and special JSON characters within an input string view.
+ *
+ * @param input Raw string view to escape.
+ * @param maxLen Maximum number of characters to process from input.
+ * @return std::string Escaped string suitable for embedding into JSON text.
+ */
 std::string escapeJsonString(std::string_view input, std::size_t maxLen)
 {
     std::size_t limit = std::min(input.size(), maxLen);
@@ -118,30 +126,9 @@ void SimBackend::onMessageResult(
     Common::Compat::span<const std::byte> appPayload = rawMessage;
     std::uint64_t msgTimestampNs = 0;
 
-    if (rawMessage.size() >= 18) {
-        std::uint16_t magic = (static_cast<std::uint8_t>(rawMessage[0]) << 8) | static_cast<std::uint8_t>(rawMessage[1]);
-        if (magic == 0x5058) {
-            std::uint16_t metaLen = (static_cast<std::uint8_t>(rawMessage[4]) << 8)
-                | static_cast<std::uint8_t>(rawMessage[5]);
-            std::uint32_t payloadLen = (static_cast<std::uint8_t>(rawMessage[6]) << 24)
-                | (static_cast<std::uint8_t>(rawMessage[7]) << 16)
-                | (static_cast<std::uint8_t>(rawMessage[8]) << 8)
-                | static_cast<std::uint8_t>(rawMessage[9]);
-            msgTimestampNs = (static_cast<std::uint64_t>(rawMessage[10]) << 56)
-                | (static_cast<std::uint64_t>(rawMessage[11]) << 48)
-                | (static_cast<std::uint64_t>(rawMessage[12]) << 40)
-                | (static_cast<std::uint64_t>(rawMessage[13]) << 32)
-                | (static_cast<std::uint64_t>(rawMessage[14]) << 24)
-                | (static_cast<std::uint64_t>(rawMessage[15]) << 16)
-                | (static_cast<std::uint64_t>(rawMessage[16]) << 8)
-                | static_cast<std::uint64_t>(rawMessage[17]);
-
-            std::size_t offset = 18 + metaLen;
-            if (offset <= rawMessage.size()) {
-                std::size_t avail = std::min(static_cast<std::size_t>(payloadLen), rawMessage.size() - offset);
-                appPayload = rawMessage.subspan(offset, avail);
-            }
-        }
+    if (auto optView = ::Backend::MessageView::from(rawMessage)) {
+        appPayload = optView->payload();
+        msgTimestampNs = optView->timestampNs();
     }
 
     std::string_view payloadView(reinterpret_cast<const char*>(appPayload.data()), appPayload.size());

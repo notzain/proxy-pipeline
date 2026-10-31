@@ -8,6 +8,9 @@ namespace Backend {
 
 namespace {
 
+    /**
+     * @brief Retrieves current system time in nanoseconds since UNIX epoch.
+     */
     std::uint64_t getCurrentTimeNs()
     {
         return static_cast<std::uint64_t>(
@@ -30,16 +33,15 @@ std::size_t MessageView::packInto(
         return 0;
     }
 
-    std::byte* dst = destination.data();
-    Common::IO::Wire::writeUint16Be(dst, EnvelopeMagic);
-    dst[2] = static_cast<std::byte>(EnvelopeVersion);
-    dst[3] = static_cast<std::byte>(protocol.value());
-    Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
-    Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
-
     std::uint64_t ts = (timestampNs != 0) ? timestampNs : getCurrentTimeNs();
-    Common::IO::Wire::writeUint64Be(dst + 10, ts);
+    writeEnvelopeHeader(
+        destination,
+        protocol,
+        static_cast<std::uint16_t>(metadata.size()),
+        static_cast<std::uint32_t>(payload.size()),
+        ts);
 
+    std::byte* dst = destination.data();
     if (!metadata.empty()) {
         std::memcpy(dst + sizeof(EnvelopeHeader), metadata.data(), metadata.size());
     }

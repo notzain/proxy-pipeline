@@ -1,50 +1,61 @@
-# Architectural & Implementation TODOs (`MessageEnvelope` & `MessageView`)
+# Architectural & Implementation TODOs (`MessageView` & Wire Envelope Pipeline)
 
-Tracked follow-up improvements identified during the `Backend::MessageEnvelope` and `Backend::MessageView` architecture review.
+Tracked follow-up improvements and architectural findings for `Backend::MessageView`, wire framing, and message lifecycle management.
 
 ---
 
 ## 1. Fix Unaligned Memory Access UB in `MessageView::getMetadata<T>()`
-- **Problem**: `EnvelopeHeader` is 18 bytes (`sizeof(EnvelopeHeader) == 18`), so `m_metadata.data()` (`buffer.data() + 18`) is only 2-byte aligned even when `buffer.data()` is 8- or 16-byte aligned. Calling `reinterpret_cast<const T*>(m_metadata.data())` in `MessageView::getMetadata<T>()` for types with `alignof(T) > 2` (such as `UdpMetadata`, which is `alignas(4)`, or any 8-byte aligned metadata struct) is undefined behavior under C++ alignment rules.
+- **Status**: **RESOLVED** (Commit `4f8b2b8`, Feature `015`)
+- **Resolution**: `MessageView::getMetadata<T>()` returns `std::optional<T>` by value using `std::memcpy(&out, m_metadata.data(), sizeof(T))` rather than `reinterpret_cast<const T*>`. It enforces `static_assert(std::is_trivially_copyable_v<T>)`, eliminating undefined behavior from unaligned accesses.
 - **Tasks**:
-  - [ ] Pad `EnvelopeHeader` to 24 bytes (8-byte multiple) in `backend/interface/include/backend/EnvelopeHeader.hpp` or return `std::optional<T>` by value via `std::memcpy` in `MessageView::getMetadata<T>()`.
-  - [ ] Add `static_assert` alignment checks in `MessageView::getMetadata<T>()`.
+  - [x] Return `std::optional<T>` by value via `std::memcpy` in `MessageView::getMetadata<T>()`.
+  - [x] Enforce compile-time trivially copyable constraints on metadata types.
 
 ## 2. Enforce Protocol Type-Safety in `MessageView::getMetadata<T>()`
-- **Problem**: `MessageView::getMetadata<T>()` only checks `m_metadata.size() >= sizeof(T)` without verifying that `m_protocol` matches the expected `ProtocolId` for `T`.
+- **Status**: **RESOLVED** (Commit `4f8b2b8`, Feature `015`)
+- **Resolution**: Introduced `Backend::MetadataTraits<T>` extension point and replaced the closed `ProtocolId` enum with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>`. `MessageView::getMetadata<T>()` explicitly asserts `MetadataTraits<T>::isRegistered` and verifies `m_protocol == MetadataTraits<T>::protocol && m_metadata.size() >= sizeof(T)`.
 - **Tasks**:
-  - [ ] Introduce a `MetadataTraits<T>` specialization mapping each metadata struct (e.g. `UdpMetadata -> ProtocolId::Udp`) to its authoritative `ProtocolId`.
-  - [ ] Update `MessageView::getMetadata<T>()` to verify `m_protocol == MetadataTraits<T>::protocol && m_metadata.size() == sizeof(T)`.
+  - [x] Introduce `MetadataTraits<T>` specialization mapping each metadata struct (e.g. `UdpMetadata -> ProtocolId::Udp` / `17`) to its authoritative `ProtocolId`.
+  - [x] Update `MessageView::getMetadata<T>()` to verify `m_protocol == MetadataTraits<T>::protocol` and validate metadata length.
 
 ## 3. Deduplicate Manual Binary Header Offsets Across Channels
-- **Problem**: `EnvelopeHeader` is declared as a `#pragma pack(push, 1)` struct, but raw byte offsets (`dst + 4`, `dst + 6`, `dst + 10`) are manually duplicated across:
-  - `backend/interface/src/MessageEnvelope.cpp` (`MessageEnvelope::packInto()`)
-  - `backend/interface/src/MessageView.cpp` (`MessageView::from()`)
-  - `core/src/net/UdpInputChannel.cpp` (`writeEnvelopePreamble()`)
-  - `backend/sim/src/SimInputChannel.cpp` (`SimInputChannel::emitEvent()`)
+- **Status**: **RESOLVED** (Feature `016`)
+- **Resolution**: Added authoritative `Backend::writeEnvelopeHeader()` in `backend/interface/include/backend/EnvelopeHeader.hpp` and `backend/interface/src/EnvelopeHeader.cpp`. Replaced duplicate preamble serialization in `MessageView::packInto()` and `Core::Net::UdpInputChannel::writeEnvelopePreamble()`. Replaced manual header offset unpacks in `SimInputChannel::emitEvent()`, `SimOutputChannel::emitEvent()`, and `SimBackend::recordTrace()` with `MessageView::from()`.
 - **Tasks**:
-  - [ ] Add a single authoritative `MessageEnvelope::writeHeader()` helper in `backend/interface` and use it in both `MessageEnvelope::packInto()` and `UdpInputChannel`.
-  - [ ] Replace manual header byte parsing in `SimInputChannel::emitEvent()` with `MessageView::from()`.
+  - [x] Add an authoritative `writeEnvelopeHeader` helper in `backend/interface` and use it in `MessageView::packInto()` and `UdpInputChannel::writeEnvelopePreamble()`.
+  - [x] Replace manual header byte parsing in `SimInputChannel::emitEvent()`, `SimOutputChannel::emitEvent()`, and `SimBackend::recordTrace()` with `MessageView::from()`.
+  - [x] Add unit test coverage for `writeEnvelopeHeader`.
 
 ## 4. Clarify Wire Envelope vs. External Boundary Framing
-- **Problem**: `MessageDispatcher::dispatchReceivedBatch()` requires every `IInputChannel` to emit `0x5058` (`PX`) enveloped frames, forcing external boundary channels (`VendorInputChannel` / `VendorOutputChannel`) to wrap payloads into a `PX` envelope on ingress and strip the `PX` envelope on egress. Meanwhile, `MessageView` exposes a public constructor taking a raw un-enveloped payload where `rawBuffer()` is not a valid `PX` envelope, which breaks downstream forwarding if used.
+- **Status**: **RESOLVED** (Commits `46fcc61`, `66f676a`, `cb1141d`, Feature `015`)
+- **Resolution**:
+  - Added `Backend::PayloadFormat` enum (`PayloadFormat::Enveloped` vs `PayloadFormat::Raw`) to `BufferSlot`. Boundary channels (e.g. `VendorInputChannel`) emit `PayloadFormat::Raw`, while standard channels emit `PayloadFormat::Enveloped`.
+  - `MessageDispatcher::dispatchReceivedBatch()` checks `slot.format == PayloadFormat::Raw` and instantiates `MessageView(rawMessage)` directly without running envelope validation, completely preventing boundary drops or misclassifications.
+  - Added `MessageView::withPayload()` and `MessageView::hasWireEnvelope()`. `IOutputChannel::send(const MessageView&)` automatically detects whether a view carries a wire envelope; if raw or rebound, it frames the wire envelope on the stack (when `<= 4096` bytes) or transmits directly.
 - **Tasks**:
-  - [ ] Remove or restrict the raw-payload `MessageView(span<const byte> payload, ...)` constructor in `backend/interface/include/backend/MessageView.hpp` so `MessageView::rawBuffer()` is always guaranteed to be a valid `PX` envelope.
-  - [ ] Evaluate whether boundary channels should frame via `MessageEnvelope::packInto()` or whether `BufferSlot` / `MessageDispatcher` should support raw boundary payloads natively.
+  - [x] Unify boundary vs enveloped ingress representation via `BufferSlot::format` and `PayloadFormat::Raw`.
+  - [x] Add `MessageView::hasWireEnvelope()` and stack wire framing in `IOutputChannel::send(const MessageView&)`.
+  - [x] Support zero-allocation consuming forwards and transparent payload mutation in `VendorOutputChannel`.
 
 ## 5. Add Zero-Allocation `MessageEnvelope::withPayloadInto()`
-- **Problem**: `MessageEnvelope::withPayload()`, `pack()`, `packRaw()`, and `packUdp()` allocate a `std::vector<std::byte>` on every call, whereas `packInto()` writes into a caller-provided span without heap allocation.
+- **Status**: **RESOLVED** (Commit `66f676a`, Feature `015`)
+- **Resolution**:
+  - `MessageEnvelope` class was eliminated and unified into `MessageView`.
+  - Added non-allocating `MessageView::withPayload(span<const std::byte> newPayload) const noexcept`, which returns a rebound `MessageView` preserving protocol, metadata, timestamp, and `Lease` without any heap allocations.
+  - Added generic `MessageView::pack<T>()` and zero-allocation `MessageView::packInto<T>()` templates in `backend/interface/include/backend/MessageView.hpp`.
 - **Tasks**:
-  - [ ] Add `MessageEnvelope::withPayloadInto(Common::Compat::span<std::byte> destination, const MessageView& view, Common::Compat::span<const std::byte> newPayload)` in `backend/interface/include/backend/MessageEnvelope.hpp` and `backend/interface/src/MessageEnvelope.cpp`.
-  - [ ] Add `MessageEnvelope::packRawInto()` and `MessageEnvelope::packUdpInto()` convenience helpers.
+  - [x] Implement non-allocating `MessageView::withPayload()`.
+  - [x] Implement zero-allocation `MessageView::packInto()` and `MessageView::packInto<T>()`.
 
 ## 6. Separate Declarations and Implementations in `MessageView`
-- **Problem**: `backend/interface/include/backend/MessageView.hpp` defines non-templated constructors and getters inline in the header, violating the project's declaration/implementation separation rule (`AGENTS.md` Section 6).
+- **Status**: **RESOLVED** (Commit `1dca32c`)
+- **Resolution**: All non-templated constructors and member functions (`payload()`, `rawBuffer()`, `metadata()`, `protocol()`, `timestampNs()`, `attachLease()`, `token()`, `hasWireEnvelope()`, `withPayload()`, `pack()`, `packRaw()`, `packInto()`, `from()`) are declared in `backend/interface/include/backend/MessageView.hpp` and defined in `backend/interface/src/MessageView.cpp` in compliance with `AGENTS.md` Section 6. Only templated helpers (`pack<T>`, `packInto<T>`, `getMetadata<T>`) remain in the header.
 - **Tasks**:
-  - [ ] Move all non-templated constructors and member functions (`payload()`, `rawBuffer()`, `metadata()`, `protocol()`, `timestampNs()`) from `backend/interface/include/backend/MessageView.hpp` into `backend/interface/src/MessageView.cpp`.
+  - [x] Move all non-templated constructors and member methods from `backend/interface/include/backend/MessageView.hpp` into `backend/interface/src/MessageView.cpp`.
 
 ## 7. Review Clock Domain for `timestampNs` Telemetry
-- **Problem**: `MessageEnvelope` and `IHandler::processBatch()` use `std::chrono::system_clock::now()`, which is non-monotonic under NTP adjustments and can skew intra-host hop latency histograms.
+- **Status**: **VALID**
+- **Problem**: `MessageView::packInto()` and `Core::Net::UdpInputChannel` use `std::chrono::system_clock::now()` (`getCurrentTimeNs()`), which is non-monotonic under NTP adjustments and can skew intra-host hop latency histograms measured in `IHandler::processBatch()` (`nowNs - message.timestampNs()`).
 - **Tasks**:
-  - [ ] Evaluate using `std::chrono::steady_clock` for intra-host timestamps or documenting wall-clock requirements for cross-host UDP/socket telemetry.
-
+  - [ ] Standardize intra-host pipeline timestamps on `std::chrono::steady_clock` (or a high-resolution monotonic clock like `clock_gettime(CLOCK_MONOTONIC)`), reserving `system_clock` (wall-clock / epoch) strictly for cross-host distributed tracing protocols where synchronized wall-clock timestamps are explicitly required.
+  - [ ] Update `MessageView::packInto()`, `UdpInputChannel`, and `IHandler::processBatch()` to use a consistent monotonic timebase for hop duration metrics.

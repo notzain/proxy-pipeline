@@ -22,6 +22,9 @@ namespace {
 
     constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Backend::UdpMetadata);
 
+    /**
+     * @brief Retrieves current system time in nanoseconds since UNIX epoch.
+     */
     std::uint64_t getCurrentTimeNs()
     {
         return static_cast<std::uint64_t>(
@@ -30,19 +33,26 @@ namespace {
                 .count());
     }
 
+    /**
+     * @brief Writes the 18-byte envelope header and UdpMetadata preamble into destination.
+     *
+     * @param destination Target buffer span to receive the preamble.
+     * @param payloadSize Length of the incoming datagram payload.
+     * @param clientAddr Source socket address of the remote sender.
+     * @param boundAddr Local bound socket address receiving the packet.
+     */
     void writeEnvelopePreamble(
         Common::Compat::span<std::byte> destination,
         std::size_t payloadSize,
         const Backend::SocketAddress& clientAddr,
         const Backend::SocketAddress& boundAddr)
     {
-        std::byte* dst = destination.data();
-        Common::IO::Wire::writeUint16Be(dst, Backend::EnvelopeMagic);
-        dst[2] = static_cast<std::byte>(Backend::EnvelopeVersion);
-        dst[3] = static_cast<std::byte>(Backend::MetadataTraits<Backend::UdpMetadata>::protocol.value());
-        Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)));
-        Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payloadSize));
-        Common::IO::Wire::writeUint64Be(dst + 10, getCurrentTimeNs());
+        Backend::writeEnvelopeHeader(
+            destination,
+            Backend::MetadataTraits<Backend::UdpMetadata>::protocol,
+            static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)),
+            static_cast<std::uint32_t>(payloadSize),
+            getCurrentTimeNs());
 
         Backend::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();
@@ -60,7 +70,7 @@ namespace {
             meta.dstIp = boundAddr.ipv4Net();
         }
 
-        std::memcpy(dst + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Backend::UdpMetadata));
+        std::memcpy(destination.data() + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Backend::UdpMetadata));
     }
 
 } // namespace

@@ -1,4 +1,5 @@
 #include "SimInputChannel.hpp"
+#include "backend/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
@@ -66,26 +67,13 @@ void SimInputChannel::emitEvent(Common::Compat::span<const std::byte> payload, s
         return;
     }
 
-    // Inspect if envelope is present (18-byte EnvelopeHeader starting with 'PX' = 0x5058)
+    // Inspect if envelope is present
     std::string text;
     std::string fullText;
     Common::Compat::span<const std::byte> appPayload = payload;
 
-    if (payload.size() >= 18) {
-        uint16_t magic = (static_cast<uint8_t>(payload[0]) << 8) | static_cast<uint8_t>(payload[1]);
-        if (magic == 0x5058) {
-            uint16_t metaLen = (static_cast<uint8_t>(payload[4]) << 8) | static_cast<uint8_t>(payload[5]);
-            uint32_t payloadLen = (static_cast<uint8_t>(payload[6]) << 24)
-                | (static_cast<uint8_t>(payload[7]) << 16)
-                | (static_cast<uint8_t>(payload[8]) << 8)
-                | static_cast<uint8_t>(payload[9]);
-
-            std::size_t offset = 18 + metaLen;
-            if (offset <= payload.size()) {
-                std::size_t avail = std::min(static_cast<std::size_t>(payloadLen), payload.size() - offset);
-                appPayload = payload.subspan(offset, avail);
-            }
-        }
+    if (auto optView = ::Backend::MessageView::from(payload)) {
+        appPayload = optView->payload();
     }
 
     std::size_t previewLen = std::min(appPayload.size(), std::size_t(64));

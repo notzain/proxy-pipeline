@@ -1,3 +1,4 @@
+#include "backend/EnvelopeHeader.hpp"
 #include "backend/ISocketPoller.hpp"
 #include "backend/MessageView.hpp"
 #include "common/compat/Latch.hpp"
@@ -1022,4 +1023,42 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
 
     REQUIRE(handler.received.size() == kTotalMessages);
     CHECK(handler.received == expected);
+}
+
+TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelope]")
+{
+    std::array<std::byte, 18> buffer { };
+    const auto protocol = Backend::RawProtocol;
+    const std::uint16_t metaLen = 42;
+    const std::uint32_t payloadLen = 1337;
+    const std::uint64_t timestamp = 9876543210ULL;
+
+    const std::size_t written = Backend::writeEnvelopeHeader(
+        Common::Compat::span<std::byte>(buffer.data(), buffer.size()),
+        protocol,
+        metaLen,
+        payloadLen,
+        timestamp);
+
+    REQUIRE(written == 18);
+
+    // Verify small buffer bounds check
+    std::array<std::byte, 17> smallBuffer { };
+    REQUIRE(Backend::writeEnvelopeHeader(
+                Common::Compat::span<std::byte>(smallBuffer.data(), smallBuffer.size()),
+                protocol,
+                metaLen,
+                payloadLen,
+                timestamp)
+        == 0);
+
+    // Verify parsed via MessageView::from with dummy payload and metadata appended
+    std::vector<std::byte> fullFrame(18 + metaLen + payloadLen);
+    std::memcpy(fullFrame.data(), buffer.data(), 18);
+    auto optView = Backend::MessageView::from(fullFrame);
+    REQUIRE(optView.has_value());
+    CHECK(optView->protocol() == protocol);
+    CHECK(optView->metadata().size() == metaLen);
+    CHECK(optView->payload().size() == payloadLen);
+    CHECK(optView->timestampNs() == timestamp);
 }

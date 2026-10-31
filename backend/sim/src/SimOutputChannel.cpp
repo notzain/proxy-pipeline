@@ -1,4 +1,5 @@
 #include "SimOutputChannel.hpp"
+#include "backend/MessageView.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
 #include <chrono>
@@ -47,21 +48,8 @@ void SimOutputChannel::emitEvent(Common::Compat::span<const std::byte> message, 
     std::string fullText;
     Common::Compat::span<const std::byte> appPayload = message;
 
-    if (message.size() >= 18) {
-        uint16_t magic = (static_cast<uint8_t>(message[0]) << 8) | static_cast<uint8_t>(message[1]);
-        if (magic == 0x5058) {
-            uint16_t metaLen = (static_cast<uint8_t>(message[4]) << 8) | static_cast<uint8_t>(message[5]);
-            uint32_t payloadLen = (static_cast<uint8_t>(message[6]) << 24)
-                | (static_cast<uint8_t>(message[7]) << 16)
-                | (static_cast<uint8_t>(message[8]) << 8)
-                | static_cast<uint8_t>(message[9]);
-
-            std::size_t offset = 18 + metaLen;
-            if (offset <= message.size()) {
-                std::size_t avail = std::min(static_cast<std::size_t>(payloadLen), message.size() - offset);
-                appPayload = message.subspan(offset, avail);
-            }
-        }
+    if (auto optView = ::Backend::MessageView::from(message)) {
+        appPayload = optView->payload();
     }
 
     std::size_t previewLen = std::min(appPayload.size(), std::size_t(64));
