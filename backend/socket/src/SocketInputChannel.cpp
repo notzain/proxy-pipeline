@@ -1,5 +1,5 @@
 #include "backend/socket/SocketInputChannel.hpp"
-#include "backend/ISocketPoller.hpp"
+#include "common/net/ISocketPoller.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <cerrno>
@@ -16,7 +16,7 @@ SocketInputChannel::SocketInputChannel(std::string name, std::string host, std::
     : ::Backend::IInputChannel(std::move(name))
     , m_host(std::move(host))
     , m_port(port)
-    , m_poller(::Backend::createSocketPoller())
+    , m_poller(::Common::Net::createSocketPoller())
 {
     openAndBindSocket();
 }
@@ -75,7 +75,7 @@ BytesResult SocketInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
+            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
         }
     }
 
@@ -87,7 +87,7 @@ BytesResult SocketInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout
         return result;
     }
 
-    return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
+    return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
 }
 
 BatchResult SocketInputChannel::receiveBatch(
@@ -97,15 +97,36 @@ BatchResult SocketInputChannel::receiveBatch(
     if (m_socketFd < 0) {
         openAndBindSocket();
         if (m_socketFd < 0) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
+            return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
         }
     }
 
-    if (m_poller) {
-        return m_poller->receiveBatch(m_socketFd, slots, timeout);
+    if (slots.empty()) {
+        return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
 
-    return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
+    if (m_poller) {
+        constexpr std::size_t MaxBatch = 64;
+        const std::size_t batchSize = std::min(slots.size(), MaxBatch);
+        std::array<Common::Net::PollerBufferSlot, MaxBatch> pollerSlots;
+        for (std::size_t i = 0; i < batchSize; ++i) {
+            pollerSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer, 0 };
+        }
+
+        auto result = m_poller->receiveBatch(
+            m_socketFd,
+            Common::Compat::span<Common::Net::PollerBufferSlot>(pollerSlots.data(), batchSize),
+            timeout);
+
+        const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
+        for (std::size_t i = 0; i < receivedCount; ++i) {
+            slots[i].size = pollerSlots[i].size;
+        }
+
+        return result;
+    }
+
+    return BatchResult::failure(Common::Net::ReceiveBatchFailure { 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
 }
 
 } // namespace Proxy::Backend::Socket

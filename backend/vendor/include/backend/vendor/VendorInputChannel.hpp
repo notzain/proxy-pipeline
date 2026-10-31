@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
 #include <cstddef>
 #include <memory>
@@ -43,7 +43,7 @@ public:
 
     [[nodiscard]] bool providesOwnMemory() const noexcept override;
 
-    ::Backend::BytesResult receiveSlot(
+    Common::Net::BytesResult receiveSlot(
         ::Backend::BufferSlot& slot,
         Timeout timeout) override;
 

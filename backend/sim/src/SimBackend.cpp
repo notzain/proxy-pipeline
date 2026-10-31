@@ -1,7 +1,7 @@
 #include "backend/sim/SimBackend.hpp"
 #include "SimInputChannel.hpp"
 #include "SimOutputChannel.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "log/ConsoleLogSink.hpp"
 #include "log/Log.hpp"
 #include <algorithm>

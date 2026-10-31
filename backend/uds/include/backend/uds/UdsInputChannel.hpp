@@ -1,14 +1,14 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
-#include "backend/ISocketPoller.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "common/net/ISocketPoller.hpp"
 #include <memory>
 #include <string>
 
 namespace Proxy::Backend::Uds {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Input channel for receiving datagrams on a bound Unix Domain Socket.
@@ -26,7 +26,7 @@ public:
 private:
     std::string m_socketPath;
     int m_socketFd { -1 };
-    std::unique_ptr<::Backend::ISocketPoller> m_poller;
+    std::unique_ptr<Common::Net::ISocketPoller> m_poller;
 
     void closeSocket();
     void openAndBindSocket();

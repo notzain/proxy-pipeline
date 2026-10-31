@@ -1,22 +1,19 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
-#include "backend/SocketAddress.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include "common/compat/Span.hpp"
 #include "common/io/UniqueFd.hpp"
+#include "common/net/ISocketPoller.hpp"
+#include "common/net/SocketAddress.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 
-namespace Backend {
-class ISocketPoller;
-} // namespace Backend
-
 namespace Core::Net {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Standalone UDP message reception channel implementing Backend::IInputChannel.
@@ -54,12 +51,12 @@ public:
     /**
      * @brief Reads a datagram and serializes an in-place envelope directly into slot.buffer.
      */
-    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
+    Common::Net::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
 
     /**
      * @brief Drains a batch of incoming UDP datagrams into destination buffers as envelopes.
      */
-    ::Backend::BatchResult receiveBatch(
+    Common::Net::BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
@@ -86,8 +83,8 @@ private:
     std::uint16_t m_port { 0 };
     std::size_t m_receiveBufferSize { 8 * 1024 * 1024 };
     Common::Io::UniqueFd m_socketFd;
-    ::Backend::SocketAddress m_boundAddr;
-    std::unique_ptr<::Backend::ISocketPoller> m_poller;
+    Common::Net::SocketAddress m_boundAddr;
+    std::unique_ptr<Common::Net::ISocketPoller> m_poller;
 };
 
 } // namespace Core::Net

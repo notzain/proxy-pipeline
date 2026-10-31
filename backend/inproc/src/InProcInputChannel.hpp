@@ -1,7 +1,7 @@
 #pragma once
 
 #include "InProcRing.hpp"
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include <memory>
 #include <string>
 
@@ -15,9 +15,9 @@ public:
     InProcInputChannel(std::string name, std::shared_ptr<InProcRing> ring);
     ~InProcInputChannel() override;
 
-    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
+    Common::Net::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
 
-    ::Backend::BatchResult receiveBatch(
+    Common::Net::BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 

@@ -1,6 +1,6 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "backend/IOutputChannel.hpp"
-#include "backend/SocketAddress.hpp"
+#include "backend/channel/IOutputChannel.hpp"
 #include "common/compat/Span.hpp"
 #include "common/io/UniqueFd.hpp"
+#include "common/net/SocketAddress.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -55,7 +55,7 @@ public:
     /**
      * @brief Sends a datagram directly to a specified SocketAddress (IPv4 or IPv6).
      */
-    bool sendTo(Common::Compat::span<const std::byte> message, const ::Backend::SocketAddress& destination);
+    bool sendTo(Common::Compat::span<const std::byte> message, const Common::Net::SocketAddress& destination);
 
     /**
      * @brief Sends a datagram directly to a specified destination address in network byte order.
@@ -80,14 +80,14 @@ public:
 private:
     void openSocket();
     void closeSocket();
-    int ensureSocketForFamily(::Backend::AddressFamily family);
+    int ensureSocketForFamily(Common::Net::AddressFamily family);
 
     std::string m_defaultHost;
     std::uint16_t m_defaultPort { 0 };
     std::size_t m_sendBufferSize { 8 * 1024 * 1024 };
     Common::Io::UniqueFd m_socketFd;
     Common::Io::UniqueFd m_socketFdV6;
-    ::Backend::SocketAddress m_defaultAddr { };
+    Common::Net::SocketAddress m_defaultAddr { };
     bool m_hasDefaultAddr { false };
 };
 

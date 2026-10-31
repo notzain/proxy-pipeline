@@ -1,5 +1,5 @@
 #include "SimInputChannel.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
@@ -137,8 +137,8 @@ BatchResult SimInputChannel::receiveBatch(
 {
     if (slots.empty() || m_serverFd < 0) {
         return slots.empty()
-            ? BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) })
-            : BatchResult::failure({ 0, ::Backend::receiveClosed() });
+            ? BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } })
+            : BatchResult::failure({ 0, Common::Net::ReceiveClosed { } });
     }
 
     std::size_t count = 0;
@@ -162,9 +162,9 @@ BatchResult SimInputChannel::receiveBatch(
 
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             if (errno == EBADF || errno == ENOTSOCK) {
-                return BatchResult::failure({ count, ::Backend::receiveClosed() });
+                return BatchResult::failure({ count, Common::Net::ReceiveClosed { } });
             }
-            return BatchResult::failure({ count, ::Backend::receiveFailure(std::error_code(errno, std::generic_category())) });
+            return BatchResult::failure({ count, Common::Net::ReceiveFailure { std::error_code(errno, std::generic_category()) } });
         }
 
         if (count > 0 || timeout.count() <= 0) {
@@ -181,7 +181,7 @@ BatchResult SimInputChannel::receiveBatch(
 
     return count > 0
         ? BatchResult::success(count)
-        : BatchResult::failure({ 0, ::Backend::receiveTimeout() });
+        : BatchResult::failure({ 0, Common::Net::ReceiveTimeout { } });
 }
 
 } // namespace Proxy::Backend::Sim

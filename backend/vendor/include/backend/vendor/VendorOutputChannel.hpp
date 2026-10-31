@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/IOutputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
 #include <memory>
 #include <string>

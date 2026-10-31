@@ -1,13 +1,13 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include <memory>
 #include <string>
 
 namespace Proxy::Backend::Shm {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 class ShmRingBuffer;
 

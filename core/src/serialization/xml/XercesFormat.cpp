@@ -216,7 +216,7 @@ namespace {
             std::string_view sv = text.view();
             auto start = sv.find_first_not_of(" \t\r\n");
             if (start == std::string_view::npos) {
-                val.raw() = Ir::ObjectType {};
+                val.raw() = Ir::ObjectType { };
                 return val;
             }
             auto end = sv.find_last_not_of(" \t\r\n");
@@ -275,13 +275,13 @@ std::string XercesFormat::encode(const Ir::Value& ir, const Options& options)
     XercesString lsStr("LS");
     xercesc::DOMImplementation* impl = xercesc::DOMImplementationRegistry::getDOMImplementation(lsStr.get());
     if (!impl) {
-        return {};
+        return { };
     }
 
     XercesString rootTag(options.rootName.c_str());
     xercesc::DOMDocument* doc = impl->createDocument(nullptr, rootTag.get(), nullptr);
     if (!doc) {
-        return {};
+        return { };
     }
 
     struct DocGuard {
@@ -299,7 +299,7 @@ std::string XercesFormat::encode(const Ir::Value& ir, const Options& options)
 
     xercesc::DOMLSSerializer* serializer = static_cast<xercesc::DOMImplementationLS*>(impl)->createLSSerializer();
     if (!serializer) {
-        return {};
+        return { };
     }
 
     struct SerializerGuard {
@@ -322,7 +322,7 @@ std::string XercesFormat::encode(const Ir::Value& ir, const Options& options)
     xercesc::MemBufFormatTarget target;
     xercesc::DOMLSOutput* output = static_cast<xercesc::DOMImplementationLS*>(impl)->createLSOutput();
     if (!output) {
-        return {};
+        return { };
     }
 
     struct OutputGuard {

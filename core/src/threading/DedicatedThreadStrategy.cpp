@@ -62,15 +62,15 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                         invalidEnvelopeCount,
                         m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                 }
-                if (result.hasValue() || ::Backend::isReceiveTimeout(result.error().cause)) {
+                if (result.hasValue() || result.error().cause.is<Common::Net::ReceiveTimeout>()) {
                     continue;
                 }
-                if (::Backend::isReceiveClosed(result.error().cause)) {
+                if (result.error().cause.is<Common::Net::ReceiveClosed>()) {
                     Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' is closed", channelName);
                     break;
                 }
                 Proxy::Log::error("[DedicatedThreadStrategy] Input channel '{}' failed: {}",
-                    channelName, ::Backend::receiveErrorMessage(result.error().cause));
+                    channelName, result.error().cause.message());
                 break;
             }
 

@@ -29,8 +29,6 @@ class BackendInterfaceConan(ConanFile):
 
     def requirements(self):
         self.requires("common/0.1.0", transitive_headers=True, transitive_libs=True)
-        if self.settings.os == "Linux":
-            self.requires("liburing/2.8")
 
     def generate(self):
         deps = CMakeDeps(self)

@@ -118,8 +118,7 @@ Instead of spinning up physical network sockets, handlers are tested in-memory b
 #include <catch2/catch_test_macros.hpp>
 #include "handler/order_validation_handler/OrderValidationHandler.hpp"
 #include "core/simulation/SimulationBackend.hpp"
-#include "backend/MessageEnvelope.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 
 TEST_CASE("OrderValidationHandler rejects malformed orders", "[handler][order]")
 {

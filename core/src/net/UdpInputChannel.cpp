@@ -1,9 +1,9 @@
 #include "core/net/UdpInputChannel.hpp"
-#include "backend/EnvelopeHeader.hpp"
-#include "backend/ISocketPoller.hpp"
-#include "backend/SocketAddress.hpp"
-#include "backend/UdpMetadata.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
+#include "common/net/ISocketPoller.hpp"
+#include "common/net/SocketAddress.hpp"
+#include "core/net/UdpMetadata.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -20,7 +20,7 @@ namespace Core::Net {
 
 namespace {
 
-    constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Backend::UdpMetadata);
+    constexpr std::size_t EnvelopePreambleSize = sizeof(Backend::EnvelopeHeader) + sizeof(Core::Net::UdpMetadata);
 
     /**
      * @brief Writes the 18-byte envelope header and UdpMetadata preamble into destination.
@@ -35,32 +35,32 @@ namespace {
     void writeEnvelopePreamble(
         Common::Compat::span<std::byte> destination,
         std::size_t payloadSize,
-        const Backend::SocketAddress& clientAddr,
-        const Backend::SocketAddress& boundAddr)
+        const Common::Net::SocketAddress& clientAddr,
+        const Common::Net::SocketAddress& boundAddr)
     {
         Backend::writeEnvelopeHeader(
             destination,
-            Backend::MetadataTraits<Backend::UdpMetadata>::protocol,
-            static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)),
+            Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol,
+            static_cast<std::uint16_t>(sizeof(Core::Net::UdpMetadata)),
             static_cast<std::uint32_t>(payloadSize));
 
-        Backend::UdpMetadata meta { };
+        Core::Net::UdpMetadata meta { };
         meta.srcPort = clientAddr.portNet();
         meta.dstPort = boundAddr.portNet();
-        if (clientAddr.family() == Backend::AddressFamily::Ipv6) {
+        if (clientAddr.family() == Common::Net::AddressFamily::Ipv6) {
             meta.addressFamily = 6;
             std::memcpy(meta.srcIpv6, clientAddr.ipv6Bytes(), sizeof(meta.srcIpv6));
         } else {
             meta.addressFamily = 4;
             meta.srcIp = clientAddr.ipv4Net();
         }
-        if (boundAddr.family() == Backend::AddressFamily::Ipv6) {
+        if (boundAddr.family() == Common::Net::AddressFamily::Ipv6) {
             std::memcpy(meta.dstIpv6, boundAddr.ipv6Bytes(), sizeof(meta.dstIpv6));
         } else {
             meta.dstIp = boundAddr.ipv4Net();
         }
 
-        std::memcpy(destination.data() + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Backend::UdpMetadata));
+        std::memcpy(destination.data() + sizeof(Backend::EnvelopeHeader), &meta, sizeof(Core::Net::UdpMetadata));
     }
 
 } // namespace
@@ -70,7 +70,7 @@ UdpInputChannel::UdpInputChannel(std::string name, std::string host, std::uint16
     , m_host(std::move(host))
     , m_port(port)
     , m_receiveBufferSize(receiveBufferSize)
-    , m_poller(::Backend::createSocketPoller())
+    , m_poller(::Common::Net::createSocketPoller())
 {
     openAndBindSocket();
 }
@@ -117,15 +117,15 @@ void UdpInputChannel::openAndBindSocket()
     closeSocket();
 
     if (m_host == "0.0.0.0" || m_host.empty()) {
-        m_boundAddr = Backend::SocketAddress::fromIpv4Net(INADDR_ANY, htons(m_port));
+        m_boundAddr = Common::Net::SocketAddress::fromIpv4Net(INADDR_ANY, htons(m_port));
     } else if (m_host == "::") {
         in6_addr any6 = IN6ADDR_ANY_INIT;
-        m_boundAddr = Backend::SocketAddress::fromIpv6Net(reinterpret_cast<const std::uint8_t*>(&any6), htons(m_port));
+        m_boundAddr = Common::Net::SocketAddress::fromIpv6Net(reinterpret_cast<const std::uint8_t*>(&any6), htons(m_port));
     } else {
-        m_boundAddr = Backend::SocketAddress::fromString(m_host, m_port);
+        m_boundAddr = Common::Net::SocketAddress::fromString(m_host, m_port);
     }
 
-    const int domain = (m_boundAddr.family() == Backend::AddressFamily::Ipv6) ? AF_INET6 : AF_INET;
+    const int domain = (m_boundAddr.family() == Common::Net::AddressFamily::Ipv6) ? AF_INET6 : AF_INET;
     m_socketFd.reset(::socket(domain, SOCK_DGRAM, 0));
     if (!m_socketFd) {
         Proxy::Log::error("[UdpInputChannel] Failed to create UDP socket: {}", std::strerror(errno));
@@ -152,33 +152,33 @@ void UdpInputChannel::openAndBindSocket()
     Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
-Backend::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
+Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
 {
     slot.size = 0;
     const auto destination = slot.buffer;
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)));
+            return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) });
         }
     }
 
     if (destination.size() <= EnvelopePreambleSize) {
-        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)));
+        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
     if (!m_poller) {
-        return BytesResult::failure(::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)));
+        return BytesResult::failure(Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) });
     }
 
-    Backend::SocketAddress clientAddr;
-    BytesResult receiveResult = m_poller->receive(
+    Common::Net::SocketAddress clientAddr;
+    Common::Net::BytesResult receiveResult = m_poller->receive(
         m_socketFd.get(),
         destination.subspan(EnvelopePreambleSize),
         timeout,
         &clientAddr);
 
     if (!receiveResult.hasValue()) {
-        return BytesResult::failure(receiveResult.error());
+        return receiveResult;
     }
 
     writeEnvelopePreamble(destination, receiveResult.value(), clientAddr, m_boundAddr);
@@ -186,42 +186,42 @@ Backend::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, T
     return BytesResult::success(slot.size);
 }
 
-Backend::BatchResult UdpInputChannel::receiveBatch(
+Common::Net::BatchResult UdpInputChannel::receiveBatch(
     Common::Compat::span<::Backend::BufferSlot> slots,
     Timeout timeout)
 {
     if (!m_socketFd) {
         openAndBindSocket();
         if (!m_socketFd) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::bad_file_descriptor)) });
+            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::bad_file_descriptor) } });
         }
     }
 
     if (slots.empty()) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
     if (!m_poller) {
-        return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::not_connected)) });
+        return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::not_connected) } });
     }
 
     constexpr std::size_t MaxBatch = 32;
     const std::size_t batchSize = std::min(slots.size(), MaxBatch);
 
-    std::array<::Backend::BufferSlot, MaxBatch> payloadSlots;
-    std::array<Backend::SocketAddress, MaxBatch> clientAddrs;
+    std::array<Common::Net::PollerBufferSlot, MaxBatch> payloadSlots;
+    std::array<Common::Net::SocketAddress, MaxBatch> clientAddrs;
 
     for (std::size_t i = 0; i < batchSize; ++i) {
         if (slots[i].buffer.size() <= EnvelopePreambleSize) {
-            return BatchResult::failure({ 0, ::Backend::receiveFailure(std::make_error_code(std::errc::invalid_argument)) });
+            return BatchResult::failure({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
         }
-        payloadSlots[i] = ::Backend::BufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
+        payloadSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
     }
 
-    BatchResult result = m_poller->receiveBatch(
+    Common::Net::BatchResult result = m_poller->receiveBatch(
         m_socketFd.get(),
-        Common::Compat::span<::Backend::BufferSlot>(payloadSlots.data(), batchSize),
+        Common::Compat::span<Common::Net::PollerBufferSlot>(payloadSlots.data(), batchSize),
         timeout,
-        Common::Compat::span<Backend::SocketAddress>(clientAddrs.data(), batchSize));
+        Common::Compat::span<Common::Net::SocketAddress>(clientAddrs.data(), batchSize));
 
     const std::size_t receivedCount = result.hasValue() ? result.value() : result.error().receivedCount;
     for (std::size_t i = 0; i < receivedCount; ++i) {

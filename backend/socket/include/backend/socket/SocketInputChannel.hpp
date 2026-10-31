@@ -1,15 +1,15 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
-#include "backend/ISocketPoller.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "common/net/ISocketPoller.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>
 
 namespace Proxy::Backend::Socket {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 /**
  * @brief Input channel for receiving UDP datagrams on a bound host and port.
@@ -28,7 +28,7 @@ private:
     std::string m_host;
     std::uint16_t m_port;
     int m_socketFd { -1 };
-    std::unique_ptr<::Backend::ISocketPoller> m_poller;
+    std::unique_ptr<Common::Net::ISocketPoller> m_poller;
 
     void closeSocket();
     void openAndBindSocket();

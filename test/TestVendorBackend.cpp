@@ -1,5 +1,5 @@
-#include "backend/MessageResult.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageResult.hpp"
+#include "backend/message/MessageView.hpp"
 #include "backend/vendor/VendorBackend.hpp"
 #include "backend/vendor/VendorInputChannel.hpp"
 #include "backend/vendor/VendorOutputChannel.hpp"
@@ -578,7 +578,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         public:
             using Backend::Vendor::VendorInputChannel::VendorInputChannel;
 
-            Backend::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
+            Common::Net::BytesResult receiveSlot(Backend::BufferSlot& slot, Timeout timeout) override
             {
                 sawNonEmptyTargetBuffer = sawNonEmptyTargetBuffer || !slot.buffer.empty();
                 return Backend::Vendor::VendorInputChannel::receiveSlot(slot, timeout);

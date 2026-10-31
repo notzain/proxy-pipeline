@@ -1,0 +1,37 @@
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+
+#pragma once
+
+#include "common/net/ISocketPoller.hpp"
+
+namespace Common::Net {
+
+/**
+ * @brief kqueue-based event driver for BSD and macOS systems.
+ */
+class KqueueSocketPoller : public ISocketPoller {
+public:
+    KqueueSocketPoller();
+    ~KqueueSocketPoller() override;
+
+    BytesResult receive(
+        int socketFd,
+        Common::Compat::span<std::byte> destination,
+        Timeout timeout,
+        SocketAddress* outSourceAddress = nullptr) override;
+    BatchResult receiveBatch(
+        int socketFd,
+        Common::Compat::span<PollerBufferSlot> slots,
+        Timeout timeout,
+        Common::Compat::span<SocketAddress> outSourceAddresses = { }) override;
+
+private:
+    int m_kqueueFd { -1 };
+    int m_registeredSocketFd { -1 };
+
+    bool registerSocket(int socketFd);
+};
+
+} // namespace Common::Net
+
+#endif // __APPLE__ || BSD

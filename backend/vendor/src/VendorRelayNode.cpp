@@ -81,4 +81,3 @@ std::size_t VendorRelayPool::capacity() const noexcept
 }
 
 } // namespace Backend::Vendor
-

@@ -11,14 +11,24 @@ class CommonConan(ConanFile):
     package_type = "library"
 
     settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
+    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "with_liburing": [True, False],
+    }
+    default_options = {
+        "shared": False,
+        "fPIC": True,
+        "with_liburing": True,
+    }
 
     exports_sources = "CMakeLists.txt", "src/*", "include/*"
 
     def config_options(self):
         if self.settings.os == "Windows":
             self.options.rm_safe("fPIC")
+        if self.settings.os != "Linux":
+            self.options.rm_safe("with_liburing")
 
     def configure(self):
         if self.options.shared:
@@ -27,10 +37,17 @@ class CommonConan(ConanFile):
     def layout(self):
         cmake_layout(self)
 
+    def requirements(self):
+        if self.settings.os == "Linux" and self.options.get_safe("with_liburing", False):
+            self.requires("liburing/2.8")
+
     def generate(self):
         deps = CMakeDeps(self)
         deps.generate()
         tc = CMakeToolchain(self)
+        tc.variables["PROXY_ENABLE_LIBURING"] = bool(
+            self.options.get_safe("with_liburing", False)
+        )
         tc.generate()
 
     def build(self):
@@ -69,4 +86,6 @@ class CommonConan(ConanFile):
 
     def package_info(self):
         self.cpp_info.libs = ["common"]
-
+        self.cpp_info.includedirs = ["include"]
+        self.cpp_info.set_property("cmake_file_name", "common")
+        self.cpp_info.set_property("cmake_target_name", "common::common")

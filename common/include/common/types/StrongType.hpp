@@ -65,4 +65,3 @@ private:
 };
 
 } // namespace Common::Types
-

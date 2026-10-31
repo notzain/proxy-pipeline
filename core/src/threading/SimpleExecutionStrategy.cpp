@@ -57,13 +57,13 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                             nullptr);
                     }
                 } else {
-                    const auto cause = result.error();
-                    if (!::Backend::isReceiveTimeout(cause)) {
-                        if (::Backend::isReceiveClosed(cause)) {
+                    const auto& cause = result.error();
+                    if (!cause.is<Common::Net::ReceiveTimeout>()) {
+                        if (cause.is<Common::Net::ReceiveClosed>()) {
                             Proxy::Log::error("[SimpleExecutionStrategy] Input channel '{}' is closed", channel.name());
                         } else {
                             Proxy::Log::error("[SimpleExecutionStrategy] Input channel '{}' failed: {}",
-                                channel.name(), ::Backend::receiveErrorMessage(cause));
+                                channel.name(), cause.message());
                         }
                         m_running.store(false, std::memory_order_release);
                     }

@@ -1,5 +1,5 @@
 #include "SimOutputChannel.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
 #include <chrono>

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
-#include "backend/IOutputChannel.hpp"
-#include "backend/Lease.hpp"
+#include "backend/channel/IInputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
+#include "backend/memory/Lease.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/Borrow.hpp"
 #include "core/config/Configuration.hpp"
@@ -14,7 +14,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "backend/MessageResult.hpp"
+#include "backend/message/MessageResult.hpp"
 #include "core/handler/HandlerTraits.hpp"
 
 namespace Backend {

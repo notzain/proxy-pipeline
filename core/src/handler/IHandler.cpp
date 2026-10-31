@@ -1,6 +1,6 @@
 #include "core/handler/IHandler.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/MessageView.hpp"
+#include "backend/message/MessageView.hpp"
 #include "common/compat/Time.hpp"
 #include "common/memory/Borrow.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"

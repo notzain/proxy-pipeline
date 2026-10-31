@@ -129,7 +129,7 @@ cmake --build build
 ## 6. Project Structure & Naming Conventions
 
 - **Directory Layout for Subprojects**:
-  - `include/`: Public headers exposed to consumers of the library (e.g. `include/log/Log.hpp`, `include/core/handler/IHandler.hpp`, `include/backend/IBackend.hpp`, `include/backend/IConfig.hpp`).
+  - `include/`: Public headers exposed to consumers of the library (e.g. `include/log/Log.hpp`, `include/core/handler/IHandler.hpp`, `include/backend/core/IBackend.hpp`, `include/backend/core/IConfig.hpp`).
   - `src/`: Implementation files (`.cpp`) and private/internal headers (`.hpp`).
 - **Separation of Declarations & Implementations**:
   - All non-templated function and method implementations must reside in source files (`.cpp`). Headers (`.hpp`) are reserved for declarations only. Templated classes/functions are the only exception to this rule.

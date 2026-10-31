@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/IOutputChannel.hpp"
+#include "backend/channel/IOutputChannel.hpp"
 #include "common/compat/Span.hpp"
 #include <atomic>
 #include <string>

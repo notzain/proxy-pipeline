@@ -1,6 +1,6 @@
 #pragma once
 
-#include "backend/IInputChannel.hpp"
+#include "backend/channel/IInputChannel.hpp"
 #include "common/compat/Span.hpp"
 #include <cstddef>
 #include <cstdint>
@@ -12,8 +12,8 @@
 
 namespace Core::Simulation {
 
-using ::Backend::BatchResult;
-using ::Backend::BytesResult;
+using Common::Net::BatchResult;
+using Common::Net::BytesResult;
 
 class SimulationClock;
 
@@ -67,8 +67,8 @@ public:
     [[nodiscard]] std::size_t pendingCount() const;
 
     // Backend::IInputChannel interface implementation
-    ::Backend::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
-    ::Backend::BatchResult receiveBatch(
+    Common::Net::BytesResult receiveSlot(::Backend::BufferSlot& slot, Timeout timeout) override;
+    Common::Net::BatchResult receiveBatch(
         Common::Compat::span<::Backend::BufferSlot> slots,
         Timeout timeout) override;
 
