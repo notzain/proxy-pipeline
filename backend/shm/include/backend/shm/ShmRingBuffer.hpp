@@ -14,10 +14,13 @@ namespace Proxy::Backend::Shm {
  * @brief Fixed-size slot in shared memory ring buffer.
  *
  * Aligned to 64-byte hardware cache lines with a 2048-byte total footprint.
+ * Includes an atomic sequence counter for lock-free multi-producer coordination.
  */
 struct alignas(64) ShmSlot {
+    alignas(64) std::atomic<uint64_t> sequence { 0 };
     uint32_t length { 0 };
-    uint8_t payload[2044];
+    uint8_t payload[1976];
+    uint8_t pad[4] { 0 };
 };
 
 static_assert(sizeof(ShmSlot) == 2048, "ShmSlot must be exactly 2048 bytes");
@@ -30,12 +33,12 @@ static_assert(sizeof(ShmSlot) == 2048, "ShmSlot must be exactly 2048 bytes");
  */
 struct alignas(64) ShmHeader {
     static constexpr uint32_t Magic = 0x50525859; // 'PRXY'
-    static constexpr uint32_t Version = 2; // Incremented for signaling sync block
+    static constexpr uint32_t Version = 3; // Version 3: lock-free MPMC slot sequencing
 
     uint32_t magic { Magic };
     uint32_t version { Version };
     uint32_t capacity { 1024 };
-    uint32_t slotPayloadSize { 2044 };
+    uint32_t slotPayloadSize { 1976 };
 
     uint8_t reserved1[48] { 0 };
 
@@ -50,15 +53,15 @@ struct alignas(64) ShmHeader {
 };
 
 /**
- * @brief Lockless single-producer single-consumer (SPSC) shared memory circular ring buffer.
+ * @brief Lock-free multi-producer multi-consumer (MPMC) shared memory circular ring buffer.
  *
- * Operates over memory-mapped files or POSIX shared memory with zero system calls
+ * Operates over memory-mapped files or POSIX shared memory with zero mutexes and zero system calls
  * during steady-state packet transmission and reception.
  */
 class ShmRingBuffer {
 public:
     static constexpr std::size_t DefaultCapacity = 1024;
-    static constexpr std::size_t MaxPayloadBytes = 2044;
+    static constexpr std::size_t MaxPayloadBytes = 1976;
 
     /**
      * @brief Constructs and maps the shared memory ring buffer.
@@ -80,7 +83,7 @@ public:
     [[nodiscard]] bool isValid() const noexcept;
 
     /**
-     * @brief Writes a message into the next available ring buffer slot.
+     * @brief Writes a message into the next available ring buffer slot without holding locks.
      *
      * @param message Raw payload span to write.
      * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
@@ -89,7 +92,7 @@ public:
     bool push(Common::Compat::span<const std::byte> message, bool* wasEmpty = nullptr);
 
     /**
-     * @brief Vectorized transmission writing a batch of messages in a single atomic sequence update.
+     * @brief Lock-free transmission writing a batch of messages into reserved ring slots.
      *
      * @param messages Slices of messages to write.
      * @param wasEmpty Optional out-parameter set to true if the ring buffer was empty prior to this push.
@@ -133,7 +136,7 @@ public:
     [[nodiscard]] bool full() const noexcept;
 
     /**
-     * @brief Resets read and write indices to zero.
+     * @brief Resets read, write, and slot sequence indices to initial state.
      */
     void reset();
 

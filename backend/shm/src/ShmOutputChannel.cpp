@@ -43,8 +43,6 @@ bool ShmOutputChannel::send(Common::Compat::span<const std::byte> message)
         return false;
     }
 
-    std::lock_guard lock(m_sendMutex);
-
     bool wasEmpty = false;
     if (m_ring->push(message, &wasEmpty)) {
         if (wasEmpty) {
@@ -82,8 +80,6 @@ std::size_t ShmOutputChannel::sendBatch(Common::Compat::span<const Common::Compa
     if (!isValid() || messages.empty()) {
         return 0;
     }
-
-    std::lock_guard lock(m_sendMutex);
 
     bool wasEmpty = false;
     std::size_t total = m_ring->pushBatch(messages, &wasEmpty);
