@@ -76,6 +76,19 @@ std::vector<std::byte> MessageView::withPayload(
     return pack(view.protocol(), view.metadata(), newPayload, view.timestampNs());
 }
 
+MessageView MessageView::withPayload(Common::Compat::span<const std::byte> newPayload) const noexcept
+{
+    MessageView rebound({ }, m_metadata, newPayload, m_protocol, m_timestampNs);
+    rebound.m_lease = m_lease;
+    return rebound;
+}
+
+bool MessageView::hasWireEnvelope() const noexcept
+{
+    return m_rawBuffer.size() >= sizeof(EnvelopeHeader) + m_metadata.size() + m_payload.size()
+        && m_rawBuffer.data() != m_payload.data();
+}
+
 std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byte> buffer) noexcept
 {
     if (buffer.size() < sizeof(EnvelopeHeader)) {

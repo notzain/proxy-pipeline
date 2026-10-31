@@ -396,6 +396,31 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         CHECK(mockManager->droppedIds.empty());
     }
 
+    SECTION("Rebound payload via view.withPayload() sends modified payload and settles original VendorMessage with Ack")
+    {
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver);
+        Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
+        mockReceiver->enqueue(6006, "Original Vendor Payload");
+
+        Backend::BufferSlot slot { };
+        REQUIRE(inputChannel.receiveSlot(slot, std::chrono::milliseconds(10)).hasValue());
+        Backend::MessageView view(slot.filledSpan());
+        view.attachLease(slot.lease);
+
+        const std::string modified = "Transformed Vendor Payload";
+        auto rebound = view.withPayload(Common::Memory::ByteView(modified));
+        REQUIRE(outputChannel.send(rebound));
+
+        // Original lease remains active and is settled with Ack by processBatch
+        REQUIRE(slot.lease.active());
+        slot.lease.ack();
+
+        REQUIRE(mockSender->sentPayloads.size() == 1);
+        CHECK(mockSender->sentPayloads.front() == modified);
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 6006);
+    }
+
     SECTION("Fan-out to multiple output channels consumes original VendorMessage once and creates new message for remaining channels")
     {
         auto secondSender = std::make_shared<MockVendorSender>();

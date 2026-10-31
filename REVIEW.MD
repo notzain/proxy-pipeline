@@ -105,8 +105,8 @@ This document captures the architectural review of the message pipeline—from `
    - Then `IOutputChannel::send(const MessageView&)` can check whether `message.rawBuffer()` is contiguous with `message.payload()`; if a handler rebound the payload via `message.withPayload(newPayload)`, the output channel packs `header + metadata + newPayload` on the fly (for buffer backends) or sends `newPayload` while settling/consuming the original `Lease` (for `VendorOutputChannel`).
 
 #### Checklist
-- [ ] Add a non-allocating `MessageView::withPayload(Common::Compat::span<const std::byte> newPayload) const noexcept` view-rebind method (or `IOutputChannel::sendPayload(const MessageView&, span<const std::byte>)`) so generic handlers can transform payloads without heap-allocating wire envelopes or dropping leases.
-- [ ] Update `IOutputChannel::send(const MessageView&)` and `VendorOutputChannel::send(const MessageView&)` to handle rebound payload views cleanly.
+- [x] Add a non-allocating `MessageView::withPayload(Common::Compat::span<const std::byte> newPayload) const noexcept` view-rebind method (or `IOutputChannel::sendPayload(const MessageView&, span<const std::byte>)`) so generic handlers can transform payloads without heap-allocating wire envelopes or dropping leases.
+- [x] Update `IOutputChannel::send(const MessageView&)` and `VendorOutputChannel::send(const MessageView&)` to handle rebound payload views cleanly.
 
 ---
 

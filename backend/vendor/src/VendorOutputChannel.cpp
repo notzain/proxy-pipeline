@@ -52,18 +52,23 @@ bool VendorOutputChannel::send(const ::Backend::MessageView& message)
     if (auto* token = message.token()) {
         auto* node = static_cast<VendorRelayNode*>(token->context());
         if (node && !node->consumed && node->manager == m_manager) {
-            // Consuming forward for the same VendorManager:
-            // Send the original message by reference first; only mark consumed if send succeeds!
-            if (!m_sender->send(node->message)) {
-                return false;
+            const auto nodeSpan = node->payloadView();
+            const auto msgSpan = message.payload();
+            const bool payloadUnmodified = (nodeSpan.data() == msgSpan.data() && nodeSpan.size() == msgSpan.size());
+            if (payloadUnmodified) {
+                // Consuming forward for the same VendorManager:
+                // Send the original message by reference first; only mark consumed if send succeeds!
+                if (!m_sender->send(node->message)) {
+                    return false;
+                }
+                node->consumed = true;
+                token->disarm();
+                return true;
             }
-            node->consumed = true;
-            token->disarm();
-            return true;
         }
     }
 
-    // Fallback if cross-manager, non-token, or already consumed by a prior fan-out channel
+    // Fallback if payload was transformed via withPayload(), cross-manager, non-token, or already consumed by fan-out
     const auto payloadSpan = message.payload();
     std::string payloadStr(
         reinterpret_cast<const char*>(payloadSpan.data()),

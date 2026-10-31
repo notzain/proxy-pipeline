@@ -115,11 +115,26 @@ public:
     }
 
     /**
-     * @brief Constructs a new envelope reusing the existing message's metadata but with a modified payload.
+     * @brief Constructs a new serialized binary envelope reusing @p view's metadata and timestamp with @p newPayload.
      */
     static std::vector<std::byte> withPayload(
         const MessageView& view,
         Common::Compat::span<const std::byte> newPayload);
+
+    /**
+     * @brief Returns a non-allocating MessageView referencing @p newPayload while preserving this message's
+     *        protocol, metadata, timestamp, and attached Lease.
+     *
+     * When passed to `IOutputChannel::send(const MessageView&)`, buffer-based transports pack the preserved
+     * metadata and new payload into an envelope, while SDK transports (e.g. `VendorOutputChannel`) transmit
+     * the updated payload directly.
+     */
+    [[nodiscard]] MessageView withPayload(Common::Compat::span<const std::byte> newPayload) const noexcept;
+
+    /**
+     * @brief Returns true if `rawBuffer()` contains a complete pre-packed wire envelope matching `payload()`.
+     */
+    [[nodiscard]] bool hasWireEnvelope() const noexcept;
 
     constexpr MessageView() noexcept = default;
 

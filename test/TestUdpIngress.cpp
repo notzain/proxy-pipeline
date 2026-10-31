@@ -235,6 +235,24 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
 
         std::string_view parsedMutated(reinterpret_cast<const char*>(mutatedView->payload().data()), mutatedView->payload().size());
         CHECK(parsedMutated == updatedPayload);
+
+        // Non-allocating member view.withPayload(newPayload) preserves metadata and packs on IOutputChannel::send()
+        auto reboundView = view->withPayload(updatedSpan);
+        CHECK_FALSE(reboundView.hasWireEnvelope());
+        CHECK(reboundView.protocol() == Backend::MetadataTraits<Backend::UdpMetadata>::protocol);
+        const auto reboundMeta = reboundView.getMetadata<Backend::UdpMetadata>();
+        REQUIRE(reboundMeta.has_value());
+        CHECK(reboundMeta->srcPort == htons(1122));
+
+        TestOutputChannel outChan;
+        REQUIRE(outChan.send(reboundView));
+        const auto sentMsgs = outChan.getSentMessages();
+        REQUIRE(sentMsgs.size() == 1);
+        auto sentView = Backend::MessageView::from(Common::Memory::ByteView(sentMsgs.front()));
+        REQUIRE(sentView.has_value());
+        CHECK(sentView->getMetadata<Backend::UdpMetadata>()->srcPort == htons(1122));
+        std::string_view sentPayload(reinterpret_cast<const char*>(sentView->payload().data()), sentView->payload().size());
+        CHECK(sentPayload == updatedPayload);
     }
 
     SECTION("Explicit wire format encoding and decoding with fixed byte sequence")
