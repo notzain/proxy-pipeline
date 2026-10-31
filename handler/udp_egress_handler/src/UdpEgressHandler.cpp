@@ -53,8 +53,8 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
 
     auto payload = message.payload();
 
-    if (m_replyToOrigin && message.protocol() == Backend::ProtocolId::Udp) {
-        const auto* meta = message.getMetadata<Backend::UdpMetadata>();
+    if (m_replyToOrigin) {
+        const auto meta = message.getMetadata<Backend::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
             const auto originAddr = (meta->addressFamily == 6)
                 ? ::Backend::SocketAddress::fromIpv6Net(meta->srcIpv6, meta->srcPort)

@@ -4,6 +4,7 @@
 #include "backend/IInputChannel.hpp"
 #include "backend/IOutputChannel.hpp"
 #include "backend/MessageView.hpp"
+#include "backend/UdpMetadata.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include "core/handler/HandlerRunner.hpp"
@@ -181,7 +182,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Backend::ProtocolId::Raw);
+        CHECK(view->protocol() == Backend::RawProtocol);
         CHECK(view->metadata().empty());
         CHECK(view->payload().size() == testPayload.size());
 
@@ -197,14 +198,14 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         meta.dstIp = 0x0100007F;
         meta.dstPort = htons(9123);
 
-        auto env = Backend::MessageView::packUdp(meta, payloadSpan);
+        auto env = Backend::MessageView::pack(meta, payloadSpan);
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Backend::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::MetadataTraits<Backend::UdpMetadata>::protocol);
 
-        const auto* parsedMeta = view->getMetadata<Backend::UdpMetadata>();
-        REQUIRE(parsedMeta != nullptr);
+        const auto parsedMeta = view->getMetadata<Backend::UdpMetadata>();
+        REQUIRE(parsedMeta.has_value());
         CHECK(parsedMeta->srcPort == htons(54321));
         CHECK(parsedMeta->dstPort == htons(9123));
 
@@ -216,7 +217,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
     {
         Backend::UdpMetadata meta { };
         meta.srcPort = htons(1122);
-        auto env = Backend::MessageView::packUdp(meta, payloadSpan);
+        auto env = Backend::MessageView::pack(meta, payloadSpan);
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -227,8 +228,10 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         auto mutatedView = Backend::MessageView::from(mutatedEnv);
 
         REQUIRE(mutatedView.has_value());
-        CHECK(mutatedView->protocol() == Backend::ProtocolId::Udp);
-        CHECK(mutatedView->getMetadata<Backend::UdpMetadata>()->srcPort == htons(1122));
+        CHECK(mutatedView->protocol() == Backend::MetadataTraits<Backend::UdpMetadata>::protocol);
+        const auto mutatedMeta = mutatedView->getMetadata<Backend::UdpMetadata>();
+        REQUIRE(mutatedMeta.has_value());
+        CHECK(mutatedMeta->srcPort == htons(1122));
 
         std::string_view parsedMutated(reinterpret_cast<const char*>(mutatedView->payload().data()), mutatedView->payload().size());
         CHECK(parsedMutated == updatedPayload);
@@ -247,7 +250,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         const std::array<std::uint8_t, 23> goldenWire = {
             0x50, 0x58, // Magic
             0x01, // Version
-            0x00, // ProtocolId::Raw
+            0x00, // RawProtocol
             0x00, 0x00, // Metadata length = 0
             0x00, 0x00, 0x00, 0x05, // Payload length = 5
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // Timestamp
@@ -257,7 +260,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         auto wireSpan = Common::Compat::as_bytes(Common::Compat::span<const std::uint8_t, 23>(goldenWire));
         auto view = Backend::MessageView::from(wireSpan);
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Backend::ProtocolId::Raw);
+        CHECK(view->protocol() == Backend::RawProtocol);
         CHECK(view->metadata().empty());
         CHECK(view->payload().size() == 5);
         CHECK(view->timestampNs() == 0x0102030405060708ULL);
@@ -311,10 +314,10 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         REQUIRE(receiveResult.value() > expectedPayload.size());
         auto view = Backend::MessageView::from(slot.filledSpan());
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Backend::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::MetadataTraits<Backend::UdpMetadata>::protocol);
 
-        const auto* meta = view->getMetadata<Backend::UdpMetadata>();
-        REQUIRE(meta != nullptr);
+        const auto meta = view->getMetadata<Backend::UdpMetadata>();
+        REQUIRE(meta.has_value());
         CHECK(ntohs(meta->dstPort) == testPort);
 
         std::string_view receivedView(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
@@ -379,7 +382,7 @@ TEST_CASE("UdpIngressHandler packs datagram into envelope and forwards to pipeli
         auto view = Backend::MessageView::from(Common::Memory::ByteView(sentMessages.front()));
 
         REQUIRE(view.has_value());
-        CHECK(view->protocol() == Backend::ProtocolId::Udp);
+        CHECK(view->protocol() == Backend::MetadataTraits<Backend::UdpMetadata>::protocol);
         std::string_view payloadStr(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
         CHECK(payloadStr == testOrder);
     }
@@ -408,7 +411,7 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt status=\"confirmed\"/>";
-    auto envelope = Backend::MessageView::packUdp(
+    auto envelope = Backend::MessageView::pack(
         meta,
         Common::Memory::ByteView(expectedPayload));
 
@@ -469,7 +472,7 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     meta.dstPort = htons(9999);
 
     std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
-    auto envelope = Backend::MessageView::packUdp(
+    auto envelope = Backend::MessageView::pack(
         meta,
         Common::Memory::ByteView(expectedPayload));
 

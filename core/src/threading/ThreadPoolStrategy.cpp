@@ -3,7 +3,6 @@
 #include "MessageDispatcher.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/MessageView.hpp"
-#include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/ParallelArray.hpp"
@@ -22,26 +21,24 @@ namespace {
     std::size_t computeFlowWorkerIndex(
         std::size_t channelIdx,
         Common::Compat::span<const std::byte> rawPacket,
+        ::Backend::PayloadFormat format,
         std::size_t numWorkers) noexcept
     {
         if (numWorkers <= 1) {
             return 0;
         }
-        auto optView = Backend::MessageView::from(rawPacket);
-        if (optView && optView->protocol() == Backend::ProtocolId::Udp) {
-            const auto* meta = optView->getMetadata<Backend::UdpMetadata>();
-            if (meta && meta->srcPort != 0) {
-                // FNV-1a style mix of channel index + client IP + client port to pin flow to a consistent worker
-                std::uint64_t hash = 14695981039346656037ULL ^ channelIdx;
-                hash = (hash ^ meta->srcPort) * 1099511628211ULL;
-                if (meta->addressFamily == 6) {
-                    for (std::uint8_t b : meta->srcIpv6) {
-                        hash = (hash ^ b) * 1099511628211ULL;
+        if (format == ::Backend::PayloadFormat::Enveloped) {
+            if (const auto optView = Backend::MessageView::from(rawPacket)) {
+                const auto meta = optView->metadata();
+                if (!meta.empty()) {
+                    // FNV-1a mix of channel index + protocol + opaque metadata bytes to pin flow to a consistent worker
+                    std::uint64_t hash = 14695981039346656037ULL ^ channelIdx;
+                    hash = (hash ^ optView->protocol().value()) * 1099511628211ULL;
+                    for (const std::byte b : meta) {
+                        hash = (hash ^ static_cast<std::uint8_t>(b)) * 1099511628211ULL;
                     }
-                } else {
-                    hash = (hash ^ meta->srcIp) * 1099511628211ULL;
+                    return static_cast<std::size_t>(hash % numWorkers);
                 }
-                return static_cast<std::size_t>(hash % numWorkers);
             }
         }
         return channelIdx % numWorkers;
@@ -198,12 +195,12 @@ namespace {
         std::size_t runStart = 0;
         while (runStart < received) {
             Common::Memory::ByteView firstSpan(batchSlots[runStart].filledSpan());
-            const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, numWorkers);
+            const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, batchSlots[runStart].format(), numWorkers);
 
             std::size_t runEnd = runStart + 1;
             while (runEnd < received) {
                 Common::Memory::ByteView nextSpan(batchSlots[runEnd].filledSpan());
-                if (computeFlowWorkerIndex(channelIdx, nextSpan, numWorkers) != workerIdx) {
+                if (computeFlowWorkerIndex(channelIdx, nextSpan, batchSlots[runEnd].format(), numWorkers) != workerIdx) {
                     break;
                 }
                 ++runEnd;

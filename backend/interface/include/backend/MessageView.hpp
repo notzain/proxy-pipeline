@@ -1,16 +1,17 @@
 #pragma once
 
-#include "backend/EnvelopeHeader.hpp"
 #include "backend/Lease.hpp"
+#include "backend/MetadataTraits.hpp"
 #include "backend/ProtocolId.hpp"
-#include "backend/UdpMetadata.hpp"
 #include "common/compat/Span.hpp"
 #include "common/memory/Borrow.hpp"
 #include "common/memory/ObserverPtr.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <vector>
 
 namespace Backend {
@@ -23,7 +24,7 @@ namespace Backend {
  * custom backend transports and codecs. Encapsulates an optional transport Lease so
  * output channels can consume and forward the underlying message object transparently.
  *
- * Also provides static wire format packing helpers (pack, packRaw, packUdp, packInto).
+ * Also provides protocol-agnostic static wire format packing helpers (pack, packRaw, packInto).
  */
 class MessageView {
 public:
@@ -51,17 +52,28 @@ public:
         std::uint64_t timestampNs = 0);
 
     /**
-     * @brief Packs an unadorned/raw application payload (ProtocolId::Raw, empty metadata).
+     * @brief Packs a strongly-typed protocol metadata struct `T` (registered via `MetadataTraits<T>`)
+     *        together with an application payload.
      */
-    static std::vector<std::byte> packRaw(
+    template <typename T>
+    static std::vector<std::byte> pack(
+        const T& metadata,
         Common::Compat::span<const std::byte> payload,
-        std::uint64_t timestampNs = 0);
+        std::uint64_t timestampNs = 0)
+    {
+        static_assert(MetadataTraits<T>::isRegistered, "Metadata type T must specialize Backend::MetadataTraits<T>");
+        static_assert(std::is_trivially_copyable_v<T>, "Metadata type T must be trivially copyable");
+        return pack(
+            MetadataTraits<T>::protocol,
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(&metadata), sizeof(T)),
+            payload,
+            timestampNs);
+    }
 
     /**
-     * @brief Packs a UDP datagram payload along with origin/destination UdpMetadata.
+     * @brief Packs an unadorned/raw application payload (RawProtocol, empty metadata).
      */
-    static std::vector<std::byte> packUdp(
-        const UdpMetadata& meta,
+    static std::vector<std::byte> packRaw(
         Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
@@ -83,6 +95,26 @@ public:
         std::uint64_t timestampNs = 0);
 
     /**
+     * @brief Serializes a strongly-typed metadata struct `T` and payload directly into a pre-allocated buffer.
+     */
+    template <typename T>
+    static std::size_t packInto(
+        Common::Compat::span<std::byte> destination,
+        const T& metadata,
+        Common::Compat::span<const std::byte> payload,
+        std::uint64_t timestampNs = 0)
+    {
+        static_assert(MetadataTraits<T>::isRegistered, "Metadata type T must specialize Backend::MetadataTraits<T>");
+        static_assert(std::is_trivially_copyable_v<T>, "Metadata type T must be trivially copyable");
+        return packInto(
+            destination,
+            MetadataTraits<T>::protocol,
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(&metadata), sizeof(T)),
+            payload,
+            timestampNs);
+    }
+
+    /**
      * @brief Constructs a new envelope reusing the existing message's metadata but with a modified payload.
      */
     static std::vector<std::byte> withPayload(
@@ -98,7 +130,7 @@ public:
         Common::Compat::span<const std::byte> payload,
         Common::Compat::span<const std::byte> rawBuffer = { },
         std::uint64_t timestampNs = 0,
-        ProtocolId protocol = ProtocolId::Raw,
+        ProtocolId protocol = RawProtocol,
         Common::Compat::span<const std::byte> metadata = { }) noexcept;
 
     MessageView(
@@ -141,13 +173,22 @@ public:
      */
     [[nodiscard]] Common::Memory::ObserverPtr<ILeaseState> leaseState() const noexcept;
 
+    /**
+     * @brief Deserializes protocol metadata `T` safely by value without unaligned pointer casts.
+     *
+     * Verifies both the protocol identifier via `MetadataTraits<T>` and the metadata size.
+     */
     template <typename T>
-    [[nodiscard]] const T* getMetadata() const noexcept
+    [[nodiscard]] std::optional<T> getMetadata() const noexcept
     {
-        if (m_metadata.size() < sizeof(T)) {
-            return nullptr;
+        static_assert(MetadataTraits<T>::isRegistered, "Metadata type T must specialize Backend::MetadataTraits<T>");
+        static_assert(std::is_trivially_copyable_v<T>, "Metadata type T must be trivially copyable");
+        if (m_protocol != MetadataTraits<T>::protocol || m_metadata.size() < sizeof(T)) {
+            return std::nullopt;
         }
-        return reinterpret_cast<const T*>(m_metadata.data());
+        T out { };
+        std::memcpy(&out, m_metadata.data(), sizeof(T));
+        return out;
     }
 
 private:
@@ -155,7 +196,7 @@ private:
     Common::Compat::span<const std::byte> m_metadata { };
     Common::Compat::span<const std::byte> m_payload { };
     std::uint64_t m_timestampNs { 0 };
-    ProtocolId m_protocol { ProtocolId::Raw };
+    ProtocolId m_protocol { RawProtocol };
     Common::Memory::ObserverPtr<Lease> m_lease { };
 };
 

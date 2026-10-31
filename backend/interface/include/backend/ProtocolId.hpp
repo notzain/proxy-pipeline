@@ -1,17 +1,24 @@
 #pragma once
 
+#include "common/types/StrongType.hpp"
 #include <cstdint>
 
 namespace Backend {
 
+struct ProtocolIdTag { };
+
 /**
- * @brief Identifies the network or application protocol carried in the envelope.
+ * @brief Strongly-typed 8-bit protocol identifier (e.g. IANA Assigned Internet Protocol Numbers).
+ *
+ * Open strong type wrapping `std::uint8_t` so applications and transport metadata definitions
+ * can construct any `ProtocolId(number)` directly in `MetadataTraits<T>` without modifying
+ * a centralized enum in `backend/interface`.
  */
-enum class ProtocolId : std::uint8_t {
-    Raw = 0, ///< Unadorned or generic application payload (default/testing)
-    Udp = 1, ///< UDP datagram stream with UdpMetadata
-    Tcp = 2, ///< TCP stream connection with TcpMetadata
-    Mqtt = 3 ///< MQTT pub/sub message with MqttMetadata
-};
+using ProtocolId = Common::Types::StrongType<std::uint8_t, ProtocolIdTag>;
+
+/**
+ * @brief Default protocol identifier (0) representing an unadorned/raw pipeline payload.
+ */
+inline constexpr ProtocolId RawProtocol { 0 };
 
 } // namespace Backend

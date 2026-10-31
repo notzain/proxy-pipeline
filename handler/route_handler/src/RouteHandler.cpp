@@ -70,7 +70,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
             } else if (typeStr == "client_port" || typeStr == "port") {
                 patternVariant = MatchCriteria::ClientPort { static_cast<std::uint16_t>(numVal) };
             } else if (typeStr == "protocol") {
-                patternVariant = MatchCriteria::Protocol { static_cast<Backend::ProtocolId>(numVal) };
+                patternVariant = MatchCriteria::Protocol { Backend::ProtocolId { static_cast<std::uint8_t>(numVal) } };
             } else if (typeStr == "default" || typeStr == "fallback") {
                 patternVariant = MatchCriteria::Fallback { };
             } else {

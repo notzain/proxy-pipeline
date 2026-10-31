@@ -74,13 +74,16 @@ This document captures the architectural review of the message pipeline—from `
    - In `UdpInputChannel::writeEnvelopePreamble()`, store only the deterministic flow-relevant fields or zero-initialize destination fields consistently so hashing `metadata()` pins a client flow (`srcIp`, `srcPort`, `dstIp`, `dstPort`) to the same worker thread.
 2. **Enforce 8-Byte Alignment on `EnvelopeHeader` & Type-Safe `getMetadata<T>()`**:
    - Pad `EnvelopeHeader` from 18 bytes to 24 bytes (or use a safe unaligned load / `MetadataTraits<T>`) so `m_metadata.data()` is always 8-byte aligned and `getMetadata<T>()` verifies `m_protocol == MetadataTraits<T>::protocol`.
-3. **Separate Wire Packing from `MessageView` (Optional / Clean Layering)**:
-   - Keep `MessageView` focused on inspecting in-flight messages (`payload()`, `metadata()`, `protocol()`, `timestampNs()`, lease access) and move `UdpMetadata.hpp` inclusion out of `MessageView.hpp` (e.g. forward-declare `UdpMetadata` or move protocol-specific packers into protocol/codec headers).
+3. **Zero Protocol Coupling in `MessageView` (`MetadataTraits<T>` Extension Point & Templated StrongType `ProtocolId`)**:
+   - Replace the closed `ProtocolId` enum with a templated strong type `using ProtocolId = Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` (`common/include/common/types/StrongType.hpp` and `backend/interface/include/backend/ProtocolId.hpp`) and `RawProtocol { 0 }`, so applications and transport metadata definitions can construct any 8-bit IANA protocol number (e.g. `IPPROTO_UDP = 17`) directly inside `MetadataTraits<T>` without modifying `backend/interface`.
+   - Remove `packUdp` and all `UdpMetadata` references/forward-declarations from `MessageView.hpp` and `MessageView.cpp`.
+   - Provide templated `MessageView::pack<T>(const T& metadata, ...)` and `MessageView::packInto<T>(destination, const T& metadata, ...)` backed by `MetadataTraits<T>` so new protocol metadata types can be introduced without touching `MessageView` or `ProtocolId`.
 
 #### Checklist
-- [ ] Replace `UdpMetadata`-specific hashing in `core/src/threading/ThreadPoolStrategy.cpp` with protocol-agnostic metadata byte hashing and respect `PayloadFormat::Raw`.
-- [ ] Remove `#include "backend/UdpMetadata.hpp"` from `core/src/threading/ThreadPoolStrategy.cpp` and `backend/interface/include/backend/MessageView.hpp`.
-- [ ] Fix alignment of metadata following `EnvelopeHeader` (pad `EnvelopeHeader` to 24 bytes or use `MetadataTraits<T>` + alignment-safe access in `MessageView::getMetadata<T>()`).
+- [x] Replace `UdpMetadata`-specific hashing in `core/src/threading/ThreadPoolStrategy.cpp` with protocol-agnostic metadata byte hashing and respect `PayloadFormat::Raw`.
+- [x] Replace `ProtocolId` enum with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` and align with standard IANA protocol numbers (`IPPROTO_*`) across C++ and `scripts/proxy_runner/pcap.py`.
+- [x] Remove `packUdp` and all `UdpMetadata` references from `core/src/threading/ThreadPoolStrategy.cpp`, `backend/interface/include/backend/MessageView.hpp`, and `backend/interface/src/MessageView.cpp`.
+- [x] Fix alignment of metadata following `EnvelopeHeader` and make `MessageView::pack<T>()`, `MessageView::packInto<T>()`, and `MessageView::getMetadata<T>()` extensible via `MetadataTraits<T>`.
 
 ---
 

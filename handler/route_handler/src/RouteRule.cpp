@@ -48,7 +48,7 @@ namespace {
 
         bool operator()(const MatchCriteria::ClientPort& c) const noexcept
         {
-            const auto* udpMeta = message.getMetadata<Backend::UdpMetadata>();
+            const auto udpMeta = message.getMetadata<Backend::UdpMetadata>();
             if (!udpMeta) {
                 return false;
             }

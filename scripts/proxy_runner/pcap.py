@@ -69,7 +69,7 @@ class PcapPacket:
             "!HBBHIQ",
             0x5058,  # magic 'PX' (0x50, 0x58 in network byte order)
             1,  # version
-            1,  # protocol = Udp
+            socket.IPPROTO_UDP,  # IANA protocol = UDP (17)
             len(meta),
             len(self.raw_payload),
             self.timestamp_ns,

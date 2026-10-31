@@ -39,7 +39,7 @@ namespace {
         std::byte* dst = destination.data();
         Common::IO::Wire::writeUint16Be(dst, Backend::EnvelopeMagic);
         dst[2] = static_cast<std::byte>(Backend::EnvelopeVersion);
-        dst[3] = static_cast<std::byte>(Backend::ProtocolId::Udp);
+        dst[3] = static_cast<std::byte>(Backend::MetadataTraits<Backend::UdpMetadata>::protocol.value());
         Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(sizeof(Backend::UdpMetadata)));
         Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payloadSize));
         Common::IO::Wire::writeUint64Be(dst + 10, getCurrentTimeNs());

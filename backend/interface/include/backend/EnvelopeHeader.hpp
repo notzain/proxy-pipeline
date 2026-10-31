@@ -15,7 +15,7 @@ inline constexpr std::uint8_t EnvelopeVersion = 1;
 struct EnvelopeHeader {
     std::uint16_t magic { EnvelopeMagic }; ///< Magic bytes 0x5058 ('PX')
     std::uint8_t version { EnvelopeVersion }; ///< Wire protocol format version (1)
-    ProtocolId protocol { ProtocolId::Raw }; ///< Protocol identifier
+    ProtocolId protocol { RawProtocol }; ///< Protocol identifier
     std::uint16_t metadataLength { 0 }; ///< Size of the following metadata section in bytes
     std::uint32_t payloadLength { 0 }; ///< Size of the application payload in bytes
     std::uint64_t timestampNs { 0 }; ///< Ingress timestamp in nanoseconds since UNIX epoch

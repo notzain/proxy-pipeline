@@ -166,7 +166,7 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "Datagram from 9050";
-        auto env = Backend::MessageView::packUdp(
+        auto env = Backend::MessageView::pack(
             meta,
             Common::Memory::ByteView(payload));
         auto view = Backend::MessageView::from(env);

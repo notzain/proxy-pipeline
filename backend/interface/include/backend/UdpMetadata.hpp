@@ -1,6 +1,8 @@
 #pragma once
 
+#include "backend/MetadataTraits.hpp"
 #include <cstdint>
+#include <netinet/in.h>
 
 namespace Backend {
 
@@ -21,5 +23,11 @@ struct alignas(4) UdpMetadata {
 };
 
 static_assert(sizeof(UdpMetadata) == 48, "UdpMetadata must be exactly 48 bytes");
+
+template <>
+struct MetadataTraits<UdpMetadata> {
+    static constexpr bool isRegistered = true;
+    static constexpr ProtocolId protocol { static_cast<std::uint8_t>(IPPROTO_UDP) };
+};
 
 } // namespace Backend

@@ -1,7 +1,6 @@
 #include "backend/MessageView.hpp"
 #include "backend/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
-#include "common/memory/ByteView.hpp"
 #include <chrono>
 #include <cstring>
 
@@ -34,7 +33,7 @@ std::size_t MessageView::packInto(
     std::byte* dst = destination.data();
     Common::IO::Wire::writeUint16Be(dst, EnvelopeMagic);
     dst[2] = static_cast<std::byte>(EnvelopeVersion);
-    dst[3] = static_cast<std::byte>(protocol);
+    dst[3] = static_cast<std::byte>(protocol.value());
     Common::IO::Wire::writeUint16Be(dst + 4, static_cast<std::uint16_t>(metadata.size()));
     Common::IO::Wire::writeUint32Be(dst + 6, static_cast<std::uint32_t>(payload.size()));
 
@@ -67,15 +66,7 @@ std::vector<std::byte> MessageView::packRaw(
     Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
-    return pack(ProtocolId::Raw, { }, payload, timestampNs);
-}
-
-std::vector<std::byte> MessageView::packUdp(
-    const UdpMetadata& meta,
-    Common::Compat::span<const std::byte> payload,
-    std::uint64_t timestampNs)
-{
-    return pack(ProtocolId::Udp, Common::Memory::ByteView(meta), payload, timestampNs);
+    return pack(RawProtocol, { }, payload, timestampNs);
 }
 
 std::vector<std::byte> MessageView::withPayload(
@@ -98,7 +89,7 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
         return std::nullopt;
     }
 
-    auto protocol = static_cast<ProtocolId>(data[3]);
+    ProtocolId protocol { static_cast<std::uint8_t>(data[3]) };
     std::uint16_t metadataLength = Common::IO::Wire::readUint16Be(data + 4);
     std::uint32_t payloadLength = Common::IO::Wire::readUint32Be(data + 6);
     std::uint64_t timestampNs = Common::IO::Wire::readUint64Be(data + 10);
