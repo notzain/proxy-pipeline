@@ -41,6 +41,11 @@ public:
 
     Backend::MessageResult onMessageReceived(std::string_view channelName, const Backend::MessageView& message) override;
 
+    void onBatchReceived(
+        std::string_view channelName,
+        Common::Compat::span<const Backend::MessageView> messages,
+        Common::Compat::span<Backend::MessageResult> outResults) override;
+
     bool waitForCompletion(
         std::chrono::milliseconds timeout,
         std::chrono::milliseconds idleDrainTimeout = std::chrono::milliseconds(500));
