@@ -1032,13 +1032,14 @@ TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelop
     const std::uint16_t metaLen = 42;
     const std::uint32_t payloadLen = 1337;
     const std::uint64_t timestamp = 9876543210ULL;
+    const auto timePoint = Common::Compat::fromEpochNs(timestamp);
 
     const std::size_t written = Backend::writeEnvelopeHeader(
         Common::Compat::span<std::byte>(buffer.data(), buffer.size()),
         protocol,
         metaLen,
         payloadLen,
-        timestamp);
+        timePoint);
 
     REQUIRE(written == 18);
 
@@ -1049,7 +1050,7 @@ TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelop
                 protocol,
                 metaLen,
                 payloadLen,
-                timestamp)
+                timePoint)
         == 0);
 
     // Verify parsed via MessageView::from with dummy payload and metadata appended

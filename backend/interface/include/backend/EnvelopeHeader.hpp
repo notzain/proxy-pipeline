@@ -45,14 +45,4 @@ std::size_t writeEnvelopeHeader(
     std::uint32_t payloadLength,
     std::optional<Common::Compat::UtcTimePoint> timestamp = std::nullopt) noexcept;
 
-/**
- * @brief Overload accepting raw nanoseconds since UNIX epoch for backwards compatibility and PCAP ingestion.
- */
-std::size_t writeEnvelopeHeader(
-    Common::Compat::span<std::byte> destination,
-    ProtocolId protocol,
-    std::uint16_t metadataLength,
-    std::uint32_t payloadLength,
-    std::uint64_t timestampNs) noexcept;
-
 } // namespace Backend
