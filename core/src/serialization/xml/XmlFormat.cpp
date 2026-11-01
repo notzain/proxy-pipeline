@@ -9,13 +9,31 @@ namespace Core::Serialization::Xml {
 
 namespace {
 
-    void buildXmlNode(const Ir::Value& val, pugi::xml_node& node)
+    std::string primitiveToString(const Ir::Value& val)
     {
-        // Add attributes
-        for (const auto& [attrName, attrValue] : val.attributes()) {
-            node.append_attribute(attrName.c_str()).set_value(attrValue.c_str());
+        if (val.isNull()) {
+            return "";
         }
+        if (auto b = val.asBool()) {
+            return *b ? "true" : "false";
+        }
+        if (val.isInt()) {
+            return std::to_string(*val.asInt());
+        }
+        if (val.isUInt()) {
+            return std::to_string(*val.asUInt());
+        }
+        if (val.isDouble()) {
+            return std::to_string(*val.asDouble());
+        }
+        if (auto s = val.asStringView()) {
+            return std::string(*s);
+        }
+        return "";
+    }
 
+    void buildXmlNode(const Ir::Value& val, pugi::xml_node& node, const XmlFormat::AttrPredicate& isAttr)
+    {
         if (val.isNull()) {
             return;
         }
@@ -42,14 +60,18 @@ namespace {
         if (auto* arr = val.asArray()) {
             for (const auto& item : *arr) {
                 pugi::xml_node itemNode = node.append_child("item");
-                buildXmlNode(item, itemNode);
+                buildXmlNode(item, itemNode, isAttr);
             }
             return;
         }
         if (auto* obj = val.asObject()) {
             for (const auto& [fieldName, fieldValue] : *obj) {
-                pugi::xml_node fieldNode = node.append_child(fieldName.c_str());
-                buildXmlNode(fieldValue, fieldNode);
+                if (isAttr && isAttr(fieldName)) {
+                    node.append_attribute(fieldName.c_str()).set_value(primitiveToString(fieldValue).c_str());
+                } else {
+                    pugi::xml_node fieldNode = node.append_child(fieldName.c_str());
+                    buildXmlNode(fieldValue, fieldNode, isAttr);
+                }
             }
             return;
         }
@@ -57,13 +79,6 @@ namespace {
 
     Ir::Value parseXmlNode(const pugi::xml_node& node, bool inPlace)
     {
-        Ir::Value val;
-
-        // Parse attributes
-        for (const auto& attr : node.attributes()) {
-            val.setAttribute(attr.name(), attr.value());
-        }
-
         // Count child elements
         std::size_t childCount = 0;
         bool allItems = true;
@@ -76,19 +91,27 @@ namespace {
             }
         }
 
-        if (childCount == 0) {
+        // Count attributes
+        std::size_t attrCount = 0;
+        for ([[maybe_unused]] const auto& attr : node.attributes()) {
+            ++attrCount;
+        }
+
+        if (childCount == 0 && attrCount == 0) {
             // Leaf node text content
             std::string_view text = node.text().as_string();
             // Trim whitespace
             auto start = text.find_first_not_of(" \t\r\n");
             if (start == std::string::npos) {
-                // Empty element or attribute-only
+                // Empty element
+                Ir::Value val;
                 val.raw() = Ir::ObjectType { };
                 return val;
             }
             auto end = text.find_last_not_of(" \t\r\n");
             std::string_view trimmed = text.substr(start, end - start + 1);
 
+            Ir::Value val;
             // Infer primitive type or store string / string_view
             if (trimmed == "true") {
                 val.raw() = true;
@@ -115,7 +138,7 @@ namespace {
             return val;
         }
 
-        if (allItems && childCount > 0) {
+        if (allItems && childCount > 0 && attrCount == 0) {
             // Array of items
             Ir::ArrayType arr;
             arr.reserve(childCount);
@@ -124,28 +147,62 @@ namespace {
                     arr.push_back(parseXmlNode(child, inPlace));
                 }
             }
+            Ir::Value val;
             val.raw() = std::move(arr);
             return val;
         }
 
-        // Object with child element fields
+        // Object with attributes and/or child elements
         Ir::ObjectType obj;
+
+        // Parse attributes into object fields
+        for (const auto& attr : node.attributes()) {
+            std::string_view attrVal = attr.value();
+            Ir::Value parsedAttr;
+            if (attrVal == "true") {
+                parsedAttr.raw() = true;
+            } else if (attrVal == "false") {
+                parsedAttr.raw() = false;
+            } else {
+                char* endPtr = nullptr;
+                long long ival = std::strtoll(attrVal.data(), &endPtr, 10);
+                if (endPtr == attrVal.data() + attrVal.size()) {
+                    parsedAttr.raw() = static_cast<std::int64_t>(ival);
+                } else {
+                    double dval = std::strtod(attrVal.data(), &endPtr);
+                    if (endPtr == attrVal.data() + attrVal.size()) {
+                        parsedAttr.raw() = dval;
+                    } else {
+                        if (inPlace) {
+                            parsedAttr.raw() = attrVal;
+                        } else {
+                            parsedAttr.raw() = std::string(attrVal);
+                        }
+                    }
+                }
+            }
+            obj[attr.name()] = std::move(parsedAttr);
+        }
+
+        // Parse child elements into object fields
         for (const auto& child : node.children()) {
             if (child.type() == pugi::node_element) {
                 obj[child.name()] = parseXmlNode(child, inPlace);
             }
         }
+
+        Ir::Value val;
         val.raw() = std::move(obj);
         return val;
     }
 
 } // namespace
 
-std::string XmlFormat::encode(const Ir::Value& ir, const Options& options)
+std::string XmlFormat::encodeInternal(const Ir::Value& ir, const Options& options, const AttrPredicate& isAttr)
 {
     pugi::xml_document doc;
     pugi::xml_node rootNode = doc.append_child(options.rootName.c_str());
-    buildXmlNode(ir, rootNode);
+    buildXmlNode(ir, rootNode, isAttr);
 
     std::ostringstream oss;
     pugi::xml_writer_stream writer(oss);

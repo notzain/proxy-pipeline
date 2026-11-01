@@ -115,20 +115,26 @@ struct Core::Serialization::TypeTraits<ComplexModel> {
 
 template <>
 struct Core::Serialization::TypeTraits<UserProfile> {
-    static constexpr auto attributes()
-    {
-        return std::make_tuple(
-            Core::Serialization::attribute("id", &UserProfile::id),
-            Core::Serialization::attribute("role", &UserProfile::role),
-            Core::Serialization::attribute("active", &UserProfile::active));
-    }
-
     static constexpr auto fields()
     {
         return std::make_tuple(
+            Core::Serialization::field("id", &UserProfile::id),
+            Core::Serialization::field("role", &UserProfile::role),
+            Core::Serialization::field("active", &UserProfile::active),
             Core::Serialization::field("username", &UserProfile::username),
             Core::Serialization::field("email", &UserProfile::email),
             Core::Serialization::field("location", &UserProfile::location));
+    }
+};
+
+template <>
+struct Core::Serialization::Xml::XmlTraits<UserProfile> {
+    static constexpr auto configure()
+    {
+        return Core::Serialization::Xml::XmlConfig<UserProfile> { }
+            .asAttribute(&UserProfile::id)
+            .asAttribute(&UserProfile::role)
+            .asAttribute(&UserProfile::active);
     }
 };
 
@@ -214,6 +220,36 @@ TEST_CASE("JsonSerializer and JsonDeserializer with std containers and optionals
         CHECK_FALSE(restored->description.has_value());
         CHECK(restored->numbers.empty());
         CHECK(restored->scores.empty());
+    }
+    SECTION("Model with XML attributes also serialized and deserialized via JSON")
+    {
+        UserProfile profile {
+            .id = 1337,
+            .role = "admin",
+            .active = true,
+            .username = "johndoe",
+            .email = "john@example.com",
+            .location = { .x = 10, .y = 20 }
+        };
+
+        std::string json = Core::Serialization::Json::JsonSerializer<UserProfile>::serialize(profile);
+        REQUIRE(!json.empty());
+
+        // Validate that attributes are NOT ignored in JSON and are serialized as standard JSON fields!
+        CHECK(json.find(R"("id":1337)") != std::string::npos);
+        CHECK(json.find(R"("role":"admin")") != std::string::npos);
+        CHECK(json.find(R"("active":true)") != std::string::npos);
+        CHECK(json.find(R"("username":"johndoe")") != std::string::npos);
+
+        auto restored = Core::Serialization::Json::JsonDeserializer<UserProfile>::deserialize(json);
+        REQUIRE(restored.has_value());
+        CHECK(restored->id == 1337);
+        CHECK(restored->role == "admin");
+        CHECK(restored->active == true);
+        CHECK(restored->username == "johndoe");
+        CHECK(restored->email == "john@example.com");
+        CHECK(restored->location == profile.location);
+        CHECK(*restored == profile);
     }
 }
 

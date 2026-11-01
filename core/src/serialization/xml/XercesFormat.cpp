@@ -122,15 +122,31 @@ namespace {
         char* m_str { nullptr };
     };
 
-    void buildXmlNode(xercesc::DOMDocument* doc, const Ir::Value& val, xercesc::DOMElement* elem)
+    std::string primitiveToString(const Ir::Value& val)
     {
-        // Add attributes
-        for (const auto& [attrName, attrValue] : val.attributes()) {
-            XercesString xName(attrName.c_str());
-            XercesString xVal(attrValue.c_str());
-            elem->setAttribute(xName.get(), xVal.get());
+        if (val.isNull()) {
+            return "";
         }
+        if (auto b = val.asBool()) {
+            return *b ? "true" : "false";
+        }
+        if (val.isInt()) {
+            return std::to_string(*val.asInt());
+        }
+        if (val.isUInt()) {
+            return std::to_string(*val.asUInt());
+        }
+        if (val.isDouble()) {
+            return std::to_string(*val.asDouble());
+        }
+        if (auto s = val.asStringView()) {
+            return std::string(*s);
+        }
+        return "";
+    }
 
+    void buildXmlNode(xercesc::DOMDocument* doc, const Ir::Value& val, xercesc::DOMElement* elem, const XercesFormat::AttrPredicate& isAttr)
+    {
         if (val.isNull()) {
             return;
         }
@@ -167,16 +183,23 @@ namespace {
             for (const auto& item : *arr) {
                 xercesc::DOMElement* itemElem = doc->createElement(itemTag.get());
                 elem->appendChild(itemElem);
-                buildXmlNode(doc, item, itemElem);
+                buildXmlNode(doc, item, itemElem, isAttr);
             }
             return;
         }
         if (auto* obj = val.asObject()) {
             for (const auto& [fieldName, fieldValue] : *obj) {
-                XercesString fieldTag(fieldName.c_str());
-                xercesc::DOMElement* fieldElem = doc->createElement(fieldTag.get());
-                elem->appendChild(fieldElem);
-                buildXmlNode(doc, fieldValue, fieldElem);
+                if (isAttr && isAttr(fieldName)) {
+                    std::string strVal = primitiveToString(fieldValue);
+                    XercesString xName(fieldName.c_str());
+                    XercesString xVal(strVal.c_str());
+                    elem->setAttribute(xName.get(), xVal.get());
+                } else {
+                    XercesString fieldTag(fieldName.c_str());
+                    xercesc::DOMElement* fieldElem = doc->createElement(fieldTag.get());
+                    elem->appendChild(fieldElem);
+                    buildXmlNode(doc, fieldValue, fieldElem, isAttr);
+                }
             }
             return;
         }
@@ -184,20 +207,6 @@ namespace {
 
     Ir::Value parseXmlNode(xercesc::DOMElement* elem)
     {
-        Ir::Value val;
-
-        // Parse attributes
-        if (elem->hasAttributes()) {
-            xercesc::DOMNamedNodeMap* attrs = elem->getAttributes();
-            const XMLSize_t attrCount = attrs->getLength();
-            for (XMLSize_t i = 0; i < attrCount; ++i) {
-                auto* attr = static_cast<xercesc::DOMAttr*>(attrs->item(i));
-                TranscodeString nameStr(attr->getName());
-                TranscodeString valStr(attr->getValue());
-                val.setAttribute(std::string(nameStr.view()), std::string(valStr.view()));
-            }
-        }
-
         // Count element children
         std::size_t childCount = 0;
         bool allItems = true;
@@ -211,17 +220,21 @@ namespace {
             }
         }
 
-        if (childCount == 0) {
+        const bool hasAttrs = elem->hasAttributes();
+
+        if (childCount == 0 && !hasAttrs) {
             TranscodeString text(elem->getTextContent());
             std::string_view sv = text.view();
             auto start = sv.find_first_not_of(" \t\r\n");
             if (start == std::string_view::npos) {
+                Ir::Value val;
                 val.raw() = Ir::ObjectType { };
                 return val;
             }
             auto end = sv.find_last_not_of(" \t\r\n");
             std::string_view trimmed = sv.substr(start, end - start + 1);
 
+            Ir::Value val;
             if (trimmed == "true") {
                 val.raw() = true;
             } else if (trimmed == "false") {
@@ -243,7 +256,7 @@ namespace {
             return val;
         }
 
-        if (allItems && childCount > 0) {
+        if (allItems && childCount > 0 && !hasAttrs) {
             Ir::ArrayType arr;
             arr.reserve(childCount);
             for (xercesc::DOMNode* child = elem->getFirstChild(); child != nullptr; child = child->getNextSibling()) {
@@ -251,24 +264,61 @@ namespace {
                     arr.push_back(parseXmlNode(static_cast<xercesc::DOMElement*>(child)));
                 }
             }
+            Ir::Value val;
             val.raw() = std::move(arr);
             return val;
         }
 
         Ir::ObjectType obj;
+
+        // Parse attributes into object fields
+        if (hasAttrs) {
+            xercesc::DOMNamedNodeMap* attrs = elem->getAttributes();
+            const XMLSize_t attrCount = attrs->getLength();
+            for (XMLSize_t i = 0; i < attrCount; ++i) {
+                auto* attr = static_cast<xercesc::DOMAttr*>(attrs->item(i));
+                TranscodeString nameStr(attr->getName());
+                TranscodeString valStr(attr->getValue());
+                std::string_view attrVal = valStr.view();
+                Ir::Value parsedAttr;
+                if (attrVal == "true") {
+                    parsedAttr.raw() = true;
+                } else if (attrVal == "false") {
+                    parsedAttr.raw() = false;
+                } else {
+                    char* endPtr = nullptr;
+                    long long ival = std::strtoll(attrVal.data(), &endPtr, 10);
+                    if (endPtr == attrVal.data() + attrVal.size()) {
+                        parsedAttr.raw() = static_cast<std::int64_t>(ival);
+                    } else {
+                        double dval = std::strtod(attrVal.data(), &endPtr);
+                        if (endPtr == attrVal.data() + attrVal.size()) {
+                            parsedAttr.raw() = dval;
+                        } else {
+                            parsedAttr.raw() = std::string(attrVal);
+                        }
+                    }
+                }
+                obj[std::string(nameStr.view())] = std::move(parsedAttr);
+            }
+        }
+
+        // Parse element children into object fields
         for (xercesc::DOMNode* child = elem->getFirstChild(); child != nullptr; child = child->getNextSibling()) {
             if (child->getNodeType() == xercesc::DOMNode::ELEMENT_NODE) {
                 TranscodeString nameStr(child->getNodeName());
                 obj[std::string(nameStr.view())] = parseXmlNode(static_cast<xercesc::DOMElement*>(child));
             }
         }
+
+        Ir::Value val;
         val.raw() = std::move(obj);
         return val;
     }
 
 } // namespace
 
-std::string XercesFormat::encode(const Ir::Value& ir, const Options& options)
+std::string XercesFormat::encodeInternal(const Ir::Value& ir, const Options& options, const AttrPredicate& isAttr)
 {
     ensureXercesInitialized();
 
@@ -295,7 +345,7 @@ std::string XercesFormat::encode(const Ir::Value& ir, const Options& options)
     } docGuard { doc };
 
     xercesc::DOMElement* rootElem = doc->getDocumentElement();
-    buildXmlNode(doc, ir, rootElem);
+    buildXmlNode(doc, ir, rootElem, isAttr);
 
     xercesc::DOMLSSerializer* serializer = static_cast<xercesc::DOMImplementationLS*>(impl)->createLSSerializer();
     if (!serializer) {

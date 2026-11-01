@@ -15,7 +15,6 @@ class Value;
 using NullType = std::monostate;
 using ArrayType = std::vector<Value>;
 using ObjectType = std::map<std::string, Value>;
-using AttributeMapType = std::map<std::string, std::string>;
 
 /**
  * @brief Intermediate Representation (IR) value node representing dynamically-typed data.
@@ -238,33 +237,8 @@ public:
         std::get<ArrayType>(m_data).push_back(std::move(val));
     }
 
-    // --- Attributes support (for XML attributes) ---
-    [[nodiscard]] const AttributeMapType& attributes() const noexcept
-    {
-        return m_attributes;
-    }
-
-    [[nodiscard]] AttributeMapType& attributes() noexcept
-    {
-        return m_attributes;
-    }
-
-    [[nodiscard]] const std::string* findAttribute(std::string_view key) const
-    {
-        if (auto it = m_attributes.find(std::string(key)); it != m_attributes.end()) {
-            return &it->second;
-        }
-        return nullptr;
-    }
-
-    void setAttribute(std::string key, std::string value)
-    {
-        m_attributes[std::move(key)] = std::move(value);
-    }
-
 private:
     VariantType m_data;
-    AttributeMapType m_attributes;
 };
 
 } // namespace Core::Serialization::Ir

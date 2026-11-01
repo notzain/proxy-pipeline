@@ -5,6 +5,7 @@
 #include "core/serialization/ir/Converter.hpp"
 #include "core/serialization/ir/Value.hpp"
 #include "core/serialization/xml/XmlFormat.hpp"
+#include "core/serialization/xml/XmlTraits.hpp"
 
 #include <optional>
 #include <string>
@@ -32,7 +33,7 @@ public:
     static std::string serialize(const T& value, const Options& options = { })
     {
         Ir::Value ir = Ir::toIntermediate(value);
-        return XmlFormat::encode(ir, options);
+        return XmlFormat::encode<T>(ir, options);
     }
 
     /**

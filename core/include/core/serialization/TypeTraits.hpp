@@ -8,23 +8,12 @@
 namespace Core::Serialization {
 
 /**
- * @brief Represents a named member of a struct (element/field).
+ * @brief Represents a named member of a struct (field/element).
  */
 template <typename ClassType, typename MemberType>
 struct FieldDescriptor {
     std::string_view name;
     MemberType ClassType::* memberPtr;
-    static constexpr bool isAttribute = false;
-};
-
-/**
- * @brief Represents an XML attribute member of a struct.
- */
-template <typename ClassType, typename MemberType>
-struct AttributeDescriptor {
-    std::string_view name;
-    MemberType ClassType::* memberPtr;
-    static constexpr bool isAttribute = true;
 };
 
 /**
@@ -37,32 +26,16 @@ constexpr auto field(std::string_view name, MemberType ClassType::* memberPtr)
 }
 
 /**
- * @brief Helper to construct an AttributeDescriptor with template deduction for XML attributes.
- */
-template <typename ClassType, typename MemberType>
-constexpr auto attribute(std::string_view name, MemberType ClassType::* memberPtr)
-{
-    return AttributeDescriptor<ClassType, MemberType> { name, memberPtr };
-}
-
-/**
- * @brief Customization point for type traits.
+ * @brief Universal customization point for type reflection.
  *
  * Specialize this struct for your custom POD types without modifying the struct itself:
  *
  * template <>
  * struct Core::Serialization::TypeTraits<MyPod> {
- *     // General fields (or XML child elements)
  *     static constexpr auto fields() {
  *         return std::make_tuple(
- *             Core::Serialization::field("foo", &MyPod::foo)
- *         );
- *     }
- *
- *     // Optional XML attributes
- *     static constexpr auto attributes() {
- *         return std::make_tuple(
- *             Core::Serialization::attribute("id", &MyPod::id)
+ *             Core::Serialization::field("foo", &MyPod::foo),
+ *             Core::Serialization::field("id", &MyPod::id)
  *         );
  *     }
  * };
@@ -81,16 +54,7 @@ struct HasFieldsHelper<T, std::void_t<decltype(TypeTraits<Common::Compat::remove
 template <typename T>
 inline constexpr bool HasFields = HasFieldsHelper<T>::value;
 
-template <typename T, typename = void>
-struct HasAttributesHelper : std::false_type { };
-
 template <typename T>
-struct HasAttributesHelper<T, std::void_t<decltype(TypeTraits<Common::Compat::remove_cvref_t<T>>::attributes())>> : std::true_type { };
-
-template <typename T>
-inline constexpr bool HasAttributes = HasAttributesHelper<T>::value;
-
-template <typename T>
-inline constexpr bool ReflectedType = HasFields<T> || HasAttributes<T>;
+inline constexpr bool ReflectedType = HasFields<T>;
 
 } // namespace Core::Serialization

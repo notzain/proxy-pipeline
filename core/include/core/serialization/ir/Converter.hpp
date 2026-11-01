@@ -64,69 +64,6 @@ namespace Detail {
     template <typename T>
     inline constexpr bool isMapV = IsMap<Common::Compat::remove_cvref_t<T>>::value;
 
-    // Helper to stringify an attribute value
-    template <typename T>
-    std::string attributeToString(const T& val)
-    {
-        using CleanT = Common::Compat::remove_cvref_t<T>;
-        if constexpr (std::is_same_v<CleanT, std::string>) {
-            return val;
-        } else if constexpr (std::is_convertible_v<CleanT, std::string_view>) {
-            return std::string(val);
-        } else if constexpr (std::is_same_v<CleanT, bool>) {
-            return val ? "true" : "false";
-        } else if constexpr (std::is_arithmetic_v<CleanT>) {
-            return std::to_string(val);
-        } else if constexpr (isOptionalV<CleanT>) {
-            if (val.has_value()) {
-                return attributeToString(*val);
-            }
-            return "";
-        } else {
-            std::ostringstream oss;
-            oss << val;
-            return oss.str();
-        }
-    }
-
-    // Helper to parse an attribute string into a type
-    template <typename T>
-    std::optional<T> attributeFromString(std::string_view str)
-    {
-        using CleanT = Common::Compat::remove_cvref_t<T>;
-        if constexpr (std::is_same_v<CleanT, std::string>) {
-            return std::string(str);
-        } else if constexpr (std::is_same_v<CleanT, bool>) {
-            if (str == "true" || str == "1")
-                return true;
-            if (str == "false" || str == "0")
-                return false;
-            return std::nullopt;
-        } else if constexpr (std::is_integral_v<CleanT>) {
-            CleanT val { };
-            auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), val);
-            if (ec == std::errc()) {
-                return val;
-            }
-            return std::nullopt;
-        } else if constexpr (std::is_floating_point_v<CleanT>) {
-            try {
-                return static_cast<CleanT>(std::stod(std::string(str)));
-            } catch (...) {
-                return std::nullopt;
-            }
-        } else if constexpr (isOptionalV<CleanT>) {
-            using ValueType = typename CleanT::value_type;
-            auto inner = attributeFromString<ValueType>(str);
-            if (!inner) {
-                return std::nullopt;
-            }
-            return CleanT { std::move(*inner) };
-        } else {
-            return std::nullopt;
-        }
-    }
-
 } // namespace Detail
 
 // --- toIntermediate implementations ---
@@ -170,36 +107,14 @@ Value toIntermediate(const T& value)
         return Value(std::move(obj));
     } else if constexpr (ReflectedType<CleanT>) {
         ObjectType obj;
+        constexpr auto fieldTuple = TypeTraits<CleanT>::fields();
 
-        if constexpr (HasFields<CleanT>) {
-            constexpr auto fieldTuple = TypeTraits<CleanT>::fields();
-            std::apply([&](const auto&... fieldDesc) {
-                ((obj[std::string(fieldDesc.name)] = toIntermediate(value.*(fieldDesc.memberPtr))), ...);
-            },
-                fieldTuple);
-        }
+        std::apply([&](const auto&... fieldDesc) {
+            ((obj[std::string(fieldDesc.name)] = toIntermediate(value.*(fieldDesc.memberPtr))), ...);
+        },
+            fieldTuple);
 
-        Value ir(std::move(obj));
-
-        if constexpr (HasAttributes<CleanT>) {
-            constexpr auto attrTuple = TypeTraits<CleanT>::attributes();
-            std::apply([&](const auto&... attrDesc) {
-                auto setAttr = [&](const auto& desc) {
-                    using MemberType = std::remove_reference_t<decltype(value.*(desc.memberPtr))>;
-                    if constexpr (Detail::isOptionalV<MemberType>) {
-                        if ((value.*(desc.memberPtr)).has_value()) {
-                            ir.setAttribute(std::string(desc.name), Detail::attributeToString(*(value.*(desc.memberPtr))));
-                        }
-                    } else {
-                        ir.setAttribute(std::string(desc.name), Detail::attributeToString(value.*(desc.memberPtr)));
-                    }
-                };
-                (setAttr(attrDesc), ...);
-            },
-                attrTuple);
-        }
-
-        return ir;
+        return Value(std::move(obj));
     } else {
         static_assert(sizeof(CleanT) == 0, "Type T is not supported for toIntermediate. Consider specializing Core::Serialization::TypeTraits<T>.");
     }
@@ -308,47 +223,18 @@ std::optional<T> fromIntermediate(const Value& value)
         CleanT result { };
         bool allParsed = true;
 
-        if constexpr (HasFields<CleanT>) {
-            constexpr auto fieldTuple = TypeTraits<CleanT>::fields();
-            std::apply([&](const auto&... fieldDesc) {
-                auto parseField = [&](const auto& desc) {
-                    if (!allParsed) {
-                        return;
-                    }
-                    using MemberType = std::remove_reference_t<decltype(result.*(desc.memberPtr))>;
-                    if (obj) {
-                        if (auto it = obj->find(std::string(desc.name)); it != obj->end()) {
-                            auto parsed = fromIntermediate<MemberType>(it->second);
-                            if (parsed) {
-                                result.*(desc.memberPtr) = std::move(*parsed);
-                                return;
-                            } else {
-                                allParsed = false;
-                                return;
-                            }
-                        }
-                    }
-                    if constexpr (Detail::isOptionalV<MemberType>) {
-                        result.*(desc.memberPtr) = std::nullopt;
-                    } else {
-                        allParsed = false;
-                    }
-                };
-                (parseField(fieldDesc), ...);
-            },
-                fieldTuple);
-        }
+        constexpr auto fieldTuple = TypeTraits<CleanT>::fields();
 
-        if constexpr (HasAttributes<CleanT>) {
-            constexpr auto attrTuple = TypeTraits<CleanT>::attributes();
-            std::apply([&](const auto&... attrDesc) {
-                auto parseAttr = [&](const auto& desc) {
-                    if (!allParsed) {
-                        return;
-                    }
-                    using MemberType = std::remove_reference_t<decltype(result.*(desc.memberPtr))>;
-                    if (const auto* attrVal = value.findAttribute(desc.name)) {
-                        auto parsed = Detail::attributeFromString<MemberType>(*attrVal);
+        std::apply([&](const auto&... fieldDesc) {
+            auto parseField = [&](const auto& desc) {
+                if (!allParsed) {
+                    return;
+                }
+                using MemberType = std::remove_reference_t<decltype(result.*(desc.memberPtr))>;
+
+                if (obj) {
+                    if (auto it = obj->find(std::string(desc.name)); it != obj->end()) {
+                        auto parsed = fromIntermediate<MemberType>(it->second);
                         if (parsed) {
                             result.*(desc.memberPtr) = std::move(*parsed);
                             return;
@@ -357,16 +243,17 @@ std::optional<T> fromIntermediate(const Value& value)
                             return;
                         }
                     }
-                    if constexpr (Detail::isOptionalV<MemberType>) {
-                        result.*(desc.memberPtr) = std::nullopt;
-                    } else {
-                        allParsed = false;
-                    }
-                };
-                (parseAttr(attrDesc), ...);
-            },
-                attrTuple);
-        }
+                }
+
+                if constexpr (Detail::isOptionalV<MemberType>) {
+                    result.*(desc.memberPtr) = std::nullopt;
+                } else {
+                    allParsed = false;
+                }
+            };
+            (parseField(fieldDesc), ...);
+        },
+            fieldTuple);
 
         if (!allParsed) {
             return std::nullopt;

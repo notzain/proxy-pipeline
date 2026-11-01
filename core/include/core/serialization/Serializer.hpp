@@ -32,7 +32,11 @@ template <typename Format, typename T>
 std::string serialize(const T& value, const typename Format::Options& options = { })
 {
     Ir::Value ir = Ir::toIntermediate(value);
-    return Format::encode(ir, options);
+    if constexpr (requires { Format::template encode<T>(ir, options); }) {
+        return Format::template encode<T>(ir, options);
+    } else {
+        return Format::encode(ir, options);
+    }
 }
 
 /**
