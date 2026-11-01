@@ -16,13 +16,11 @@ bool DummySendHandler::onConfigure(const Core::Config::Configuration& config)
     m_delay = std::chrono::milliseconds(delayMs);
     m_lastSendTime = std::chrono::steady_clock::now() - m_delay;
 
-    auto outChannel = backend().createOutputChannel(channelName, config);
-    if (!outChannel) {
-        Proxy::Log::error("[DummySend] Failed to create output channel '{}'", channelName);
+    auto optOut = tryBindOutputChannel(channelName, config);
+    if (!optOut) {
         return false;
     }
-
-    m_outputChannel = registerOutputChannel(std::move(outChannel));
+    m_outputChannel = optOut.value();
     return true;
 }
 

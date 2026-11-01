@@ -76,6 +76,52 @@ public:
     Common::Memory::Borrow<::Backend::IInputChannel> registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel);
 
     /**
+     * @brief Creates and registers an input channel from backend and configuration.
+     *
+     * @param channelName Logical name of the channel.
+     * @param config Configuration store.
+     * @return Common::Memory::Borrow<::Backend::IInputChannel> Borrowed reference to the bound channel.
+     * @throws std::runtime_error if channel creation fails.
+     */
+    Common::Memory::Borrow<::Backend::IInputChannel> bindInputChannel(
+        std::string_view channelName,
+        const Config::Configuration& config);
+
+    /**
+     * @brief Attempts to create and register an input channel from backend and configuration.
+     *
+     * @param channelName Logical name of the channel.
+     * @param config Configuration store.
+     * @return std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> Borrowed reference or std::nullopt.
+     */
+    std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> tryBindInputChannel(
+        std::string_view channelName,
+        const Config::Configuration& config) noexcept;
+
+    /**
+     * @brief Creates and registers an output channel from backend and configuration.
+     *
+     * @param channelName Logical name of the channel.
+     * @param config Configuration store.
+     * @return Common::Memory::Borrow<::Backend::IOutputChannel> Borrowed reference to the bound channel.
+     * @throws std::runtime_error if channel creation fails.
+     */
+    Common::Memory::Borrow<::Backend::IOutputChannel> bindOutputChannel(
+        std::string_view channelName,
+        const Config::Configuration& config);
+
+    /**
+     * @brief Attempts to create and register an output channel from backend and configuration.
+     *
+     * @param channelName Logical name of the channel.
+     * @param config Configuration store.
+     * @return std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> Borrowed reference or std::nullopt.
+     */
+    std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> tryBindOutputChannel(
+        std::string_view channelName,
+        const Config::Configuration& config) noexcept;
+
+    /**
      * @brief Visits registered input channels without exposing their ownership storage.
      *
      * @param visitor Callable receiving each input channel.
