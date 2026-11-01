@@ -1,7 +1,9 @@
 #pragma once
 
 #include "backend/channel/IInputChannel.hpp"
+#include "backend/vendor/VendorRelayNode.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
+#include "common/memory/ObjectPool.hpp"
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -9,12 +11,11 @@
 namespace Backend::Vendor {
 
 class VendorBackend;
-class VendorRelayPool;
 
 /**
  * @brief Ingress channel wrapping the 3rd-party vendor Receiver.
  *
- * Each channel owns its private VendorRelayPool, ensuring zero contention across
+ * Each channel owns its private ObjectPool<VendorRelayNode>, ensuring zero contention across
  * channels and isolated capacity limits.
  *
  * Supports both vendor payload delivery modes with zero heap allocations on ingress:
@@ -54,7 +55,7 @@ public:
 private:
     std::shared_ptr<Sdk::VendorManager> m_manager;
     std::shared_ptr<Sdk::VendorReceiver> m_receiver;
-    std::unique_ptr<VendorRelayPool> m_relayPool;
+    Common::Memory::ObjectPool<VendorRelayNode> m_relayPool;
 };
 
 } // namespace Backend::Vendor

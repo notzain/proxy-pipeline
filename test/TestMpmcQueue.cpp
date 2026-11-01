@@ -1,4 +1,5 @@
 #include "common/compat/Jthread.hpp"
+#include "common/queue/BoundedMpmcQueue.hpp"
 #include "common/queue/MpmcQueue.hpp"
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
@@ -105,4 +106,40 @@ TEST_CASE("Common::Queue::MpmcQueue multi-producer multi-consumer concurrent str
     }
 
     CHECK(allReceived.size() == TotalItems);
+}
+
+TEST_CASE("Common::Queue::BoundedMpmcQueue runtime capacity and move-only types", "[mpmc]")
+{
+    // Test runtime-configured capacity (requested 3 -> rounded up to 4)
+    Common::Queue::BoundedMpmcQueue<std::unique_ptr<int>> q(3);
+
+    CHECK(q.capacity() == 4);
+    CHECK(q.empty());
+    CHECK(q.size() == 0);
+
+    CHECK(q.tryPush(std::make_unique<int>(10)));
+    CHECK(q.tryPush(std::make_unique<int>(20)));
+    CHECK(q.tryPush(std::make_unique<int>(30)));
+    CHECK(q.tryPush(std::make_unique<int>(40)));
+    CHECK_FALSE(q.tryPush(std::make_unique<int>(50))); // Queue full
+
+    std::unique_ptr<int> val;
+    CHECK(q.tryPop(val));
+    REQUIRE(val != nullptr);
+    CHECK(*val == 10);
+
+    CHECK(q.tryPop(val));
+    REQUIRE(val != nullptr);
+    CHECK(*val == 20);
+
+    CHECK(q.tryPop(val));
+    REQUIRE(val != nullptr);
+    CHECK(*val == 30);
+
+    CHECK(q.tryPop(val));
+    REQUIRE(val != nullptr);
+    CHECK(*val == 40);
+
+    CHECK_FALSE(q.tryPop(val)); // Empty
+    CHECK(q.empty());
 }

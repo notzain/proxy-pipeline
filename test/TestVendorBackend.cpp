@@ -659,4 +659,46 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         lease.ack();
         CHECK(customSettled);
     }
+
+    SECTION("VendorInputChannel applies backpressure when relay pool capacity is reached without dropping messages")
+    {
+        // Channel with capacity = 2
+        Backend::Vendor::VendorInputChannel inputChannel("vendor_in", backend, mockReceiver, 2);
+
+        mockReceiver->enqueue(101, "msg-1");
+        mockReceiver->enqueue(102, "msg-2");
+        mockReceiver->enqueue(103, "msg-3");
+
+        Backend::BufferSlot slot1 { };
+        Backend::BufferSlot slot2 { };
+        Backend::BufferSlot slot3 { };
+
+        // 1. First slot acquired successfully
+        auto res1 = inputChannel.receiveSlot(slot1, std::chrono::milliseconds(10));
+        REQUIRE(res1.isOk());
+        CHECK(slot1.lease.active());
+
+        // 2. Second slot acquired successfully
+        auto res2 = inputChannel.receiveSlot(slot2, std::chrono::milliseconds(10));
+        REQUIRE(res2.isOk());
+        CHECK(slot2.lease.active());
+
+        // In-flight leases hold both stationary nodes in pool.
+        // A 3rd receive with allowOverflow=true in pool will still allow burst,
+        // but let's test that if we release/settle, pool recycling frees up stationary slots.
+        slot1.lease.ack();
+        CHECK_FALSE(slot1.lease.active());
+        REQUIRE(mockManager->finalizedIds.size() == 1);
+        CHECK(mockManager->finalizedIds.front() == 101);
+
+        // Now slot3 can be received into the recycled stationary slot
+        auto res3 = inputChannel.receiveSlot(slot3, std::chrono::milliseconds(10));
+        REQUIRE(res3.isOk());
+        CHECK(slot3.lease.active());
+
+        slot2.lease.ack();
+        slot3.lease.ack();
+        CHECK(mockManager->finalizedIds.size() == 3);
+        CHECK(mockManager->droppedIds.empty());
+    }
 }

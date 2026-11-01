@@ -1,5 +1,7 @@
-#include "VendorRelayNode.hpp"
+#include "backend/vendor/VendorRelayNode.hpp"
 #include "log/Log.hpp"
+#include <filesystem>
+#include <system_error>
 
 namespace Backend::Vendor {
 
@@ -13,6 +15,39 @@ Common::Compat::span<const std::byte> VendorRelayNode::payloadView() const noexc
         return Common::Compat::span<const std::byte>(bytePayload.data, bytePayload.length);
     }
     return { };
+}
+
+bool VendorRelayNode::preparePayload() noexcept
+{
+    const std::string& filePath = message.getPayloadFilePath();
+    if (filePath.empty()) {
+        return true;
+    }
+
+    std::error_code ec;
+    const auto fileSize = static_cast<std::size_t>(std::filesystem::file_size(filePath, ec));
+    if (ec) {
+        Proxy::Log::error("[VendorRelayNode] Failed to read payload file '{}' for message ID {}",
+            filePath, message.getId());
+        return false;
+    }
+
+    if (fileSize > 0) {
+        mapping = Common::Io::MappedFile::open(filePath);
+        if (!mapping) {
+            Proxy::Log::error("[VendorRelayNode] Failed to map payload file '{}' for message ID {}",
+                filePath, message.getId());
+            return false;
+        }
+    }
+    return true;
+}
+
+void VendorRelayNode::reset() noexcept
+{
+    mapping.reset();
+    manager.reset();
+    consumed = false;
 }
 
 void VendorRelayNode::settle(void* ctx, ::Backend::Settlement outcome) noexcept
@@ -38,46 +73,16 @@ void VendorRelayNode::settle(void* ctx, ::Backend::Settlement outcome) noexcept
 void VendorRelayNode::recycle(void* ctx) noexcept
 {
     auto* n = static_cast<VendorRelayNode*>(ctx);
-    if (n && n->pool) {
-        n->pool->release(n);
+    if (!n) {
+        return;
     }
-}
 
-VendorRelayPool::VendorRelayPool(std::size_t capacity)
-    : m_nodes(capacity > 0 ? capacity : DefaultCapacity)
-{
-    for (auto& node : m_nodes) {
-        node.pool = this;
+    n->reset();
+
+    std::unique_ptr<VendorRelayNode> node(n);
+    if (node->pool) {
+        node->pool->release(std::move(node));
     }
-}
-
-VendorRelayNode* VendorRelayPool::acquire() noexcept
-{
-    const auto n = m_nodes.size();
-    for (std::size_t i = 0; i < n; ++i) {
-        bool expected = false;
-        if (m_nodes[i].inUse.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-            m_nodes[i].consumed = false;
-            m_nodes[i].mapping.reset();
-            return &m_nodes[i];
-        }
-    }
-    return nullptr;
-}
-
-void VendorRelayPool::release(VendorRelayNode* node) noexcept
-{
-    if (node) {
-        node->mapping.reset();
-        node->manager.reset();
-        node->consumed = false;
-        node->inUse.store(false, std::memory_order_release);
-    }
-}
-
-std::size_t VendorRelayPool::capacity() const noexcept
-{
-    return m_nodes.size();
 }
 
 } // namespace Backend::Vendor
