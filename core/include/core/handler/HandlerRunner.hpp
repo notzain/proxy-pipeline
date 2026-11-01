@@ -102,8 +102,6 @@ private:
     std::atomic<bool> m_stopRequested { false };
     Common::Compat::jthread m_shutdownThread;
 
-    void registerSignalHandler();
-    void unregisterSignalHandler();
     void ensureStrategy();
 };
 

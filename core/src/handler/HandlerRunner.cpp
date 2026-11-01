@@ -1,36 +1,15 @@
 #include "core/handler/HandlerRunner.hpp"
 #include "backend/IBackend.hpp"
+#include "core/handler/PosixSignalManager.hpp"
 #include "core/telemetry/StatsDExporter.hpp"
 #include "core/threading/DedicatedThreadStrategy.hpp"
 #include "core/threading/SequentialStrategy.hpp"
 #include "core/threading/SimpleExecutionStrategy.hpp"
 #include "core/threading/ThreadPoolStrategy.hpp"
 #include "log/Log.hpp"
-#include <atomic>
-#include <cerrno>
 #include <chrono>
-#include <csignal>
 #include <cstdlib>
-#include <cstring>
-#include <mutex>
-#include <system_error>
-
-namespace {
-static_assert(std::atomic<bool>::is_always_lock_free);
-
-std::atomic<bool> g_shutdownRequested { false };
-std::mutex g_signalOwnershipMutex;
-Core::Handler::HandlerRunner* g_activeRunner { nullptr };
-struct sigaction g_previousSigintAction { };
-struct sigaction g_previousSigtermAction { };
-
-extern "C" void proxySignalHandler(int signal)
-{
-    if (signal == SIGINT || signal == SIGTERM) {
-        g_shutdownRequested.store(true, std::memory_order_relaxed);
-    }
-}
-} // namespace
+#include <utility>
 
 namespace Core::Handler {
 
@@ -43,7 +22,7 @@ HandlerRunner::~HandlerRunner()
 {
     stop();
     wait();
-    unregisterSignalHandler();
+    PosixSignalManager::release(this);
 }
 
 bool HandlerRunner::configure(const Config::Configuration& config)
@@ -110,55 +89,6 @@ void HandlerRunner::ensureStrategy()
     }
 }
 
-void HandlerRunner::registerSignalHandler()
-{
-    std::lock_guard lock(g_signalOwnershipMutex);
-    if (g_activeRunner) {
-        throw std::logic_error("Signal handling is already owned by another HandlerRunner");
-    }
-
-    g_shutdownRequested.store(false, std::memory_order_relaxed);
-
-    struct sigaction action { };
-    action.sa_handler = proxySignalHandler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    if (sigaction(SIGINT, &action, &g_previousSigintAction) != 0) {
-        throw std::system_error(errno, std::generic_category(), "Failed to register SIGINT handler");
-    }
-
-    if (sigaction(SIGTERM, &action, &g_previousSigtermAction) != 0) {
-        const int error = errno;
-        if (sigaction(SIGINT, &g_previousSigintAction, nullptr) != 0) {
-            Proxy::Log::error("[HandlerRunner] Failed to restore previous SIGINT handler: {}", std::strerror(errno));
-        }
-        throw std::system_error(error, std::generic_category(), "Failed to register SIGTERM handler");
-    }
-
-    g_activeRunner = this;
-}
-
-void HandlerRunner::unregisterSignalHandler()
-{
-    if (m_shutdownThread.joinable()) {
-        m_shutdownThread.join();
-    }
-
-    std::lock_guard lock(g_signalOwnershipMutex);
-    if (g_activeRunner != this) {
-        return;
-    }
-
-    if (sigaction(SIGINT, &g_previousSigintAction, nullptr) != 0) {
-        Proxy::Log::error("[HandlerRunner] Failed to restore previous SIGINT handler: {}", std::strerror(errno));
-    }
-    if (sigaction(SIGTERM, &g_previousSigtermAction, nullptr) != 0) {
-        Proxy::Log::error("[HandlerRunner] Failed to restore previous SIGTERM handler: {}", std::strerror(errno));
-    }
-    g_activeRunner = nullptr;
-    g_shutdownRequested.store(false, std::memory_order_relaxed);
-}
-
 void HandlerRunner::start()
 {
     startAsync();
@@ -182,7 +112,7 @@ void HandlerRunner::startAsync(bool registerSignals)
     }
 
     if (registerSignals) {
-        registerSignalHandler();
+        PosixSignalManager::acquire(this);
     }
     try {
         Proxy::Log::info("[HandlerRunner] Event loop started (channels: {}, listening for SIGINT/Ctrl+C)...",
@@ -191,7 +121,7 @@ void HandlerRunner::startAsync(bool registerSignals)
         m_shutdownThread = Common::Compat::jthread([this, registerSignals](Common::Compat::stop_token stopToken) {
             while (!stopToken.stop_requested()) {
                 if (m_stopRequested.load(std::memory_order_acquire)
-                    || (registerSignals && g_shutdownRequested.load(std::memory_order_relaxed))) {
+                    || (registerSignals && PosixSignalManager::isShutdownRequested())) {
                     m_strategy->stop();
                     break;
                 }
@@ -206,7 +136,7 @@ void HandlerRunner::startAsync(bool registerSignals)
         m_strategy->stop();
         m_strategy->wait();
         if (registerSignals) {
-            unregisterSignalHandler();
+            PosixSignalManager::release(this);
         }
         throw;
     }
@@ -221,7 +151,7 @@ void HandlerRunner::wait()
     } else if (m_strategy) {
         m_strategy->wait();
     }
-    unregisterSignalHandler();
+    PosixSignalManager::release(this);
 }
 
 void HandlerRunner::stop()
