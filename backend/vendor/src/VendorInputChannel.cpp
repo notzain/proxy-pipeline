@@ -1,11 +1,8 @@
 #include "backend/vendor/VendorInputChannel.hpp"
-#include "VendorRelayNode.hpp"
 #include "backend/memory/SettlementToken.hpp"
 #include "backend/vendor/VendorBackend.hpp"
-#include "common/io/MappedFile.hpp"
+#include "backend/vendor/VendorRelayNode.hpp"
 #include "log/Log.hpp"
-#include <filesystem>
-#include <system_error>
 #include <utility>
 
 namespace Backend::Vendor {
@@ -18,7 +15,7 @@ VendorInputChannel::VendorInputChannel(
     : ::Backend::IInputChannel(std::move(name))
     , m_manager(std::move(manager))
     , m_receiver(std::move(receiver))
-    , m_relayPool(std::make_unique<VendorRelayPool>(capacity))
+    , m_relayPool(capacity)
 {
 }
 
@@ -40,7 +37,7 @@ void VendorInputChannel::setReceiver(std::shared_ptr<Sdk::VendorReceiver> receiv
 
 std::size_t VendorInputChannel::capacity() const noexcept
 {
-    return m_relayPool ? m_relayPool->capacity() : 0;
+    return m_relayPool.capacity();
 }
 
 bool VendorInputChannel::providesOwnMemory() const noexcept
@@ -63,53 +60,41 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
         return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
     }
 
-    Sdk::VendorMessage rawMsg;
-    if (!m_receiver->receive(&rawMsg, static_cast<int>(timeout.count()))) {
+    // 1. Backpressure invariant: acquire node lease BEFORE reading from receiver.
+    // If pool is fully exhausted, back off immediately so incoming messages remain
+    // safely queued inside the vendor transport buffer rather than being dropped.
+    // Note: node is an ObjectHandle<VendorRelayNode>. If we return early on timeout
+    // or error, node's destructor automatically recycles it back to the pool!
+    auto node = m_relayPool.acquire();
+    if (!node) {
+        Proxy::Log::warn("[VendorInputChannel] Relay pool capacity reached on channel '{}'; applying ingress backpressure",
+            name());
         return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
-    // Acquire a stationary relay node from the channel's private pool (zero heap allocation on hot path)
-    VendorRelayNode* node = m_relayPool ? m_relayPool->acquire() : nullptr;
-    if (!node) {
-        Proxy::Log::error("[VendorInputChannel] Relay pool exhausted for channel '{}', dropping message ID {}",
-            name(), rawMsg.getId());
-        m_manager->drop(rawMsg);
-        return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
+    node->pool = &m_relayPool;
+
+    // 2. Read from vendor receiver directly into acquired node
+    if (!m_receiver->receive(&node->message, static_cast<int>(timeout.count()))) {
+        // Automatic RAII recycle on scope exit!
+        return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 
-    node->message = std::move(rawMsg);
     node->manager = m_manager;
     node->consumed = false;
-    node->pool = m_relayPool.get();
 
-    const std::string& filePath = node->message.getPayloadFilePath();
-    if (!filePath.empty()) {
-        std::error_code ec;
-        const auto fileSize = static_cast<std::size_t>(std::filesystem::file_size(filePath, ec));
-        if (ec) {
-            Proxy::Log::error("[VendorInputChannel] Failed to read payload file '{}' for message ID {}",
-                filePath, node->message.getId());
-            m_manager->drop(node->message);
-            m_relayPool->release(node);
-            return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
-        }
-        if (fileSize > 0) {
-            node->mapping = Common::Io::MappedFile::open(filePath);
-            if (!node->mapping) {
-                Proxy::Log::error("[VendorInputChannel] Failed to map payload file '{}' for message ID {}",
-                    filePath, node->message.getId());
-                m_manager->drop(node->message);
-                m_relayPool->release(node);
-                return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
-            }
-        }
+    // 3. Prepare payload for zero-copy consumption (validates and maps payload file if disk-backed)
+    if (!node->preparePayload()) {
+        m_manager->drop(node->message);
+        // Automatic RAII recycle on scope exit!
+        return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
     }
 
     const auto view = node->payloadView();
 
-    // Construct zero-allocation SettlementToken with stateless static function pointers
+    // 4. Detach raw pointer from handle and hand off to zero-allocation SettlementToken
     auto token = ::Backend::SettlementToken(
-        node,
+        node.release(),
         &VendorRelayNode::settle,
         &VendorRelayNode::recycle);
 

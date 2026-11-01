@@ -1,6 +1,6 @@
 #include "backend/vendor/VendorOutputChannel.hpp"
-#include "VendorRelayNode.hpp"
 #include "backend/message/MessageView.hpp"
+#include "backend/vendor/VendorRelayNode.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
