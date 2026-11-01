@@ -1,4 +1,5 @@
 #include "UdpEgressHandler.hpp"
+#include "UdpEgressConfig.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/channel/IInputChannel.hpp"
 #include "backend/message/MessageView.hpp"
@@ -22,13 +23,12 @@ UdpEgressHandler::~UdpEgressHandler() = default;
 
 bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    const auto inputChannelName = config.getOr<std::string>("egress.input_channel", "egress_in");
+    if (!m_config.load(config)) {
+        Proxy::Log::error("[UdpEgressHandler] Configuration loading failed due to invalid parameter types");
+        return false;
+    }
 
-    std::string mode = config.getOr<std::string>("egress.mode", "reply_to_origin");
-    m_replyToOrigin = (mode != "forward");
-
-    m_destHost = config.getOr<std::string>("egress.dest_host", "127.0.0.1");
-    m_destPort = static_cast<std::uint16_t>(config.getOr<int>("egress.dest_port", 9200));
+    const std::string& inputChannelName = m_config.inputChannel;
 
     // 1. Create input channel through the chain's backend (e.g. SHM, UDS)
     auto inChannel = backend().createInputChannel(inputChannelName, config);
@@ -39,10 +39,10 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     registerInputChannel(std::move(inChannel));
 
     // 2. Initialize UDP output socket
-    m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>("udp_network_egress", m_destHost, m_destPort);
+    m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>("udp_network_egress", m_config.destHost, static_cast<std::uint16_t>(m_config.destPort));
 
     Proxy::Log::info("[UdpEgressHandler] Configured on channel '{}' (mode: {}, default target: {}:{})",
-        inputChannelName, m_replyToOrigin ? "reply_to_origin" : "forward", m_destHost, m_destPort);
+        inputChannelName, (m_config.mode == "forward") ? "forward" : "reply_to_origin", m_config.destHost, m_config.destPort);
 
     return true;
 }
@@ -55,7 +55,7 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
 
     auto payload = message.payload();
 
-    if (m_replyToOrigin) {
+    if (m_config.mode != "forward") {
         const auto meta = message.getMetadata<Core::Net::UdpMetadata>();
         if (meta && meta->srcPort != 0) {
             const auto originAddr = (meta->addressFamily == 6)
@@ -76,10 +76,10 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
 
     // Default or forward mode
     Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Forwarding {} payload bytes to {}:{}",
-        channelName, payload.size(), m_destHost, m_destPort);
+        channelName, payload.size(), m_config.destHost, m_config.destPort);
 
     if (!m_udpOut->send(payload)) {
-        Proxy::Log::warn("[UdpEgressHandler] Failed to forward packet to {}:{}", m_destHost, m_destPort);
+        Proxy::Log::warn("[UdpEgressHandler] Failed to forward packet to {}:{}", m_config.destHost, m_config.destPort);
     }
     return Backend::Consumed { };
 }
@@ -94,7 +94,7 @@ void UdpEgressHandler::onBatchReceived(
         return;
     }
 
-    if (!m_replyToOrigin && m_udpOut) {
+    if (m_config.mode == "forward" && m_udpOut) {
         Common::Memory::SmallSpanBuffer<Common::Compat::span<const std::byte>, 64> payloads(count);
         for (std::size_t i = 0; i < count; ++i) {
             payloads[i] = messages[i].payload();

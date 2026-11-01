@@ -1,4 +1,5 @@
 #include "RouteHandler.hpp"
+#include "RouteConfig.hpp"
 #include "backend/IBackend.hpp"
 #include "backend/message/ProtocolId.hpp"
 #include "core/config/Configuration.hpp"
@@ -12,52 +13,39 @@ RouteHandler::~RouteHandler() = default;
 
 bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    const auto inputChannelName = config.getOr<std::string>("route.input_channel", "route_in");
-    const auto defaultChannelName = config.getOr<std::string>("route.default_output", "");
+    RouteHandlerConfig cfg;
+    if (!cfg.loadRules(config)) {
+        Proxy::Log::error("[RouteHandler] Failed to load configuration");
+        return false;
+    }
 
-    auto inChan = backend().createInputChannel(inputChannelName, config);
+    auto inChan = backend().createInputChannel(cfg.inputChannel.value(), config);
     if (!inChan) {
-        Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", inputChannelName);
+        Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", cfg.inputChannel);
         return false;
     }
     registerInputChannel(std::move(inChan));
 
     // Register default output if configured
-    if (!defaultChannelName.empty()) {
-        auto defChan = backend().createOutputChannel(defaultChannelName, config);
+    if (!cfg.defaultOutputChannel->empty()) {
+        auto defChan = backend().createOutputChannel(cfg.defaultOutputChannel.value(), config);
         if (defChan) {
             m_defaultOutputChannel = registerOutputChannel(std::move(defChan));
         } else {
-            Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", defaultChannelName);
+            Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", cfg.defaultOutputChannel);
         }
     }
 
-    // Parse configured rules:
-    // e.g.
-    // route.rules = rule1,rule2
-    // route.rule.rule1.type = payload_contains
-    // route.rule.rule1.pattern = VIP
-    // route.rule.rule1.target = vip_orders
-    auto ruleNames = config.getOr<std::string>("route.rules", "");
-    if (!ruleNames.empty()) {
-        std::string_view namesView(ruleNames);
-        std::size_t start = 0;
+    // Configure parsed rules
+    if (!cfg.rules.empty()) {
         std::unordered_map<std::string, Common::Memory::ObserverPtr<::Backend::IOutputChannel>> createdChannels;
 
-        while (start < namesView.size()) {
-            auto pos = namesView.find(',', start);
-            auto name = namesView.substr(start, pos == std::string_view::npos ? pos : pos - start);
-            start = (pos == std::string_view::npos) ? namesView.size() : pos + 1;
-
-            if (name.empty()) {
-                continue;
-            }
-
-            std::string prefix = std::string("route.rule.") + std::string(name) + ".";
-            std::string typeStr = config.getOr<std::string>(prefix + "type", "contains");
-            std::string pattern = config.getOr<std::string>(prefix + "pattern", "");
-            std::string target = config.getOr<std::string>(prefix + "target", "");
-            int numVal = config.getOr<int>(prefix + "value", 0);
+        for (auto& ruleCfg : cfg.rules) {
+            const auto& name = ruleCfg.name;
+            const auto& typeStr = ruleCfg.type;
+            const auto& target = ruleCfg.target;
+            auto pattern = std::move(ruleCfg.pattern);
+            int numVal = ruleCfg.numericValue;
 
             if (target.empty()) {
                 Proxy::Log::warn("[RouteHandler] Rule '{}' has no target channel specified, skipping", name);
