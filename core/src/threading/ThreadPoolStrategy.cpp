@@ -87,6 +87,61 @@ namespace {
     using QueueType = Common::Queue::SpscQueue<MessageTask, 1024>;
     using SharedQueueType = Common::Queue::MpmcQueue<MessageTask, 4096>;
 
+    /**
+     * @brief Populates a MessageTask from a BufferSlot and optional pre-acquired BufferSlice.
+     */
+    void populateTaskFromSlot(
+        MessageTask& task,
+        std::string_view channelName,
+        ::Backend::BufferSlot& slot,
+        std::optional<Common::Memory::BufferSlice>& preSlice)
+    {
+        if (slot.isLeased()) {
+            // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
+            task.assignLeased(channelName, slot.filledSpan(), std::move(slot.lease));
+            return;
+        }
+
+        task.setLease(std::move(slot.lease));
+        const std::size_t pktSize = slot.size;
+        if (preSlice.has_value()) {
+            // Keep > SmallBufferSize payloads in their BufferSlice (0 copies); copy <= SmallBufferSize
+            // into the inline SBO slot so the 64 KB pool block is returned to the pool immediately.
+            if (pktSize > MessageTask::SmallBufferSize) {
+                task.assignSlice(channelName, std::move(*preSlice), pktSize);
+            } else {
+                task.assign(channelName, preSlice->span().subspan(0, pktSize));
+            }
+            preSlice.reset();
+            return;
+        }
+
+        // Pool was exhausted: copy from fallback scratch buffer.
+        task.assign(channelName, slot.filledSpan());
+    }
+
+    /**
+     * @brief Identifies contiguous run of slots that hash to the same worker index.
+     */
+    std::size_t findContiguousFlowRun(
+        std::size_t startIndex,
+        std::size_t totalReceived,
+        std::size_t channelIdx,
+        Common::Compat::span<const ::Backend::BufferSlot> slots,
+        std::size_t expectedWorkerIdx,
+        std::size_t numWorkers) noexcept
+    {
+        std::size_t runEnd = startIndex + 1;
+        while (runEnd < totalReceived) {
+            Common::Memory::ByteView nextSpan(slots[runEnd].filledSpan());
+            if (computeFlowWorkerIndex(channelIdx, nextSpan, slots[runEnd].format(), numWorkers) != expectedWorkerIdx) {
+                break;
+            }
+            ++runEnd;
+        }
+        return runEnd;
+    }
+
     bool channelFailed(std::string_view channelName, const Common::Net::ReceiveError& error)
     {
         if (error.is<Common::Net::ReceiveTimeout>()) {
@@ -132,27 +187,7 @@ namespace {
 
         for (std::size_t i = 0; i < received; ++i) {
             MessageTask task;
-            if (batchSlots[i].isLeased()) {
-                // Zero-copy external view (e.g. Vendor): transfer view + lease without touching buffers.
-                const auto view = batchSlots[i].filledSpan();
-                task.assignLeased(channelName, view, std::move(batchSlots[i].lease));
-            } else if (auto& preSlice = scratch.slice(i); preSlice.has_value()) {
-                // Keep > SmallBufferSize payloads in their BufferSlice (0 copies); copy <= SmallBufferSize
-                // into the inline SBO slot so the 64 KB pool block is returned to the pool immediately.
-                const std::size_t pktSize = batchSlots[i].size;
-                if (pktSize > MessageTask::SmallBufferSize) {
-                    task.assignSlice(channelName, std::move(*preSlice), pktSize);
-                } else {
-                    task.assign(channelName, preSlice->span().subspan(0, pktSize));
-                }
-                preSlice.reset();
-                task.setLease(std::move(batchSlots[i].lease));
-            } else {
-                // Pool was exhausted: copy from fallback scratch buffer.
-                task.assign(channelName, batchSlots[i].filledSpan());
-                task.setLease(std::move(batchSlots[i].lease));
-            }
-
+            populateTaskFromSlot(task, channelName, batchSlots[i], scratch.slice(i));
             if (!sharedQueue.tryPush(std::move(task))) {
                 sharedQueue.push(std::move(task), stoken);
             }
@@ -196,41 +231,14 @@ namespace {
         while (runStart < received) {
             Common::Memory::ByteView firstSpan(batchSlots[runStart].filledSpan());
             const std::size_t workerIdx = computeFlowWorkerIndex(channelIdx, firstSpan, batchSlots[runStart].format(), numWorkers);
-
-            std::size_t runEnd = runStart + 1;
-            while (runEnd < received) {
-                Common::Memory::ByteView nextSpan(batchSlots[runEnd].filledSpan());
-                if (computeFlowWorkerIndex(channelIdx, nextSpan, batchSlots[runEnd].format(), numWorkers) != workerIdx) {
-                    break;
-                }
-                ++runEnd;
-            }
-
+            const std::size_t runEnd = findContiguousFlowRun(runStart, received, channelIdx, batchSlots, workerIdx, numWorkers);
             const std::size_t runCount = runEnd - runStart;
+
             queues[workerIdx]->pushBatch(
                 runCount,
                 [&](MessageTask& slot, std::size_t idx) {
                     const std::size_t pktIdx = runStart + idx;
-                    if (batchSlots[pktIdx].isLeased()) {
-                        const auto view = batchSlots[pktIdx].filledSpan();
-                        slot.assignLeased(channelName, view, std::move(batchSlots[pktIdx].lease));
-                        return;
-                    }
-                    slot.setLease(std::move(batchSlots[pktIdx].lease));
-                    const std::size_t pktSize = batchSlots[pktIdx].size;
-                    if (auto& preSlice = scratch.slice(pktIdx); preSlice.has_value()) {
-                        // Keep > SmallBufferSize payloads in their BufferSlice (0 copies); copy <= SmallBufferSize
-                        // into the inline slot so the 64 KB pool block is returned to the pool immediately via preSlice.reset().
-                        if (pktSize > MessageTask::SmallBufferSize) {
-                            slot.assignSlice(channelName, std::move(*preSlice), pktSize);
-                            preSlice.reset();
-                            return;
-                        }
-                        slot.assign(channelName, preSlice->span().subspan(0, pktSize));
-                        preSlice.reset();
-                        return;
-                    }
-                    slot.assign(channelName, batchSlots[pktIdx].filledSpan());
+                    populateTaskFromSlot(slot, channelName, batchSlots[pktIdx], scratch.slice(pktIdx));
                 },
                 stoken);
 
@@ -300,19 +308,25 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
 
             if (m_sharedQueue) {
                 std::array<MessageTask, 16> batchTasks;
+                std::uint32_t idleSpins = 0;
                 while (!stoken.stop_requested()) {
                     std::size_t loaded = 0;
                     std::size_t count = m_sharedQueue->popBatch(16, [&](MessageTask&& task) {
                         batchTasks[loaded++] = std::move(task);
                     });
                     if (count > 0) {
+                        idleSpins = 0;
                         drainWorkerTasks(
                             handler,
                             Common::Compat::span<const MessageTask>(batchTasks.data(), count),
                             invalidEnvelopeCount,
                             m_serializeHandlerAccess ? &m_handlerMutex : nullptr);
                     } else {
-                        std::this_thread::yield();
+                        if (++idleSpins < 64) {
+                            std::this_thread::yield();
+                        } else {
+                            std::this_thread::sleep_for(std::chrono::microseconds(200));
+                        }
                     }
                 }
                 return;
