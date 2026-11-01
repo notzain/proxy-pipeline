@@ -1,10 +1,10 @@
 #pragma once
 
+#include "UdpEgressConfig.hpp"
 #include "common/compat/Span.hpp"
 #include "core/handler/IHandler.hpp"
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -64,12 +64,11 @@ public:
         Common::Compat::span<const Backend::MessageView> messages,
         Common::Compat::span<Backend::MessageResult> outResults) override;
 
+    [[nodiscard]] const UdpEgressConfig& config() const noexcept { return m_config; }
+
 private:
     std::unique_ptr<Core::Net::UdpOutputChannel> m_udpOut;
-
-    std::string m_destHost { "127.0.0.1" };
-    std::uint16_t m_destPort { 9200 };
-    bool m_replyToOrigin { true };
+    UdpEgressConfig m_config;
 };
 
 } // namespace Proxy::Handler
