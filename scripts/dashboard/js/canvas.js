@@ -389,13 +389,40 @@ export class CanvasRenderer {
     return null;
   }
 
-  findOutgoingChannelEdge(event) {
-    if (!event) return null;
-    const handlerName = event.handler || event.source;
-    const outCh = event.outputChannel || event.channel;
+  findOutgoingChannelEdgeForChannel(handlerName, outCh) {
     if (!handlerName || !outCh) return null;
-
     return this.channelsLayout.find(c => c.from.name === handlerName && c.name === outCh) || null;
+  }
+
+  findOutgoingChannelEdges(event) {
+    if (!event) return [];
+    const handlerName = event.handler || event.source || event.target;
+    if (!handlerName) return [];
+
+    const edges = [];
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+    if (traces) {
+      for (const tr of traces) {
+        const oc = tr.outputChannel || tr.channel;
+        const edge = this.findOutgoingChannelEdgeForChannel(handlerName, oc);
+        if (edge && !edges.includes(edge)) {
+          edges.push(edge);
+        }
+      }
+    }
+
+    if (edges.length === 0) {
+      const outCh = event.outputChannel || event.channel;
+      if (outCh) {
+        for (const part of String(outCh).split(",")) {
+          const edge = this.findOutgoingChannelEdgeForChannel(handlerName, part.trim());
+          if (edge && !edges.includes(edge)) {
+            edges.push(edge);
+          }
+        }
+      }
+    }
+    return edges;
   }
 
   getEventPacketIds(event) {
@@ -405,7 +432,7 @@ export class CanvasRenderer {
     return event?.msgId !== undefined && event?.msgId !== null ? [String(event.msgId)] : [];
   }
 
-  triggerTransitionAnimation(event) {
+  triggerTransitionAnimation(event, specificTrace = null) {
     if (!event) return;
     const handlerName = event.handler || event.target;
     if (!handlerName) return;
@@ -413,85 +440,47 @@ export class CanvasRenderer {
     if (!handlerNode) return;
 
     const isIngress = event.type === "ingress";
-    const isForwarded = event.result === "Forwarded" && !!(event.outputChannel || event.channel);
-    const isConsumed = event.result === "Consumed"
-      || (event.type === "egress" && event.result !== "Forwarded");
-    const isDropped = event.type === "drop" || event.result === "Dropped";
-    const edge = isForwarded
-      ? this.findOutgoingChannelEdge(event)
-      : this.findIncomingChannelEdge(event);
+    const isForwarded = event.result === "Forwarded" || (specificTrace && specificTrace.result === "Forwarded");
+    const isConsumed = (event.result === "Consumed" || (specificTrace && specificTrace.result === "Consumed"))
+      || (event.type === "egress" && !isForwarded);
+    const isDropped = event.type === "drop" || event.result === "Dropped" || (specificTrace && specificTrace.result === "Dropped");
 
+    // If a specific sub-trace was requested, animate only that trace
+    if (specificTrace) {
+      const traceOutCh = specificTrace.outputChannel || specificTrace.channel;
+      const edge = isForwarded
+        ? this.findOutgoingChannelEdgeForChannel(handlerName, traceOutCh)
+        : this.findIncomingChannelEdge(event);
+      this._createAndSetParticles(event, handlerNode, [edge], [traceOutCh], isIngress, isForwarded, isConsumed, isDropped);
+      return;
+    }
+
+    // If event has multiple traces that are forwarded, launch concurrent particles for each trace!
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+    if (traces && isForwarded && traces.length > 1) {
+      const edges = [];
+      const outChannels = [];
+      for (const tr of traces) {
+        const oc = tr.outputChannel || tr.channel;
+        outChannels.push(oc);
+        edges.push(this.findOutgoingChannelEdgeForChannel(handlerName, oc));
+      }
+      this._createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, true, false, false);
+      return;
+    }
+
+    // Single flow
+    const defaultOutCh = event.outputChannel || event.channel || (traces && traces[0] ? (traces[0].outputChannel || traces[0].channel) : null);
+    const edge = isForwarded
+      ? this.findOutgoingChannelEdgeForChannel(handlerName, defaultOutCh)
+      : this.findIncomingChannelEdge(event);
+    this._createAndSetParticles(event, handlerNode, [edge], [defaultOutCh], isIngress, isForwarded, isConsumed, isDropped);
+  }
+
+  _createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, isForwarded, isConsumed, isDropped) {
+    const handlerName = handlerNode.name;
     const cloudW = 58;
     const cloudCenter = handlerNode.x - handlerNode.width / 2 - 16 - cloudW / 2;
-    let startX;
-    let startY;
-    let endX;
-    let endY;
-    let bezier = null;
-
-    if (isIngress) {
-      startX = cloudCenter - 24;
-      startY = handlerNode.y;
-      endX = cloudCenter;
-      endY = handlerNode.y;
-    } else if (isForwarded) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        const outSocket = handlerNode.outputSockets[0] || { x: handlerNode.x + handlerNode.width / 2, y: handlerNode.y };
-        startX = outSocket.x;
-        startY = outSocket.y;
-        endX = startX + 80;
-        endY = startY;
-      }
-    } else if (isConsumed) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        startX = cloudCenter;
-        startY = handlerNode.y;
-        endX = handlerNode.x;
-        endY = handlerNode.y;
-      }
-    } else if (isDropped) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        startX = cloudCenter;
-        startY = handlerNode.y;
-        endX = handlerNode.x;
-        endY = handlerNode.y;
-      }
-    } else if (edge) {
-      startX = edge.fromSocket.x;
-      startY = edge.fromSocket.y;
-      endX = edge.toSocket.x;
-      endY = edge.toSocket.y;
-      bezier = edge.bezier;
-    } else if (!handlerNode.isGenerator) {
-      const inSocket = handlerNode.inputSockets[0] || { x: handlerNode.x - handlerNode.width / 2, y: handlerNode.y };
-      startX = cloudCenter;
-      startY = handlerNode.y;
-      endX = inSocket.x;
-      endY = inSocket.y;
-    } else {
-      startX = handlerNode.x;
-      startY = handlerNode.y;
-      endX = handlerNode.x + handlerNode.width / 2 + 80;
-      endY = handlerNode.y;
-    }
 
     const previousEvent = this.lastAnimationEvent;
     const previousParticle = this.activeParticles[0];
@@ -506,55 +495,130 @@ export class CanvasRenderer {
       && previousParticle
     );
 
-    if (followsPreviousEvent) {
-      const elapsed = performance.now() - previousParticle.startTime;
-      const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
-      const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
-      if (previousParticle.bezier) {
-        const b = previousParticle.bezier;
-        const pt = this.getBezierPoint(previousParticle.startX, previousParticle.startY, b.cx1, b.cy1, b.cx2, b.cy2, previousParticle.endX, previousParticle.endY, easedProgress);
-        startX = pt.x;
-        startY = pt.y;
+    const newParticles = [];
+
+    for (let i = 0; i < edges.length; i++) {
+      const edge = edges[i];
+      let startX;
+      let startY;
+      let endX;
+      let endY;
+      let bezier = null;
+
+      if (isIngress) {
+        startX = cloudCenter - 24;
+        startY = handlerNode.y;
+        endX = cloudCenter;
+        endY = handlerNode.y;
+      } else if (isForwarded) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          const outSocket = handlerNode.outputSockets[i] || handlerNode.outputSockets[0] || { x: handlerNode.x + handlerNode.width / 2, y: handlerNode.y };
+          startX = outSocket.x;
+          startY = outSocket.y;
+          endX = startX + 80;
+          endY = startY;
+        }
+      } else if (isConsumed) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          startX = cloudCenter;
+          startY = handlerNode.y;
+          endX = handlerNode.x;
+          endY = handlerNode.y;
+        }
+      } else if (isDropped) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          startX = cloudCenter;
+          startY = handlerNode.y;
+          endX = handlerNode.x;
+          endY = handlerNode.y;
+        }
+      } else if (edge) {
+        startX = edge.fromSocket.x;
+        startY = edge.fromSocket.y;
+        endX = edge.toSocket.x;
+        endY = edge.toSocket.y;
+        bezier = edge.bezier;
+      } else if (!handlerNode.isGenerator) {
+        const inSocket = handlerNode.inputSockets[0] || { x: handlerNode.x - handlerNode.width / 2, y: handlerNode.y };
+        startX = cloudCenter;
+        startY = handlerNode.y;
+        endX = inSocket.x;
+        endY = inSocket.y;
       } else {
-        startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
-        startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+        startX = handlerNode.x;
+        startY = handlerNode.y;
+        endX = handlerNode.x + handlerNode.width / 2 + 80;
+        endY = handlerNode.y;
       }
-      // If the new trajectory follows a Bézier curve, re-calculate the control points so the particle
-      // smoothly tracks along the curve from its current position to the destination socket
-      if (bezier) {
-        bezier = this.calculateBezier(startX, startY, endX, endY);
+
+      if (followsPreviousEvent && i === 0 && !isForwarded) {
+        const elapsed = performance.now() - previousParticle.startTime;
+        const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
+        const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
+        if (previousParticle.bezier) {
+          const b = previousParticle.bezier;
+          const pt = this.getBezierPoint(previousParticle.startX, previousParticle.startY, b.cx1, b.cy1, b.cx2, b.cy2, previousParticle.endX, previousParticle.endY, easedProgress);
+          startX = pt.x;
+          startY = pt.y;
+        } else {
+          startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
+          startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+        }
+        if (bezier) {
+          bezier = this.calculateBezier(startX, startY, endX, endY);
+        }
       }
+
+      const transitColor = isIngress
+        ? "#38bdf8"
+        : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
+      const arrivalColor = isIngress
+        ? "#38bdf8"
+        : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
+
+      const distance = Math.hypot(endX - startX, endY - startY);
+      const durationMs = Math.min(750, Math.max(380, distance / 0.65));
+
+      newParticles.push({
+        startX,
+        startY,
+        endX,
+        endY,
+        bezier,
+        targetEdge: edge,
+        targetNodeName: edge ? edge.to.name : handlerName,
+        sourceNodeName: edge ? edge.from.name : handlerName,
+        progress: 0.0,
+        startTime: performance.now(),
+        durationMs,
+        color: transitColor,
+        arrivalColor: arrivalColor,
+        dropColor: "#f87171",
+        isIngress: isIngress,
+        isConsumed: isConsumed,
+        isDrop: event.type === "drop",
+      });
     }
 
-    const transitColor = isIngress
-      ? "#38bdf8"
-      : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
-    const arrivalColor = isIngress
-      ? "#38bdf8"
-      : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
-
-    const distance = Math.hypot(endX - startX, endY - startY);
-    const durationMs = Math.min(750, Math.max(380, distance / 0.65));
-
-    this.activeParticles = [{
-      startX,
-      startY,
-      endX,
-      endY,
-      bezier,
-      targetEdge: edge,
-      targetNodeName: handlerName,
-      sourceNodeName: edge ? edge.from.name : handlerName,
-      progress: 0.0,
-      startTime: performance.now(),
-      durationMs,
-      color: transitColor,
-      arrivalColor: arrivalColor,
-      dropColor: "#f87171",
-      isIngress: isIngress,
-      isConsumed: isConsumed,
-      isDrop: event.type === "drop",
-    }];
+    this.activeParticles = newParticles;
     this.lastAnimationEvent = event;
   }
 
@@ -707,15 +771,15 @@ export class CanvasRenderer {
     const selectedNodeName = this.store.state.selectedNode ? this.store.state.selectedNode.name : null;
     const lastEventHandler = lastEvent ? (lastEvent.handler || lastEvent.target) : null;
     const activeIncomingEdge = this.findIncomingChannelEdge(lastEvent);
-    const activeOutgoingEdge = this.findOutgoingChannelEdge(lastEvent);
-    const activeEventEdge = lastEvent?.result === "Forwarded" ? activeOutgoingEdge : activeIncomingEdge;
+    const activeOutgoingEdges = this.findOutgoingChannelEdges(lastEvent);
+    const activeEventEdges = lastEvent?.result === "Forwarded" ? activeOutgoingEdges : (activeIncomingEdge ? [activeIncomingEdge] : []);
 
     // 1. Draw Channel Connections (Cubic Bézier Wires & Pill Badges aligned with Chain Builder)
     this.channelsLayout.forEach((ch) => {
       const p1 = ch.fromSocket;
       const p2 = ch.toSocket;
       const b = ch.bezier;
-      const isActiveEdge = activeEventEdge === ch;
+      const isActiveEdge = activeEventEdges.includes(ch);
 
       // Draw wire curve
       ctx.save();
@@ -988,7 +1052,7 @@ export class CanvasRenderer {
     });
 
     // 3. Fallback unlinked output forward stub (if Forwarded without consumer edge)
-    if (lastEvent?.result === "Forwarded" && lastEvent.outputChannel && !activeOutgoingEdge) {
+    if (lastEvent?.result === "Forwarded" && lastEvent.outputChannel && activeOutgoingEdges.length === 0) {
       const sourceNode = this.handlersLayout.find(h => h.name === lastEventHandler);
       if (sourceNode) {
         const startSocket = sourceNode.outputSockets[0] || { x: sourceNode.x + sourceNode.width / 2, y: sourceNode.y };

@@ -658,6 +658,129 @@ canvas {
 
 .tag-ingress { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
 .tag-hop { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+
+.list-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tree-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.tree-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.trace-count-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  letter-spacing: 0.3px;
+}
+
+.subtrace-container {
+  margin-left: 18px;
+  padding-left: 10px;
+  border-left: 2px dashed rgba(192, 132, 252, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.subtrace-item {
+  padding: 6px 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(192, 132, 252, 0.15);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subtrace-item:hover {
+  background: rgba(192, 132, 252, 0.12);
+  border-color: rgba(192, 132, 252, 0.4);
+}
+
+.subtrace-item.active {
+  background: rgba(192, 132, 252, 0.2);
+  border-color: #c084fc;
+  border-left: 3px solid #c084fc;
+}
+
+.subtrace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.subtrace-branch-icon {
+  color: #c084fc;
+  font-size: 11px;
+}
+
+.subtrace-channel {
+  flex: 1;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 10.5px;
+}
+
+.subtrace-status {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.subtrace-status.status-forwarded {
+  background: rgba(192, 132, 252, 0.25);
+  color: #c084fc;
+}
+
+.subtrace-status.status-consumed {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.subtrace-status.status-dropped {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.subtrace-detail {
+  font-size: 9.5px;
+  font-family: monospace;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tag-egress { background: rgba(52, 211, 153, 0.2); color: #34d399; }
 .tag-drop { background: rgba(248, 113, 113, 0.2); color: #f87171; }
 .log-time { font-size: 11px; color: var(--text-muted); font-family: monospace; }

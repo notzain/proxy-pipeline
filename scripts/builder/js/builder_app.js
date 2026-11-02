@@ -686,7 +686,7 @@ function createApp() {
         if (res.ok) {
           this.flashStatus('Chain runner launched in simulation mode!');
           if (data.url) {
-            window.open(data.url, '_blank');
+            window.location.href = data.url;
           }
         } else {
           alert('Run failed: ' + (data.message || 'Unknown error'));

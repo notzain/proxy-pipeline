@@ -685,11 +685,21 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
                 if "input_channel" in h:
                     toml_lines.append(f'input_channel = "{h["input_channel"]}"')
                 if "input_channels" in h:
-                    toml_lines.append(f'input_channels = "{h["input_channels"]}"')
+                    in_ch = h["input_channels"]
+                    if isinstance(in_ch, list):
+                        in_ch_str = ",".join(str(c) for c in in_ch)
+                    else:
+                        in_ch_str = str(in_ch)
+                    toml_lines.append(f'input_channels = "{in_ch_str}"')
                 if "output_channel" in h:
                     toml_lines.append(f'output_channel = "{h["output_channel"]}"')
                 if "output_channels" in h:
-                    toml_lines.append(f'output_channels = "{h["output_channels"]}"')
+                    out_ch = h["output_channels"]
+                    if isinstance(out_ch, list):
+                        out_ch_str = ",".join(str(c) for c in out_ch)
+                    else:
+                        out_ch_str = str(out_ch)
+                    toml_lines.append(f'output_channels = "{out_ch_str}"')
 
                 h_cfg = h.get("config", {})
                 if h_cfg:
@@ -729,11 +739,21 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
                 if "input_channel" in h:
                     toml_lines.append(f'input_channel = "{h["input_channel"]}"')
                 if "input_channels" in h:
-                    toml_lines.append(f'input_channels = "{h["input_channels"]}"')
+                    in_ch = h["input_channels"]
+                    if isinstance(in_ch, list):
+                        in_ch_str = ",".join(str(c) for c in in_ch)
+                    else:
+                        in_ch_str = str(in_ch)
+                    toml_lines.append(f'input_channels = "{in_ch_str}"')
                 if "output_channel" in h:
                     toml_lines.append(f'output_channel = "{h["output_channel"]}"')
                 if "output_channels" in h:
-                    toml_lines.append(f'output_channels = "{h["output_channels"]}"')
+                    out_ch = h["output_channels"]
+                    if isinstance(out_ch, list):
+                        out_ch_str = ",".join(str(c) for c in out_ch)
+                    else:
+                        out_ch_str = str(out_ch)
+                    toml_lines.append(f'output_channels = "{out_ch_str}"')
                 h_cfg = h.get("config", {})
                 if h_cfg:
                     toml_lines.append("[handlers.config]")
@@ -742,10 +762,17 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
             toml_lines.append("")
             tmp_chain.write_text("\n".join(toml_lines), encoding="utf-8")
 
+            # If chain has external ingress or handlers needing PCAP, use default sample_orders.pcap
+            default_pcap = None
+            sample_pcap = self.root_dir / "sample_orders.pcap"
+            if sample_pcap.is_file():
+                default_pcap = str(sample_pcap)
+
             try:
                 self.manager.start_chain(
                     config_path_str=str(tmp_chain),
                     backend="sim",
+                    pcap_str=default_pcap,
                     http_port=self.http_port,
                 )
                 return self._send_json(200, {"status": "ok", "url": "/dashboard/"})
@@ -861,8 +888,7 @@ def main() -> int:
         print("\n[FrontendRunner] Shutting down...")
         manager.stop_chain(timeout=1.5)
         telemetry_stop_event.set()
-        httpd.shutdown()
-        sys.exit(0)
+        threading.Thread(target=httpd.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGINT, handle_exit)
     signal.signal(signal.SIGTERM, handle_exit)
@@ -871,6 +897,8 @@ def main() -> int:
         httpd.serve_forever()
     except KeyboardInterrupt:
         handle_exit(signal.SIGINT, None)
+    finally:
+        httpd.server_close()
 
     return 0
 

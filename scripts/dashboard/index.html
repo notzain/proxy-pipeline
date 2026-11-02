@@ -399,42 +399,77 @@
       <!-- Execution Trace Items List -->
       <div class="list-container" id="trace-list">
         <div v-for="(ev, idx) in (mode === 'trace' ? traceAllEvents : state.events)" :key="ev.eventId || idx"
-             class="list-item"
-             :class="{
-               active: state.selectedTraceEventId === ev.eventId,
-               dropped: ev.type === 'drop',
-               completed: ev.type === 'egress'
-             }"
-             :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }"
-             @click="selectTraceItem(ev, idx)">
-          <div class="item-top">
-            <span class="log-tag" :class="'tag-' + ev.type">
-              {{ ev.result || ev.type }}
-            </span>
-            <span class="log-time">
-              Step #{{ idx + 1 }} · Pkt #{{ ev.msgId }}<span v-if="ev.latencyUs !== undefined"> · {{ ev.latencyUs }}µs</span>
-            </span>
+             class="list-tree-group">
+          <div class="list-item"
+               :class="{
+                 active: state.selectedTraceEventId === ev.eventId && !state.selectedSubTraceId,
+                 dropped: ev.type === 'drop',
+                 completed: ev.type === 'egress'
+               }"
+               :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }"
+               @click="selectTraceItem(ev, idx)">
+            <div class="item-top">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button v-if="ev.traces && ev.traces.length > 1"
+                        class="tree-toggle-btn"
+                        :class="{ open: isTraceExpanded(ev) }"
+                        @click="toggleTraceExpanded(ev, $event)"
+                        title="Toggle individual traces">
+                  {{ isTraceExpanded(ev) ? '▾' : '▸' }}
+                </button>
+                <span class="log-tag" :class="'tag-' + ev.type">
+                  {{ ev.result || ev.type }}
+                </span>
+                <span v-if="ev.traces && ev.traces.length > 1" class="trace-count-badge">
+                  {{ ev.traces.length }} traces
+                </span>
+              </div>
+              <span class="log-time">
+                Step #{{ idx + 1 }} · Pkt #{{ ev.msgId }}<span v-if="ev.latencyUs !== undefined"> · {{ ev.latencyUs }}µs</span>
+              </span>
+            </div>
+            <div class="log-desc">
+              <span v-if="ev.type === 'ingress'">
+                <strong>UDP IN ({{ getEventIncomingChannel(ev) }})</strong>
+                <span style="color: var(--text-muted);">← {{ ev.source }}</span>
+              </span>
+              <span v-else-if="ev.type === 'drop' || ev.result === 'Dropped'">
+                <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--danger); font-weight: 600;">Dropped</span>
+                <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
+              </span>
+              <span v-else-if="ev.type === 'egress' || ev.result === 'Consumed'">
+                <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--success); font-weight: 600;">Consumed</span>
+                <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
+              </span>
+              <span v-else>
+                <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: #c084fc; font-weight: 600;">Forwarded</span> ➔ <strong>{{ getEventOutgoingChannel(ev) }}</strong>
+                <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
+              </span>
+            </div>
+            <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
+              {{ ev.detail || ev.payloadSummary }}
+            </div>
           </div>
-          <div class="log-desc">
-            <span v-if="ev.type === 'ingress'">
-              <strong>UDP IN ({{ getEventIncomingChannel(ev) }})</strong>
-              <span style="color: var(--text-muted);">← {{ ev.source }}</span>
-            </span>
-            <span v-else-if="ev.type === 'drop' || ev.result === 'Dropped'">
-              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--danger); font-weight: 600;">Dropped</span>
-              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
-            </span>
-            <span v-else-if="ev.type === 'egress' || ev.result === 'Consumed'">
-              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--success); font-weight: 600;">Consumed</span>
-              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
-            </span>
-            <span v-else>
-              <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: #c084fc; font-weight: 600;">Forwarded</span> ➔ <strong>{{ getEventOutgoingChannel(ev) }}</strong>
-              <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
-            </span>
-          </div>
-          <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
-            {{ ev.detail || ev.payloadSummary }}
+
+          <!-- Uncollapsed Individual Sub-Traces -->
+          <div v-if="ev.traces && ev.traces.length > 1 && isTraceExpanded(ev)"
+               class="subtrace-container"
+               :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }">
+            <div v-for="tr in ev.traces" :key="tr.traceId"
+                 class="subtrace-item"
+                 :class="{ active: state.selectedTraceEventId === ev.eventId && state.selectedSubTraceId === tr.traceId }"
+                 @click="selectSubTraceItem(ev, tr, idx, $event)">
+              <div class="subtrace-header">
+                <span class="subtrace-branch-icon">↳</span>
+                <span class="subtrace-channel">Branch #{{ tr.traceId }}: <strong>{{ tr.outputChannel || tr.channel }}</strong></span>
+                <span class="subtrace-status" :class="'status-' + (tr.result || 'Forwarded').toLowerCase()">
+                  {{ tr.result || 'Forwarded' }}
+                </span>
+              </div>
+              <div class="subtrace-detail">
+                {{ tr.payloadSummary || tr.detail }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -453,7 +488,7 @@
     });
   </script>
   <script type="module">
-    import { createSimulationApp } from "./js/app.js?v=11";
+    import { createSimulationApp } from "./js/app.js?v=13";
 
     window.app = createSimulationApp();
     PetiteVue.createApp(window.app).mount("body");

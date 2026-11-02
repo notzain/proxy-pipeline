@@ -10,6 +10,13 @@ namespace Core::Serialization {
 
 namespace detail {
 
+    template <typename Format, typename T, typename IrValue, typename Options, typename = void>
+    struct HasTypedEncode : std::false_type { };
+
+    template <typename Format, typename T, typename IrValue, typename Options>
+    struct HasTypedEncode<Format, T, IrValue, Options,
+        std::void_t<decltype(Format::template encode<T>(std::declval<IrValue>(), std::declval<Options>()))>> : std::true_type { };
+
     template <typename Format, typename Input, typename Options, typename = void>
     struct HasDecodeWithOptions : std::false_type { };
 
@@ -32,7 +39,7 @@ template <typename Format, typename T>
 std::string serialize(const T& value, const typename Format::Options& options = { })
 {
     Ir::Value ir = Ir::toIntermediate(value);
-    if constexpr (requires { Format::template encode<T>(ir, options); }) {
+    if constexpr (detail::HasTypedEncode<Format, T, const Ir::Value&, const typename Format::Options&>::value) {
         return Format::template encode<T>(ir, options);
     } else {
         return Format::encode(ir, options);
