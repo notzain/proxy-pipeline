@@ -46,6 +46,31 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(index_file.read_bytes())
                 return
+        elif self.path in ("/builder", "/builder/", "/builder/index.html"):
+            builder_index = Path(__file__).resolve().parent.parent / "builder" / "index.html"
+            if builder_index.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.end_headers()
+                self.wfile.write(builder_index.read_bytes())
+                return
+        elif self.path.startswith("/builder/"):
+            builder_dir = Path(__file__).resolve().parent.parent / "builder"
+            subpath = self.path[len("/builder/"):].split("?")[0]
+            target_f = builder_dir / subpath
+            if target_f.is_file():
+                content_type = "text/plain"
+                if subpath.endswith(".css"):
+                    content_type = "text/css"
+                elif subpath.endswith(".js"):
+                    content_type = "application/javascript"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                self.end_headers()
+                self.wfile.write(target_f.read_bytes())
+                return
         elif self.path.startswith(("/css/", "/js/", "/vendor/")):
             clean_path = self.path.split("?")[0].lstrip("/")
             static_file = dashboard_dir / clean_path
@@ -204,6 +229,11 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/api/schemas":
+            from .schema_validator import discover_handler_schemas
+            self._send_json(200, discover_handler_schemas())
+        elif self.path == "/api/chain":
+            self._send_json(200, self.coordinator.chain_config)
         else:
             self.send_response(404)
             self.end_headers()

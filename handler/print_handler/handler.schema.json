@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "print_handler",
+  "displayName": "Print Sink",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Sinks",
+  "description": "Terminal sink printing received message payloads to stdout and log sink.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Input Channel",
+        "cardinality": "single",
+        "default": "default",
+        "description": "Source channel from which messages are received for printing."
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {}
+}
+

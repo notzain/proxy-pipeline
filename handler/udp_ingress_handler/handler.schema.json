@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "udp_ingress_handler",
+  "displayName": "UDP Ingress Gateway",
+  "role": "external_ingress",
+  "protocol": "udp",
+  "category": "Gateways",
+  "description": "Boundary gateway receiving external UDP datagrams, wrapping them into MessageEnvelope frames with client metadata, and pushing into internal pipeline channels.",
+  "ports": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Pipeline Egress",
+        "cardinality": "single",
+        "default": "ingress_out",
+        "description": "Internal pipeline channel receiving encapsulated ingress frames."
+      }
+    ]
+  },
+  "parameters": {
+    "ingress.host": {
+      "type": "string",
+      "label": "Listen Host Address",
+      "default": "0.0.0.0",
+      "description": "IP interface on which to bind and listen for UDP traffic."
+    },
+    "ingress.port": {
+      "type": "integer",
+      "label": "Listen Port",
+      "default": 9000,
+      "min": 1,
+      "max": 65535,
+      "description": "UDP port number to listen on."
+    },
+    "ingress.buffer_size": {
+      "type": "integer",
+      "label": "Socket Buffer Size (bytes)",
+      "default": 8388608,
+      "min": 4096,
+      "description": "Operating system kernel socket receive buffer size."
+    }
+  }
+}
+

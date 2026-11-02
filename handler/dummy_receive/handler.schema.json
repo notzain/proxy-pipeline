@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "dummy_receive",
+  "displayName": "Dummy Receiver",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Sinks",
+  "description": "Consumes and tallies messages received from an input channel.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Input Channel",
+        "cardinality": "single",
+        "default": "test_channel",
+        "description": "Source channel from which messages are received."
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {}
+}
+

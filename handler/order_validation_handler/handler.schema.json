@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "order_validation_handler",
+  "displayName": "Order Domain Validator",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Processors",
+  "description": "High-throughput domain validator for financial/order message payloads using DOM and SAX parsers.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Order Input",
+        "cardinality": "single",
+        "default": "order_in",
+        "description": "Channel from which order messages are ingested."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Validated Output",
+        "cardinality": "single",
+        "default": "order_out",
+        "description": "Channel where valid order messages are forwarded."
+      }
+    ]
+  },
+  "parameters": {}
+}
+

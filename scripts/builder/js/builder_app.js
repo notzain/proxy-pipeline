@@ -1,0 +1,713 @@
+/**
+ * builder_app.js - Application state, schema binding, TOML export/import, and live validation.
+ */
+
+function createApp() {
+  return {
+    schemas: {},
+    schemaCategories: {},
+    collapsedCategories: {},
+    backend: 'file',
+    globalConfig: {
+      'file.path': '/tmp/proxy_watch',
+      'log.console': true,
+    },
+
+    nodes: [],
+    wires: [],
+
+    selectedNodeId: null,
+    selectedNode: null,
+    selectedSchema: null,
+    selectedWireId: null,
+
+    validation: {
+      valid: true,
+      errors: [],
+      warnings: [],
+    },
+
+    statusMsg: '',
+    canvasInstance: null,
+
+    async init() {
+      await this.loadSchemas();
+      this.initCanvas();
+      await this.loadInitialChain();
+      this.validateChain();
+
+      // Keyboard shortcuts
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          // If input/textarea active, do not delete node
+          if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+          if (this.selectedNodeId) {
+            this.deleteNode(this.selectedNodeId);
+          } else if (this.selectedWireId) {
+            this.deleteWire(this.selectedWireId);
+          }
+        }
+      });
+    },
+
+    async loadSchemas() {
+      try {
+        const res = await fetch('/api/schemas');
+        if (res.ok) {
+          this.schemas = await res.json();
+          this.categorizeSchemas();
+        }
+      } catch (err) {
+        console.error('Failed to load handler schemas:', err);
+      }
+    },
+
+    categorizeSchemas() {
+      const cats = {};
+      for (const [name, schema] of Object.entries(this.schemas)) {
+        const cat = schema.category || 'Processors';
+        if (!cats[cat]) cats[cat] = [];
+        cats[cat].push(schema);
+      }
+      this.schemaCategories = cats;
+    },
+
+    toggleCategory(category) {
+      this.collapsedCategories[category] = !this.collapsedCategories[category];
+    },
+
+    initCanvas() {
+      const container = document.getElementById('canvas-container');
+      const viewport = document.getElementById('canvas-viewport');
+      const svg = document.getElementById('canvas-svg');
+      this.canvasInstance = new BuilderCanvas(container, viewport, svg, this);
+    },
+
+    async loadInitialChain() {
+      try {
+        const res = await fetch('/api/chain');
+        if (res.ok) {
+          const chainDef = await res.json();
+          if (chainDef && chainDef.handlers && chainDef.handlers.length > 0) {
+            this.importChainDefinition(chainDef);
+          }
+        }
+      } catch (err) {
+        // No chain preloaded
+      }
+    },
+
+    createNodeFromSchema(handlerType, x, y) {
+      const schema = this.schemas[handlerType];
+      if (!schema) return;
+
+      const baseName = handlerType.replace('_handler', '');
+      let counter = 1;
+      let candidateName = `${baseName}_${counter}`;
+      while (this.nodes.some((n) => n.name === candidateName)) {
+        counter++;
+        candidateName = `${baseName}_${counter}`;
+      }
+
+      // Initialize config with schema defaults
+      const config = {};
+      if (schema.parameters) {
+        for (const [k, p] of Object.entries(schema.parameters)) {
+          if (p.default !== undefined) {
+            config[k] = p.default;
+          }
+        }
+      }
+
+      const newNode = {
+        id: 'node_' + Math.random().toString(36).substr(2, 9),
+        name: candidateName,
+        type: handlerType,
+        x: x || 250,
+        y: y || 150,
+        config: config,
+        inputs: {},
+        outputs: {},
+      };
+
+      // Set default channel names from schema
+      if (schema.ports && schema.ports.inputs) {
+        for (const p of schema.ports.inputs) {
+          if (p.cardinality === 'multiple') {
+            const defs = (p.default || 'in_channel').split(',').map((s) => s.trim()).filter(Boolean);
+            newNode.inputs[p.name] = defs.length > 0 ? defs : ['in_channel'];
+          } else {
+            newNode.inputs[p.name] = p.default || 'in_channel';
+          }
+        }
+      }
+      if (schema.ports && schema.ports.outputs) {
+        for (const p of schema.ports.outputs) {
+          if (p.cardinality === 'multiple') {
+            const defs = (p.default || 'out_channel').split(',').map((s) => s.trim()).filter(Boolean);
+            newNode.outputs[p.name] = defs.length > 0 ? defs : ['out_channel'];
+          } else {
+            newNode.outputs[p.name] = p.default || 'out_channel';
+          }
+        }
+      }
+
+      this.nodes.push(newNode);
+      this.selectNode(newNode.id);
+      this.validateChain();
+    },
+
+    selectNode(id) {
+      this.selectedNodeId = id;
+      this.selectedNode = this.nodes.find((n) => n.id === id) || null;
+      this.selectedSchema = this.selectedNode ? (this.schemas[this.selectedNode.type] || null) : null;
+      this.selectedWireId = null;
+    },
+
+    selectWire(id) {
+      this.selectedWireId = id;
+      this.selectedNodeId = null;
+      this.selectedNode = null;
+      this.selectedSchema = null;
+      this.updateWires();
+    },
+
+    getSelectedWire() {
+      return this.wires.find((w) => w.id === this.selectedWireId) || null;
+    },
+
+    updateWireChannelName(wireId, newName) {
+      const wire = this.wires.find((w) => w.id === wireId);
+      if (!wire) return;
+      wire.channel = newName;
+
+      // Automatically update source node output
+      const fromNode = this.nodes.find((n) => n.id === wire.fromNodeId);
+      if (fromNode && fromNode.outputs) {
+        const outVal = fromNode.outputs[wire.fromPort];
+        if (Array.isArray(outVal)) {
+          outVal[wire.fromIndex || 0] = newName;
+        } else {
+          fromNode.outputs[wire.fromPort] = newName;
+        }
+      }
+
+      // Automatically update target node input
+      const toNode = this.nodes.find((n) => n.id === wire.toNodeId);
+      if (toNode && toNode.inputs) {
+        const inVal = toNode.inputs[wire.toPort];
+        if (Array.isArray(inVal)) {
+          inVal[wire.toIndex || 0] = newName;
+        } else {
+          toNode.inputs[wire.toPort] = newName;
+        }
+      }
+
+      this.updateWires();
+      this.validateChain();
+    },
+
+    getSelectedNode() {
+      return this.selectedNode;
+    },
+
+    getSelectedSchema() {
+      return this.selectedSchema;
+    },
+
+    deleteNode(nodeId) {
+      this.nodes = this.nodes.filter((n) => n.id !== nodeId);
+      this.wires = this.wires.filter((w) => w.fromNodeId !== nodeId && w.toNodeId !== nodeId);
+      if (this.selectedNodeId === nodeId) {
+        this.selectNode(null);
+      }
+      this.updateWires();
+      this.validateChain();
+    },
+
+    deleteWire(wireId) {
+      this.wires = this.wires.filter((w) => w.id !== wireId);
+      if (this.selectedWireId === wireId) {
+        this.selectedWireId = null;
+      }
+      this.updateWires();
+      this.validateChain();
+    },
+
+    getNodeInputPorts(node) {
+      const items = [];
+      for (const [portName, val] of Object.entries(node.inputs || {})) {
+        if (Array.isArray(val)) {
+          val.forEach((ch, idx) => {
+            items.push({
+              portName: portName,
+              index: idx,
+              channel: ch,
+              label: `${portName.replace('_channel', '').replace('s', '')} #${idx + 1}`,
+            });
+          });
+        } else {
+          items.push({
+            portName: portName,
+            index: 0,
+            channel: val,
+            label: portName.replace('_channel', ''),
+          });
+        }
+      }
+      return items;
+    },
+
+    getNodeOutputPorts(node) {
+      const items = [];
+      for (const [portName, val] of Object.entries(node.outputs || {})) {
+        if (Array.isArray(val)) {
+          val.forEach((ch, idx) => {
+            items.push({
+              portName: portName,
+              index: idx,
+              channel: ch,
+              label: `${portName.replace('_channel', '').replace('s', '')} #${idx + 1}`,
+            });
+          });
+        } else {
+          items.push({
+            portName: portName,
+            index: 0,
+            channel: val,
+            label: portName.replace('_channel', ''),
+          });
+        }
+      }
+      return items;
+    },
+
+    addChannelItem(node, direction, portName) {
+      if (!node || !node[direction] || !Array.isArray(node[direction][portName])) return;
+      const arr = node[direction][portName];
+      const newName = `${node.name}_${portName}_${arr.length + 1}`;
+      arr.push(newName);
+      this.onChannelUpdated();
+    },
+
+    removeChannelItem(node, direction, portName, index) {
+      if (!node || !node[direction] || !Array.isArray(node[direction][portName])) return;
+      const arr = node[direction][portName];
+      if (arr.length <= 1) return;
+      arr.splice(index, 1);
+      this.onChannelUpdated();
+    },
+
+    onChannelUpdated() {
+      setTimeout(() => {
+        this.updateWires();
+        this.validateChain();
+      }, 30);
+    },
+
+    addWire(fromNodeId, fromPort, fromIndex, toNodeId, toPort, toIndex) {
+      const fromNode = this.nodes.find((n) => n.id === fromNodeId);
+      const toNode = this.nodes.find((n) => n.id === toNodeId);
+      if (!fromNode || !toNode) return;
+
+      fromIndex = fromIndex || 0;
+      toIndex = toIndex || 0;
+
+      // Existing wire check
+      const exists = this.wires.some(
+        (w) =>
+          w.fromNodeId === fromNodeId &&
+          w.fromPort === fromPort &&
+          (w.fromIndex || 0) === fromIndex &&
+          w.toNodeId === toNodeId &&
+          w.toPort === toPort &&
+          (w.toIndex || 0) === toIndex
+      );
+      if (exists) return;
+
+      // Determine or assign channel name
+      let channelName = '';
+      if (Array.isArray(fromNode.outputs[fromPort])) {
+        channelName = fromNode.outputs[fromPort][fromIndex];
+        if (!channelName || channelName.includes('out_channel')) {
+          channelName = `${fromNode.name}_b${fromIndex + 1}_to_${toNode.name}`;
+          fromNode.outputs[fromPort][fromIndex] = channelName;
+        }
+      } else {
+        channelName = fromNode.outputs[fromPort];
+        if (!channelName || channelName === 'out_channel') {
+          channelName = `${fromNode.name}_to_${toNode.name}`;
+          fromNode.outputs[fromPort] = channelName;
+        }
+      }
+
+      // Assign to target input port
+      if (Array.isArray(toNode.inputs[toPort])) {
+        toNode.inputs[toPort][toIndex] = channelName;
+      } else {
+        toNode.inputs[toPort] = channelName;
+      }
+
+      const newWire = {
+        id: 'wire_' + Math.random().toString(36).substr(2, 9),
+        fromNodeId,
+        fromPort,
+        fromIndex,
+        toNodeId,
+        toPort,
+        toIndex,
+        channel: channelName,
+      };
+
+      this.wires.push(newWire);
+      this.selectWire(newWire.id);
+      this.onChannelUpdated();
+    },
+
+    updateWires() {
+      // Re-render wire bezier curves into SVG
+      const svg = document.getElementById('canvas-svg');
+      if (!svg) return;
+
+      // Clear existing wire path elements and label groups except draft-wire
+      const paths = svg.querySelectorAll('.canvas-wire:not(#draft-wire)');
+      paths.forEach((p) => p.remove());
+      const labels = svg.querySelectorAll('.wire-label-group');
+      labels.forEach((l) => l.remove());
+
+      for (const wire of this.wires) {
+        const fromIdx = wire.fromIndex !== undefined ? wire.fromIndex : 0;
+        const toIdx = wire.toIndex !== undefined ? wire.toIndex : 0;
+
+        const fromSocket = document.querySelector(
+          `.port-socket[data-node-id="${wire.fromNodeId}"][data-port-name="${wire.fromPort}"][data-port-index="${fromIdx}"][data-port-type="output"]`
+        ) || document.querySelector(
+          `.port-socket[data-node-id="${wire.fromNodeId}"][data-port-name="${wire.fromPort}"][data-port-type="output"]`
+        );
+
+        const toSocket = document.querySelector(
+          `.port-socket[data-node-id="${wire.toNodeId}"][data-port-name="${wire.toPort}"][data-port-index="${toIdx}"][data-port-type="input"]`
+        ) || document.querySelector(
+          `.port-socket[data-node-id="${wire.toNodeId}"][data-port-name="${wire.toPort}"][data-port-type="input"]`
+        );
+
+        if (!fromSocket || !toSocket) continue;
+
+        // Exact socket coordinates relative to world space
+        const pt1 = this.canvasInstance.getSocketCenterInWorld(fromSocket);
+        const pt2 = this.canvasInstance.getSocketCenterInWorld(toSocket);
+
+        const d = this.canvasInstance.calculateBezier(pt1.x, pt1.y, pt2.x, pt2.y);
+
+        const isSelected = this.selectedWireId === wire.id;
+
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', d);
+        pathEl.setAttribute(
+          'class',
+          'canvas-wire' + (isSelected ? ' selected' : '')
+        );
+        pathEl.dataset.wireId = wire.id;
+        pathEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.selectWire(wire.id);
+        });
+        svg.appendChild(pathEl);
+
+        // Render Channel Name Badge on the wire
+        if (wire.channel) {
+          const midX = (pt1.x + pt2.x) / 2;
+          const midY = (pt1.y + pt2.y) / 2;
+
+          const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          labelGroup.setAttribute('class', 'wire-label-group' + (isSelected ? ' selected' : ''));
+          labelGroup.dataset.wireId = wire.id;
+
+          const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          textEl.setAttribute('class', 'wire-label-text');
+          textEl.setAttribute('x', midX);
+          textEl.setAttribute('y', midY);
+          textEl.textContent = wire.channel;
+
+          // Estimate pill width based on text length
+          const padX = 10;
+          const padY = 4;
+          const estWidth = wire.channel.length * 6.8 + padX * 2;
+          const estHeight = 18 + padY;
+
+          const rectEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rectEl.setAttribute('class', 'wire-label-rect');
+          rectEl.setAttribute('x', midX - estWidth / 2);
+          rectEl.setAttribute('y', midY - estHeight / 2);
+          rectEl.setAttribute('width', estWidth);
+          rectEl.setAttribute('height', estHeight);
+
+          labelGroup.appendChild(rectEl);
+          labelGroup.appendChild(textEl);
+
+          labelGroup.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectWire(wire.id);
+          });
+
+          svg.appendChild(labelGroup);
+        }
+      }
+    },
+
+    exportChainDefinition() {
+      const handlers = [];
+      for (const n of this.nodes) {
+        const h = {
+          name: n.name,
+          type: n.type,
+          config: { ...n.config },
+        };
+        for (const [k, v] of Object.entries(n.inputs)) {
+          if (Array.isArray(v)) {
+            h[k] = v.filter(Boolean).join(',');
+          } else if (v) {
+            h[k] = v;
+          }
+        }
+        for (const [k, v] of Object.entries(n.outputs)) {
+          if (Array.isArray(v)) {
+            h[k] = v.filter(Boolean).join(',');
+          } else if (v) {
+            h[k] = v;
+          }
+        }
+        handlers.push(h);
+      }
+
+      return {
+        backend: this.backend,
+        config: { ...this.globalConfig },
+        handlers: handlers,
+      };
+    },
+
+    importChainDefinition(chainDef) {
+      this.nodes = [];
+      this.wires = [];
+      this.backend = chainDef.backend || 'file';
+      this.globalConfig = { ...(chainDef.config || {}) };
+
+      const handlers = chainDef.handlers || [];
+      const colWidth = 320;
+      const rowHeight = 160;
+      const cols = Math.ceil(Math.sqrt(handlers.length)) || 1;
+
+      handlers.forEach((h, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+
+        const node = {
+          id: 'node_' + Math.random().toString(36).substr(2, 9),
+          name: h.name,
+          type: h.type,
+          x: 100 + col * colWidth,
+          y: 80 + row * rowHeight,
+          config: { ...(h.config || {}) },
+          inputs: {},
+          outputs: {},
+        };
+
+        if (h.input_channel) node.inputs['input_channel'] = h.input_channel;
+        if (h.input_channels) {
+          node.inputs['input_channels'] = Array.isArray(h.input_channels)
+            ? h.input_channels
+            : String(h.input_channels).split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        if (h.output_channel) node.outputs['output_channel'] = h.output_channel;
+        if (h.output_channels) {
+          node.outputs['output_channels'] = Array.isArray(h.output_channels)
+            ? h.output_channels
+            : String(h.output_channels).split(',').map((s) => s.trim()).filter(Boolean);
+        }
+
+        this.nodes.push(node);
+      });
+
+      // Synthesize wires based on matching channel names
+      for (const srcNode of this.nodes) {
+        for (const [outPort, outChs] of Object.entries(srcNode.outputs)) {
+          const chList = Array.isArray(outChs)
+            ? outChs
+            : String(outChs).split(',').map((s) => s.trim()).filter(Boolean);
+          chList.forEach((ch, outIdx) => {
+            for (const dstNode of this.nodes) {
+              if (dstNode.id === srcNode.id) continue;
+              for (const [inPort, inChs] of Object.entries(dstNode.inputs)) {
+                const inList = Array.isArray(inChs)
+                  ? inChs
+                  : String(inChs).split(',').map((s) => s.trim()).filter(Boolean);
+                inList.forEach((targetCh, inIdx) => {
+                  if (targetCh === ch) {
+                    this.wires.push({
+                      id: 'wire_' + Math.random().toString(36).substr(2, 9),
+                      fromNodeId: srcNode.id,
+                      fromPort: outPort,
+                      fromIndex: outIdx,
+                      toNodeId: dstNode.id,
+                      toPort: inPort,
+                      toIndex: inIdx,
+                      channel: ch,
+                    });
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+
+      setTimeout(() => {
+        this.updateWires();
+        this.validateChain();
+      }, 50);
+    },
+
+    async validateChain() {
+      const chainDef = this.exportChainDefinition();
+      try {
+        const res = await fetch('/api/chain/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chainDef),
+        });
+        if (res.ok) {
+          this.validation = await res.json();
+        }
+      } catch (err) {
+        // Fallback local quick validation
+        const errors = [];
+        const names = new Set();
+        for (const n of this.nodes) {
+          if (!n.name) errors.push('A handler node has no name specified');
+          if (names.has(n.name)) errors.push(`Duplicate handler name '${n.name}'`);
+          names.add(n.name);
+        }
+        this.validation = {
+          valid: errors.length === 0,
+          errors: errors,
+          warnings: [],
+        };
+      }
+    },
+
+    toTomlString(obj) {
+      let out = `# Generated by Proxy Visual Chain Builder\nbackend = "${obj.backend}"\n\n[config]\n`;
+      for (const [k, v] of Object.entries(obj.config || {})) {
+        if (typeof v === 'boolean') {
+          out += `"${k}" = ${v}\n`;
+        } else if (typeof v === 'number') {
+          out += `"${k}" = ${v}\n`;
+        } else {
+          out += `"${k}" = "${v}"\n`;
+        }
+      }
+
+      for (const h of obj.handlers || []) {
+        out += `\n[[handlers]]\nname = "${h.name}"\ntype = "${h.type}"\n`;
+        if (h.input_channel) out += `input_channel = "${h.input_channel}"\n`;
+        if (h.input_channels) out += `input_channels = "${h.input_channels}"\n`;
+        if (h.output_channel) out += `output_channel = "${h.output_channel}"\n`;
+        if (h.output_channels) out += `output_channels = "${h.output_channels}"\n`;
+
+        if (h.config && Object.keys(h.config).length > 0) {
+          out += `[handlers.config]\n`;
+          for (const [ck, cv] of Object.entries(h.config)) {
+            if (typeof cv === 'boolean') {
+              out += `"${ck}" = ${cv}\n`;
+            } else if (typeof cv === 'number') {
+              out += `"${ck}" = ${cv}\n`;
+            } else {
+              out += `"${ck}" = "${cv}"\n`;
+            }
+          }
+        }
+      }
+      return out;
+    },
+
+    downloadFile(filename, text) {
+      const el = document.createElement('a');
+      el.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+      el.setAttribute('download', filename);
+      el.style.display = 'none';
+      document.body.appendChild(el);
+      el.click();
+      document.body.removeChild(el);
+    },
+
+    exportToml() {
+      const chainDef = this.exportChainDefinition();
+      const tomlStr = this.toTomlString(chainDef);
+      this.downloadFile('chain.toml', tomlStr);
+      this.flashStatus('Exported chain.toml successfully!');
+    },
+
+    exportJson() {
+      const chainDef = this.exportChainDefinition();
+      const jsonStr = JSON.stringify(chainDef, null, 2);
+      this.downloadFile('chain.json', jsonStr);
+      this.flashStatus('Exported chain.json successfully!');
+    },
+
+    async saveToDisk() {
+      const chainDef = this.exportChainDefinition();
+      try {
+        const res = await fetch('/api/chain/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chainDef),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          this.flashStatus(`Saved to ${data.path || 'disk'}`);
+        } else {
+          alert('Save failed: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Save request failed: ' + err);
+      }
+    },
+
+    async runSimulation() {
+      const chainDef = this.exportChainDefinition();
+      try {
+        const res = await fetch('/api/chain/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chainDef),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          this.flashStatus('Chain runner launched in simulation mode!');
+          if (data.url) {
+            window.open(data.url, '_blank');
+          }
+        } else {
+          alert('Run failed: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Run request failed: ' + err);
+      }
+    },
+
+    flashStatus(msg) {
+      this.statusMsg = msg;
+      setTimeout(() => {
+        if (this.statusMsg === msg) this.statusMsg = '';
+      }, 3500);
+    },
+
+    onDragPaletteStart(e, handlerType) {
+      e.dataTransfer.setData('text/plain', handlerType);
+    },
+  };
+}
+
+window.createApp = createApp;
+

@@ -97,12 +97,20 @@ function(proxy_add_handler_all_backends handler_base_name)
     set(ARG_PROTOCOL "none")
   endif()
 
-  # Emit decoupled sidecar descriptor JSON for this handler next to binary
+  # Emit decoupled sidecar descriptor JSON and copy schema for this handler next to binary
   set(descriptor_dir "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
   if(NOT descriptor_dir)
     set(descriptor_dir "${CMAKE_BINARY_DIR}/bin")
   endif()
   file(MAKE_DIRECTORY "${descriptor_dir}")
+
+  # Check if per-handler schema exists in handler source directory
+  set(schema_source_file "${CMAKE_CURRENT_SOURCE_DIR}/handler.schema.json")
+  if(EXISTS "${schema_source_file}")
+    file(COPY "${schema_source_file}" DESTINATION "${descriptor_dir}")
+    file(RENAME "${descriptor_dir}/handler.schema.json" "${descriptor_dir}/${handler_base_name}.schema.json")
+  endif()
+
   set(descriptor_content "{\n  \"name\": \"${handler_base_name}\",\n  \"role\": \"${ARG_ROLE}\",\n  \"protocol\": \"${ARG_PROTOCOL}\"\n}\n")
   file(WRITE "${descriptor_dir}/${handler_base_name}.json" "${descriptor_content}")
 

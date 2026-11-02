@@ -29,6 +29,7 @@ class HandlerDescriptor:
     name: str
     role: HandlerRole
     protocol: HandlerProtocol
+    schema: Optional[dict[str, Any]] = None
 
     @property
     def is_generator(self) -> bool:
@@ -47,9 +48,29 @@ def load_handler_descriptor(
     handler_type: str, bin_dirs: Optional[list[Path | str]] = None
 ) -> HandlerDescriptor:
     """
-    Attempts to load a decoupled <handler_type>.json sidecar descriptor from known binary directories.
+    Attempts to load a decoupled <handler_type>.schema.json or <handler_type>.json sidecar descriptor
+    from known binary directories or handler source directories.
     Falls back to intelligent defaults if the sidecar is not found.
     """
+    from .schema_validator import discover_handler_schemas
+
+    schemas = discover_handler_schemas(bin_dirs)
+    if handler_type in schemas:
+        s = schemas[handler_type]
+        role_str = s.get("role", "processor")
+        proto_str = s.get("protocol", "none")
+        try:
+            role = HandlerRole(role_str)
+        except ValueError:
+            role = HandlerRole.PROCESSOR
+        try:
+            proto = HandlerProtocol(proto_str)
+        except ValueError:
+            proto = HandlerProtocol.NONE
+        return HandlerDescriptor(
+            name=s.get("name", handler_type), role=role, protocol=proto, schema=s
+        )
+
     if bin_dirs:
         for b_dir in bin_dirs:
             p = Path(b_dir) / f"{handler_type}.json"

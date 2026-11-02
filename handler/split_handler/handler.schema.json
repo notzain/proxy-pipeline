@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "split_handler",
+  "displayName": "Split Fanout",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Routing",
+  "description": "Fans out each incoming message by duplicating and broadcasting to multiple output channels.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Input Channel",
+        "cardinality": "single",
+        "default": "pipe_in",
+        "description": "Incoming channel to ingest messages from."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channels",
+        "label": "Output Channels",
+        "cardinality": "multiple",
+        "default": "pipe_out_1,pipe_out_2",
+        "description": "Comma-separated list of downstream broadcast output channels."
+      }
+    ]
+  },
+  "parameters": {}
+}
+

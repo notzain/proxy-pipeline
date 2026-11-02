@@ -804,8 +804,8 @@ class InteractiveSimulationCoordinator:
             payload_bytes = msg_text.encode("utf-8")
 
             header = struct.pack(
-                "<HBBHIQ",
-                0x5058,  # magic 'PX'
+                "!HBBHIQ",
+                0x5058,  # magic 'PX' (big-endian 0x5058)
                 1,  # version
                 0,  # protocol = Raw
                 0,  # metadataLength = 0

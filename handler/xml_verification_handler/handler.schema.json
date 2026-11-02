@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "xml_verification_handler",
+  "displayName": "XML Schema Validator",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Processors",
+  "description": "Validates incoming XML payloads against an XSD schema using libxml2. Passes valid XML downstream.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "XML Input",
+        "cardinality": "single",
+        "default": "xml_in",
+        "description": "Channel from which XML messages are ingested."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Verified Output",
+        "cardinality": "single",
+        "default": "xml_out",
+        "description": "Channel where schema-validated XML messages are forwarded."
+      }
+    ]
+  },
+  "parameters": {
+    "xml.xsd_path": {
+      "type": "filepath",
+      "label": "XSD Schema Path",
+      "required": true,
+      "default": "chains/order.xsd",
+      "description": "Filesystem path to the XSD validation schema file."
+    }
+  }
+}
+

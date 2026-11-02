@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "route_handler",
+  "displayName": "Route Dispatcher",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Routing",
+  "description": "Content-aware rule routing dispatcher that matches message payloads against configurable criteria.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Incoming Traffic",
+        "cardinality": "single",
+        "default": "route_in",
+        "description": "Incoming channel carrying unrouted messages."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channels",
+        "label": "Route Target Channels",
+        "cardinality": "multiple",
+        "default": "route_target_1,route_target_2",
+        "description": "Available destination channels targeted by routing rules."
+      }
+    ]
+  },
+  "parameters": {
+    "route.rule.0.type": {
+      "type": "string",
+      "label": "Rule 0 Match Type",
+      "enum": ["contains", "equals", "prefix", "suffix", "numeric_gt", "numeric_lt"],
+      "default": "contains",
+      "description": "Matching algorithm used for first evaluation rule."
+    },
+    "route.rule.0.pattern": {
+      "type": "string",
+      "label": "Rule 0 Match Pattern",
+      "default": "",
+      "description": "Substring, prefix, or token pattern to match."
+    },
+    "route.rule.0.target": {
+      "type": "string",
+      "label": "Rule 0 Target Channel",
+      "default": "",
+      "description": "Output channel to divert to if Rule 0 matches."
+    }
+  }
+}
+

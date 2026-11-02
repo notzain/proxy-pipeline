@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "gather_handler",
+  "displayName": "Gather Merger",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Routing",
+  "description": "Gather stage of parallelized scatter-gather pipeline. Synchronizes and requires verdicts across all parallel branches before forwarding.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channels",
+        "label": "Gather Branches",
+        "cardinality": "multiple",
+        "default": "branch_res_a,branch_res_b",
+        "description": "Comma-separated branch output channels to correlate."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Merged Egress",
+        "cardinality": "single",
+        "default": "gather_out",
+        "description": "Output channel where fully validated consolidated messages are forwarded."
+      }
+    ]
+  },
+  "parameters": {
+    "gather.timeout_ms": {
+      "type": "integer",
+      "label": "Branch Timeout (ms)",
+      "default": 5000,
+      "min": 1,
+      "description": "Maximum duration in milliseconds to wait for all parallel branch results before expiring."
+    }
+  }
+}
+

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "udp_egress_handler",
+  "displayName": "UDP Egress Gateway",
+  "role": "external_egress",
+  "protocol": "udp",
+  "category": "Gateways",
+  "description": "Boundary gateway consuming MessageEnvelope frames from internal pipeline channels, reading client provenance, and transmitting UDP datagrams outwards.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Pipeline Ingress",
+        "cardinality": "single",
+        "default": "egress_in",
+        "description": "Internal pipeline channel delivering messages destined for egress."
+      }
+    ],
+    "outputs": []
+  },
+  "parameters": {
+    "egress.mode": {
+      "type": "string",
+      "label": "Transmission Mode",
+      "enum": ["reply_to_origin", "fixed_destination"],
+      "default": "reply_to_origin",
+      "description": "Controls whether responses are sent to the originating client socket or a fixed destination host/port."
+    },
+    "egress.dest_host": {
+      "type": "string",
+      "label": "Destination Host",
+      "default": "127.0.0.1",
+      "description": "Target IPv4/IPv6 address when mode is fixed_destination."
+    },
+    "egress.dest_port": {
+      "type": "integer",
+      "label": "Destination Port",
+      "default": 9200,
+      "min": 1,
+      "max": 65535,
+      "description": "Target UDP port when mode is fixed_destination."
+    }
+  }
+}
+

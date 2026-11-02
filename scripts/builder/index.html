@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Proxy :: Visual Chain Builder</title>
+  <link rel="stylesheet" href="css/builder.css?v=1">
+  <script src="vendor/petite-vue.iife.js"></script>
+</head>
+
+<body v-scope>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="brand">
+      <span class="brand-badge">VISUAL BUILDER</span>
+      <div class="brand-title">
+        <span>Proxy Pipeline Studio</span>
+      </div>
+      <span v-if="statusMsg"
+        style="font-size: 11px; color: var(--accent-green); background: #064e3b; padding: 2px 8px; border-radius: 4px; border: 1px solid #059669;">
+        {{ statusMsg }}
+      </span>
+    </div>
+
+    <div class="header-actions">
+      <button @click="exportToml()" title="Download as .toml chain file">
+        📥 Export TOML
+      </button>
+      <button @click="exportJson()" title="Download as .json chain file">
+        📥 Export JSON
+      </button>
+      <button class="primary" @click="saveToDisk()" title="Save chain to working directory">
+        💾 Save Chain
+      </button>
+      <button class="success" @click="runSimulation()" title="Launch chain in interactive simulation runner">
+        ▶ Run in Simulation
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Container -->
+  <div class="workspace">
+
+    <!-- Left Sidebar: Handler Palette & Global Settings -->
+    <aside class="sidebar-palette">
+      <div class="panel-header">
+        <span>Handler Palette</span>
+        <span style="font-size: 10px; color: var(--accent);">{{ Object.keys(schemas).length }} available</span>
+      </div>
+
+      <div class="palette-scroll">
+        <div v-for="(handlers, category) in schemaCategories" :key="category" class="palette-group">
+          <div class="palette-group-title" @click="toggleCategory(category)">
+            <span>{{ category }} ({{ handlers.length }})</span>
+            <span class="palette-toggle-icon">
+              {{ collapsedCategories[category] ? '▶' : '▼' }}
+            </span>
+          </div>
+
+          <div v-if="!collapsedCategories[category]" style="display: flex; flex-direction: column; gap: 8px;">
+            <div v-for="h in handlers" :key="h.name" class="palette-card" draggable="true"
+              @dragstart="onDragPaletteStart($event, h.name)" @click="createNodeFromSchema(h.name, 250, 150)">
+              <div class="palette-card-name">
+                <span>{{ h.displayName || h.name }}</span>
+                <span class="role-badge" :class="'role-' + (h.role || 'processor')">
+                  {{ (h.role || 'processor').replace('external_', '') }}
+                </span>
+              </div>
+              <div class="palette-card-desc">{{ h.description }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Global Chain Configuration -->
+      <div class="global-config-bar">
+        <div class="field-group">
+          <label class="field-label">Transport Backend</label>
+          <select v-model="backend" @change="validateChain()">
+            <option value="file">File (Directory watch/write)</option>
+            <option value="socket">Socket (UDP Datagram)</option>
+            <option value="shm">SHM (Shared Memory POSIX Ring)</option>
+            <option value="uds">UDS (Unix Domain Socket)</option>
+            <option value="sim">Sim (Interactive Simulation)</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Canvas Area -->
+    <main class="canvas-container" id="canvas-container">
+
+      <!-- Zoom / Pan Viewport -->
+      <div class="canvas-viewport" id="canvas-viewport">
+        <!-- SVG Wire Overlay placed inside viewport so coordinates match node positions -->
+        <svg class="canvas-svg" id="canvas-svg"></svg>
+
+        <!-- Rendered Handler Nodes -->
+        <div class="canvas-nodes-layer">
+          <div v-for="node in nodes" :key="node.id" class="node-card" :class="{ selected: selectedNodeId === node.id }"
+            :data-node-id="node.id" :style="{ transform: 'translate(' + node.x + 'px, ' + node.y + 'px)' }">
+
+            <div class="node-header">
+              <span class="node-title" :title="node.name">{{ node.name }}</span>
+              <span class="role-badge"
+                :class="'role-' + ((schemas[node.type] && schemas[node.type].role) || 'processor')">
+                {{ ((schemas[node.type] && schemas[node.type].role) || 'processor').replace('external_', '') }}
+              </span>
+            </div>
+
+            <div class="node-body">
+              <div class="node-type-label">{{ node.type }}</div>
+
+              <div class="node-ports-row">
+                <!-- Input Ports (Left) -->
+                <div class="node-ports-left">
+                  <div v-for="item in getNodeInputPorts(node)" :key="'in-' + item.portName + '-' + item.index" class="port-item">
+                    <div class="port-socket" :class="{ connected: Boolean(item.channel) }" :data-node-id="node.id"
+                      :data-port-name="item.portName" :data-port-index="item.index" data-port-type="input"
+                      title="Input socket (drag wire from an output port)"></div>
+                    <span>{{ item.label }}</span>
+                  </div>
+                </div>
+
+                <!-- Output Ports (Right) -->
+                <div class="node-ports-right">
+                  <div v-for="item in getNodeOutputPorts(node)" :key="'out-' + item.portName + '-' + item.index" class="port-item"
+                    style="justify-content: flex-end;">
+                    <span>{{ item.label }}</span>
+                    <div class="port-socket" :class="{ connected: Boolean(item.channel) }" :data-node-id="node.id"
+                      :data-port-name="item.portName" :data-port-index="item.index" data-port-type="output"
+                      title="Output socket (drag wire to downstream input port)"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Canvas Floating Navigation Controls -->
+      <div class="canvas-controls">
+        <button @click="canvasInstance.zoomIn()" title="Zoom In">+</button>
+        <button @click="canvasInstance.zoomOut()" title="Zoom Out">-</button>
+        <button @click="canvasInstance.resetZoom()" title="Reset Pan / Zoom">⌂</button>
+      </div>
+
+    </main>
+
+    <!-- Right Sidebar: Inspector & Diagnostics -->
+    <aside class="sidebar-inspector">
+      <div class="panel-header">
+        <span>Configuration Inspector</span>
+        <button v-if="selectedNodeId" @click="deleteNode(selectedNodeId)"
+          style="padding: 2px 6px; color: var(--accent-rose); border-color: var(--accent-rose);">
+          ✕ Delete
+        </button>
+        <button v-else-if="selectedWireId" @click="deleteWire(selectedWireId)"
+          style="padding: 2px 6px; color: var(--accent-rose); border-color: var(--accent-rose);">
+          ✕ Disconnect
+        </button>
+      </div>
+
+      <!-- Selected Node Properties -->
+      <div v-if="selectedNode" class="inspector-scroll">
+        <div class="field-group">
+          <label class="field-label">Instance Name</label>
+          <input type="text" v-model="selectedNode.name" @input="validateChain()"
+            placeholder="Unique handler name">
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Handler Type</label>
+          <div
+            style="font-family: monospace; font-size: 12px; color: var(--text-muted); background: var(--bg-panel-header); padding: 6px; border-radius: 4px;">
+            {{ selectedNode.type }}
+          </div>
+        </div>
+
+        <!-- Port Channel Bindings -->
+        <div style="border-top: 1px solid var(--border); padding-top: 10px;">
+          <div
+            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+            Channel Bindings
+          </div>
+
+          <!-- Input Ports in Inspector (View-only channel tags; editable on the link) -->
+          <div v-for="(val, portName) in selectedNode.inputs" :key="'in-group-' + portName" style="margin-bottom: 10px;">
+            <div v-if="Array.isArray(val)">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <label class="field-label">{{ portName }} (multiple)</label>
+                <button @click="addChannelItem(selectedNode, 'inputs', portName)" style="padding: 1px 6px; font-size: 11px;">
+                  + Add Input Socket
+                </button>
+              </div>
+              <div v-for="(chItem, idx) in val" :key="'in-' + portName + '-' + idx" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <div style="flex: 1; font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; color: var(--accent);">
+                  {{ chItem || '(unconnected)' }}
+                </div>
+                <button v-if="val.length > 1" @click="removeChannelItem(selectedNode, 'inputs', portName, idx)" style="padding: 2px 6px; color: var(--accent-rose);">
+                  -
+                </button>
+              </div>
+            </div>
+            <div v-else class="field-group">
+              <label class="field-label">Input Port: {{ portName }}</label>
+              <div style="font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--accent);">
+                {{ selectedNode.inputs[portName] || '(unconnected)' }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Output Ports in Inspector (View-only channel tags; editable on the link) -->
+          <div v-for="(val, portName) in selectedNode.outputs" :key="'out-group-' + portName" style="margin-bottom: 10px;">
+            <div v-if="Array.isArray(val)">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <label class="field-label">{{ portName }} (multiple)</label>
+                <button @click="addChannelItem(selectedNode, 'outputs', portName)" style="padding: 1px 6px; font-size: 11px;">
+                  + Add Output Socket
+                </button>
+              </div>
+              <div v-for="(chItem, idx) in val" :key="'out-' + portName + '-' + idx" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                <div style="flex: 1; font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; color: var(--accent);">
+                  {{ chItem || '(unconnected)' }}
+                </div>
+                <button v-if="val.length > 1" @click="removeChannelItem(selectedNode, 'outputs', portName, idx)" style="padding: 2px 6px; color: var(--accent-rose);">
+                  -
+                </button>
+              </div>
+            </div>
+            <div v-else class="field-group">
+              <label class="field-label">Output Port: {{ portName }}</label>
+              <div style="font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--accent);">
+                {{ selectedNode.outputs[portName] || '(unconnected)' }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schema Parameters Form -->
+        <div
+          v-if="selectedSchema && selectedSchema.parameters && Object.keys(selectedSchema.parameters).length > 0"
+          style="border-top: 1px solid var(--border); padding-top: 10px;">
+          <div
+            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+            Parameters (Schema-Driven)
+          </div>
+
+          <div v-for="(pDef, pKey) in selectedSchema.parameters" :key="pKey" class="field-group"
+            style="margin-bottom: 10px;">
+            <label class="field-label" :title="pDef.description">
+              {{ pDef.label || pKey }}
+              <span v-if="pDef.required" style="color: var(--accent-rose);">*</span>
+            </label>
+
+            <!-- Enum dropdown -->
+            <select v-if="pDef.enum" v-model="selectedNode.config[pKey]" @change="validateChain()">
+              <option v-for="opt in pDef.enum" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+
+            <!-- Integer / Float input -->
+            <input v-else-if="pDef.type === 'integer' || pDef.type === 'int'" type="number" :min="pDef.min"
+              :max="pDef.max" v-model.number="selectedNode.config[pKey]" @input="validateChain()">
+
+            <!-- Standard text / string / filepath -->
+            <input v-else type="text" v-model="selectedNode.config[pKey]" @input="validateChain()"
+              :placeholder="pDef.default !== undefined ? String(pDef.default) : ''">
+
+            <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3; margin-top: 2px;">
+              {{ pDef.description }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Wire Properties -->
+      <div v-else-if="selectedWireId" class="inspector-scroll">
+        <div style="font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
+          🔗 Connection Wire
+        </div>
+        <div class="field-group">
+          <label class="field-label">Channel Identifier (Shared across link)</label>
+          <input type="text"
+                 v-model="getSelectedWire().channel"
+                 @input="updateWireChannelName(getSelectedWire().id, getSelectedWire().channel)"
+                 placeholder="e.g. fast_pipe">
+          <div style="font-size: 10px; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
+            Renaming this channel automatically updates the linked source output socket and destination input socket.
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty Selection State -->
+      <div v-else class="empty-state">
+        <div style="font-size: 24px; margin-bottom: 8px;">🖱️</div>
+        <div>Select a handler node or connection wire on the canvas to inspect and edit properties.</div>
+      </div>
+
+      <!-- Live Diagnostics Banner -->
+      <div class="diagnostics-panel">
+        <div class="diag-title">
+          <span>Diagnostics</span>
+          <span :style="{ color: validation.valid ? 'var(--accent-green)' : 'var(--accent-rose)' }">
+            {{ validation.valid ? '✓ Clean' : '! ' + validation.errors.length + ' Issues' }}
+          </span>
+        </div>
+
+        <div v-if="validation.valid && validation.warnings.length === 0" class="diag-item diag-valid">
+          ✓ Pipeline topology and handler configurations are verified.
+        </div>
+
+        <div v-for="(err, idx) in validation.errors" :key="'e-' + idx" class="diag-item diag-error">
+          ✕ {{ err }}
+        </div>
+
+        <div v-for="(warn, idx) in validation.warnings" :key="'w-' + idx" class="diag-item diag-warning">
+          ⚠ {{ warn }}
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="js/builder_canvas.js"></script>
+  <script src="js/builder_app.js"></script>
+  <script>
+    window.appInstance = createApp();
+    PetiteVue.createApp(window.appInstance).mount("body");
+    window.appInstance.init();
+  </script>
+</body>
+
+</html>

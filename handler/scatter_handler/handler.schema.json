@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "scatter_handler",
+  "displayName": "Scatter Dispatcher",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Routing",
+  "description": "Scatter stage of parallelized scatter-gather pipeline. Distributes incoming inspection workloads across concurrent branches.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channel",
+        "label": "Workload Input",
+        "cardinality": "single",
+        "default": "scatter_in",
+        "description": "Channel ingesting messages to be dispatched across branches."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channels",
+        "label": "Scatter Branches",
+        "cardinality": "multiple",
+        "default": "branch_a,branch_b",
+        "description": "Comma-separated target channels for concurrent inspection branches."
+      }
+    ]
+  },
+  "parameters": {}
+}
+

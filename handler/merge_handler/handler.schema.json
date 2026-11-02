@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "merge_handler",
+  "displayName": "Merge Concentrator",
+  "role": "processor",
+  "protocol": "none",
+  "category": "Routing",
+  "description": "Consumes messages from multiple input channels and serializes them into a single unified output channel.",
+  "ports": {
+    "inputs": [
+      {
+        "name": "input_channels",
+        "label": "Input Channels",
+        "cardinality": "multiple",
+        "default": "pipe_in_1,pipe_in_2",
+        "description": "Comma-separated list of incoming channels to multiplex."
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Output Channel",
+        "cardinality": "single",
+        "default": "pipe_out",
+        "description": "Unified downstream channel where messages are merged."
+      }
+    ]
+  },
+  "parameters": {}
+}
+

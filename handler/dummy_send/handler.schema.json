@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "dummy_send",
+  "displayName": "Dummy Generator",
+  "role": "generator",
+  "protocol": "none",
+  "category": "Generators",
+  "description": "Periodically generates synthetic test messages and emits them to an output channel.",
+  "ports": {
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "output_channel",
+        "label": "Output Channel",
+        "cardinality": "single",
+        "default": "test_channel",
+        "description": "Destination channel where generated messages are emitted."
+      }
+    ]
+  },
+  "parameters": {
+    "dummy.message": {
+      "type": "string",
+      "label": "Message Content",
+      "default": "Hello from DummySend!",
+      "description": "Text payload or JSON string sent in message frames."
+    },
+    "dummy.delay_ms": {
+      "type": "integer",
+      "label": "Emission Interval (ms)",
+      "default": 1000,
+      "min": 1,
+      "description": "Interval between generated messages in milliseconds."
+    }
+  }
+}
+
