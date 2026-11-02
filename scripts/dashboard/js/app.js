@@ -47,6 +47,7 @@ export function createSimulationApp() {
     async init() {
       const canvasEl = document.getElementById("sim-canvas");
       this.canvasRenderer = new CanvasRenderer(canvasEl, this);
+      this.initResizers();
 
       // Keyboard navigation
       window.addEventListener("keydown", (e) => {
@@ -708,6 +709,62 @@ export function createSimulationApp() {
         this.state.lastEvent = null;
         this.state.selectedTraceEventId = null;
       }
+    },
+
+    initResizers() {
+      const leftResizer = document.getElementById("resizer-left");
+      const rightResizer = document.getElementById("resizer-right");
+      const leftPanel = document.getElementById("panel-left");
+      const rightPanel = document.getElementById("panel-right");
+
+      // Restore stored panel widths from localStorage if available
+      try {
+        const savedLeftW = localStorage.getItem("proxy_sim_panel_left_w");
+        const savedRightW = localStorage.getItem("proxy_sim_panel_right_w");
+        if (savedLeftW && leftPanel) leftPanel.style.width = `${savedLeftW}px`;
+        if (savedRightW && rightPanel) rightPanel.style.width = `${savedRightW}px`;
+      } catch (e) {
+        // Ignore storage access errors
+      }
+
+      const setupDrag = (resizer, panel, isLeft) => {
+        if (!resizer || !panel) return;
+        let startX = 0;
+        let startW = 0;
+
+        const onMouseMove = (e) => {
+          const dx = isLeft ? (e.clientX - startX) : (startX - e.clientX);
+          const minW = isLeft ? 240 : 260;
+          const maxW = isLeft ? 650 : 700;
+          const newW = Math.max(minW, Math.min(maxW, startW + dx));
+          panel.style.width = `${newW}px`;
+          try {
+            localStorage.setItem(isLeft ? "proxy_sim_panel_left_w" : "proxy_sim_panel_right_w", newW);
+          } catch (err) {}
+        };
+
+        const onMouseUp = () => {
+          resizer.classList.remove("resizing");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+        };
+
+        resizer.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          startX = e.clientX;
+          startW = panel.getBoundingClientRect().width;
+          resizer.classList.add("resizing");
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+          window.addEventListener("mousemove", onMouseMove);
+          window.addEventListener("mouseup", onMouseUp);
+        });
+      };
+
+      setupDrag(leftResizer, leftPanel, true);
+      setupDrag(rightResizer, rightPanel, false);
     }
   };
 }

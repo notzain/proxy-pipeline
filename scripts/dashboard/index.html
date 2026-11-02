@@ -104,9 +104,9 @@
   </header>
 
   <!-- 3-Column Main Stage -->
-  <main>
+  <main id="main-stage">
     <!-- Left Column: PCAP Packets Queue -->
-    <div class="panel">
+    <div class="panel panel-left" id="panel-left">
       <div class="panel-header">
         <div v-if="mode === 'trace'" style="display: contents;">
           <span>Trace Packets ({{ state.packets.length }})</span>
@@ -231,8 +231,11 @@
       </div>
     </div>
 
+    <!-- Left Splitter Resizer -->
+    <div class="resizer" id="resizer-left" title="Drag to resize PCAP Queue panel"></div>
+
     <!-- Center Column: Stats, Canvas DAG, and Node Inspector -->
-    <div class="center-viewport">
+    <div class="center-viewport" id="center-viewport">
       <!-- 4 Stats Cards -->
       <div class="stats-row">
         <div class="stat-card">
@@ -256,14 +259,26 @@
       </div>
 
       <!-- Canvas Wrap -->
-      <div class="canvas-container">
+      <div class="canvas-container" id="canvas-container">
         <canvas id="sim-canvas"></canvas>
+
+        <!-- Canvas Floating Controls (Zoom / Pan Reset) -->
+        <div class="canvas-controls">
+          <button @click="canvasRenderer.zoomIn()" title="Zoom In">+</button>
+          <button @click="canvasRenderer.zoomOut()" title="Zoom Out">-</button>
+          <button @click="canvasRenderer.resetView()" title="Fit / Reset View">⌂</button>
+        </div>
       </div>
 
       <!-- Clickable Handler Node Inspector -->
       <div class="node-inspector-pane" :class="{ active: !!state.selectedNode }">
         <div class="node-header">
-          <span>🔍 {{ state.selectedNode ? 'Node: ' + state.selectedNode.name : 'Handler Node Inspector (Click any node above)' }}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>🔍 {{ state.selectedNode ? 'Node: ' + state.selectedNode.name : 'Handler Node Inspector (Click any node above)' }}</span>
+            <span v-if="state.selectedNode && state.selectedNode.role" class="role-badge" :class="'role-' + state.selectedNode.role">
+              {{ state.selectedNode.role.replace('external_', '') }}
+            </span>
+          </div>
           <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">
             {{ state.selectedNode ? state.selectedNode.type : 'No Node Selected' }}
           </span>
@@ -272,8 +287,8 @@
           <div class="meta-grid">
             <span class="k">Instance Name:</span><span class="v">{{ state.selectedNode.name }}</span>
             <span class="k">Handler Type:</span><span class="v">{{ state.selectedNode.type }}</span>
-            <span class="k">Input Channel:</span><span class="v">{{ state.selectedNode.inCh || "(none)" }}</span>
-            <span class="k">Output Channel:</span><span class="v">{{ state.selectedNode.outCh || "(none)" }}</span>
+            <span class="k">Input Channel:</span><span class="v">{{ state.selectedNode.inChs && state.selectedNode.inChs.length > 0 ? state.selectedNode.inChs.join(", ") : (state.selectedNode.inCh || "(none)") }}</span>
+            <span class="k">Output Channel:</span><span class="v">{{ state.selectedNode.outChs && state.selectedNode.outChs.length > 0 ? state.selectedNode.outChs.join(", ") : (state.selectedNode.outCh || "(none)") }}</span>
           </div>
           <div class="payload-box" style="max-height: 100px;">{{ JSON.stringify(state.selectedNode.config, null, 2) }}</div>
         </div>
@@ -283,8 +298,11 @@
       </div>
     </div>
 
+    <!-- Right Splitter Resizer -->
+    <div class="resizer" id="resizer-right" title="Drag to resize Execution Trace panel"></div>
+
     <!-- Right Column: Execution Trace Panel & Step Outcome Inspector -->
-    <div class="panel">
+    <div class="panel panel-right" id="panel-right">
       <div class="panel-header">
         <span>Execution Trace ({{ mode === 'trace' ? traceAllEvents.length : state.events.length }})</span>
         <span style="font-size: 11px;" :style="{ color: mode === 'trace' ? '#c084fc' : 'var(--accent)' }">

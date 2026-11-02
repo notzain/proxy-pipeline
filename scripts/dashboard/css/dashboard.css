@@ -136,13 +136,13 @@ button:disabled {
 main {
   flex: 1;
   padding: 12px 16px;
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr) 390px;
-  gap: 14px;
+  display: flex;
+  gap: 0;
   height: calc(100vh - 54px);
   max-height: calc(100vh - 54px);
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .panel {
@@ -154,6 +154,65 @@ main {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  flex-shrink: 0;
+}
+
+.panel-left {
+  width: 360px;
+  min-width: 240px;
+  max-width: 600px;
+}
+
+.panel-right {
+  width: 390px;
+  min-width: 260px;
+  max-width: 650px;
+}
+
+/* Draggable Resizer Splitters */
+.resizer {
+  width: 10px;
+  margin: 0 2px;
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  z-index: 25;
+  transition: background-color 0.15s ease;
+}
+
+.resizer::after {
+  content: "";
+  width: 3px;
+  height: 36px;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.25);
+  transition: all 0.15s ease;
+}
+
+.resizer:hover::after,
+.resizer.resizing::after {
+  background: var(--accent);
+  height: 60px;
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.resizer.resizing {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.center-viewport {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 6px;
 }
 
 .panel-header {
@@ -203,6 +262,11 @@ main {
   overflow: hidden;
   min-height: 0;
   min-width: 0;
+  cursor: grab;
+}
+
+.canvas-container:active {
+  cursor: grabbing;
 }
 
 canvas {
@@ -213,6 +277,45 @@ canvas {
   width: 100%;
   height: 100%;
 }
+
+/* Canvas Floating Controls (Zoom / Pan Reset) */
+.canvas-controls {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  z-index: 50;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.canvas-controls button {
+  padding: 3px 8px;
+  font-size: 13px;
+  line-height: 1;
+  min-width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.canvas-controls button:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 
 .node-inspector-pane {
   background: var(--card-bg);
@@ -400,4 +503,20 @@ canvas {
   border-left: 1px dashed rgba(255, 255, 255, 0.15);
   margin-top: 4px;
 }
+
+/* Builder Aligned Role Badges */
+.role-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.4px;
+}
+
+.role-generator { background: #7c2d12; color: #fdba74; }
+.role-external_ingress { background: #14532d; color: #86efac; }
+.role-external_egress { background: #1e3a8a; color: #93c5fd; }
+.role-processor { background: #312e81; color: #c4b5fd; }
+
 
