@@ -389,6 +389,31 @@ export class CanvasRenderer {
     return null;
   }
 
+  findIncomingChannelEdges(event) {
+    if (!event || event.type === "ingress") return [];
+    const edges = [];
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+
+    if (traces) {
+      for (const tr of traces) {
+        const hName = tr.handler || event.handler || event.target;
+        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
+        if (hName && inCh) {
+          const edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh);
+          if (edge && !edges.includes(edge)) {
+            edges.push(edge);
+          }
+        }
+      }
+    }
+
+    if (edges.length === 0) {
+      const single = this.findIncomingChannelEdge(event);
+      if (single) edges.push(single);
+    }
+    return edges;
+  }
+
   findOutgoingChannelEdgeForChannel(handlerName, outCh) {
     if (!handlerName || !outCh) return null;
     return this.channelsLayout.find(c => c.from.name === handlerName && c.name === outCh) || null;
@@ -434,11 +459,6 @@ export class CanvasRenderer {
 
   triggerTransitionAnimation(event, specificTrace = null) {
     if (!event) return;
-    const handlerName = event.handler || event.target;
-    if (!handlerName) return;
-    const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
-    if (!handlerNode) return;
-
     const isIngress = event.type === "ingress";
     const isForwarded = event.result === "Forwarded" || (specificTrace && specificTrace.result === "Forwarded");
     const isConsumed = (event.result === "Consumed" || (specificTrace && specificTrace.result === "Consumed"))
@@ -447,17 +467,44 @@ export class CanvasRenderer {
 
     // If a specific sub-trace was requested, animate only that trace
     if (specificTrace) {
+      const traceHandlerName = specificTrace.handler || event.handler || event.target;
+      const traceHandlerNode = this.handlersLayout.find(h => h.name === traceHandlerName);
+      if (!traceHandlerNode) return;
+
       const traceOutCh = specificTrace.outputChannel || specificTrace.channel;
       const edge = isForwarded
-        ? this.findOutgoingChannelEdgeForChannel(handlerName, traceOutCh)
+        ? this.findOutgoingChannelEdgeForChannel(traceHandlerName, traceOutCh)
         : this.findIncomingChannelEdge(event);
-      this._createAndSetParticles(event, handlerNode, [edge], [traceOutCh], isIngress, isForwarded, isConsumed, isDropped);
+      this._createAndSetParticles(event, traceHandlerNode, [edge], [traceOutCh], isIngress, isForwarded, isConsumed, isDropped);
       return;
     }
 
-    // If event has multiple traces that are forwarded, launch concurrent particles for each trace!
     const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+
+    // Multi-trace concurrent egress/consumed
+    if (traces && !isForwarded && traces.length > 1) {
+      const edges = [];
+      const outChannels = [];
+      const primaryHandlerName = traces[0].handler || event.handler || event.target;
+      const primaryNode = this.handlersLayout.find(h => h.name === primaryHandlerName) || this.handlersLayout[0];
+
+      for (const tr of traces) {
+        const hName = tr.handler || event.handler || event.target;
+        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
+        const edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh) || this.findIncomingChannelEdge(event);
+        edges.push(edge);
+        outChannels.push(inCh);
+      }
+      this._createAndSetParticles(event, primaryNode, edges, outChannels, isIngress, false, isConsumed, isDropped);
+      return;
+    }
+
+    // Multi-trace concurrent forwarded
     if (traces && isForwarded && traces.length > 1) {
+      const handlerName = event.handler || event.target;
+      const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
+      if (!handlerNode) return;
+
       const edges = [];
       const outChannels = [];
       for (const tr of traces) {
@@ -469,7 +516,12 @@ export class CanvasRenderer {
       return;
     }
 
-    // Single flow
+    // Single flow fallback
+    const handlerName = event.handler || event.target;
+    if (!handlerName) return;
+    const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
+    if (!handlerNode) return;
+
     const defaultOutCh = event.outputChannel || event.channel || (traces && traces[0] ? (traces[0].outputChannel || traces[0].channel) : null);
     const edge = isForwarded
       ? this.findOutgoingChannelEdgeForChannel(handlerName, defaultOutCh)
@@ -770,9 +822,12 @@ export class CanvasRenderer {
     const lastEvent = this.store.state.lastEvent;
     const selectedNodeName = this.store.state.selectedNode ? this.store.state.selectedNode.name : null;
     const lastEventHandler = lastEvent ? (lastEvent.handler || lastEvent.target) : null;
-    const activeIncomingEdge = this.findIncomingChannelEdge(lastEvent);
+    const targetHandlerNames = lastEvent?.traces && Array.isArray(lastEvent.traces)
+      ? lastEvent.traces.map(t => t.handler).filter(Boolean)
+      : (lastEventHandler ? [lastEventHandler] : []);
+    const activeIncomingEdges = this.findIncomingChannelEdges(lastEvent);
     const activeOutgoingEdges = this.findOutgoingChannelEdges(lastEvent);
-    const activeEventEdges = lastEvent?.result === "Forwarded" ? activeOutgoingEdges : (activeIncomingEdge ? [activeIncomingEdge] : []);
+    const activeEventEdges = lastEvent?.result === "Forwarded" ? activeOutgoingEdges : activeIncomingEdges;
 
     // 1. Draw Channel Connections (Cubic Bézier Wires & Pill Badges aligned with Chain Builder)
     this.channelsLayout.forEach((ch) => {
@@ -837,7 +892,7 @@ export class CanvasRenderer {
     this.handlersLayout.forEach((h) => {
       const x = h.x - h.width / 2;
       const y = h.y - h.height / 2;
-      const isTarget = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name;
+      const isTarget = lastEvent && lastEvent.type !== "ingress" && (targetHandlerNames.includes(h.name) || lastEventHandler === h.name);
       const isSelected = selectedNodeName === h.name;
 
       // Ingress Queue Cloud Box (if UDP Ingress)

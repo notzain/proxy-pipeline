@@ -66,7 +66,7 @@
       "batchIds": [
         1
       ],
-      "detail": "'xml_validator' forwarded Packet #1 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #1",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -79,7 +79,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 1,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
@@ -96,7 +99,7 @@
       "batchIds": [
         1
       ],
-      "detail": "'network_egress' consumed Packet #1",
+      "detail": "network_egress consumed Packet #1",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -109,6 +112,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 1,
           "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
@@ -186,7 +191,7 @@
       "batchIds": [
         2
       ],
-      "detail": "'xml_validator' forwarded Packet #2 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #2",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -199,7 +204,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 2,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
@@ -216,7 +224,7 @@
       "batchIds": [
         2
       ],
-      "detail": "'network_egress' consumed Packet #2",
+      "detail": "network_egress consumed Packet #2",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -229,6 +237,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 2,
           "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
@@ -306,7 +316,7 @@
       "batchIds": [
         3
       ],
-      "detail": "'xml_validator' forwarded Packet #3 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #3",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -319,7 +329,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 3,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
@@ -336,7 +349,7 @@
       "batchIds": [
         3
       ],
-      "detail": "'network_egress' consumed Packet #3",
+      "detail": "network_egress consumed Packet #3",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -349,6 +362,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 3,
           "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
@@ -426,7 +441,7 @@
       "batchIds": [
         4
       ],
-      "detail": "'xml_validator' forwarded Packet #4 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #4",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -439,7 +454,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 4,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
@@ -456,7 +474,7 @@
       "batchIds": [
         4
       ],
-      "detail": "'network_egress' consumed Packet #4",
+      "detail": "network_egress consumed Packet #4",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -469,6 +487,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 4,
           "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
@@ -546,15 +566,13 @@
       "batchIds": [
         5
       ],
-      "detail": "'xml_validator' dropped Packet #5: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #5",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 5,
       "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
       "traces": [
@@ -562,6 +580,8 @@
           "channel": "orders_raw",
           "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
           "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
           "inputChannel": "orders_raw",
           "msgId": 5,
           "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
@@ -640,7 +660,7 @@
       "batchIds": [
         6
       ],
-      "detail": "'xml_validator' forwarded Packet #6 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #6",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -653,7 +673,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 6,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
@@ -670,7 +693,7 @@
       "batchIds": [
         6
       ],
-      "detail": "'network_egress' consumed Packet #6",
+      "detail": "network_egress consumed Packet #6",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -683,6 +706,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 6,
           "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
@@ -760,7 +785,7 @@
       "batchIds": [
         7
       ],
-      "detail": "'xml_validator' forwarded Packet #7 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #7",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -773,7 +798,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 7,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
@@ -790,7 +818,7 @@
       "batchIds": [
         7
       ],
-      "detail": "'network_egress' consumed Packet #7",
+      "detail": "network_egress consumed Packet #7",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -803,6 +831,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 7,
           "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
@@ -880,7 +910,7 @@
       "batchIds": [
         8
       ],
-      "detail": "'xml_validator' forwarded Packet #8 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #8",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -893,7 +923,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 8,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
@@ -910,7 +943,7 @@
       "batchIds": [
         8
       ],
-      "detail": "'network_egress' consumed Packet #8",
+      "detail": "network_egress consumed Packet #8",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -923,6 +956,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 8,
           "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
@@ -1000,7 +1035,7 @@
       "batchIds": [
         9
       ],
-      "detail": "'xml_validator' forwarded Packet #9 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #9",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1013,7 +1048,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 9,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
@@ -1030,7 +1068,7 @@
       "batchIds": [
         9
       ],
-      "detail": "'network_egress' consumed Packet #9",
+      "detail": "network_egress consumed Packet #9",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1043,6 +1081,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 9,
           "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
@@ -1120,15 +1160,13 @@
       "batchIds": [
         10
       ],
-      "detail": "'xml_validator' dropped Packet #10: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #10",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 10,
       "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
       "traces": [
@@ -1136,6 +1174,8 @@
           "channel": "orders_raw",
           "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
           "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
           "inputChannel": "orders_raw",
           "msgId": 10,
           "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
@@ -1214,7 +1254,7 @@
       "batchIds": [
         11
       ],
-      "detail": "'xml_validator' forwarded Packet #11 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #11",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1227,7 +1267,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 11,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
@@ -1244,7 +1287,7 @@
       "batchIds": [
         11
       ],
-      "detail": "'network_egress' consumed Packet #11",
+      "detail": "network_egress consumed Packet #11",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1257,6 +1300,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 11,
           "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
@@ -1334,7 +1379,7 @@
       "batchIds": [
         12
       ],
-      "detail": "'xml_validator' forwarded Packet #12 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #12",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1347,7 +1392,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 12,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
@@ -1364,7 +1412,7 @@
       "batchIds": [
         12
       ],
-      "detail": "'network_egress' consumed Packet #12",
+      "detail": "network_egress consumed Packet #12",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1377,6 +1425,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 12,
           "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
@@ -1454,7 +1504,7 @@
       "batchIds": [
         13
       ],
-      "detail": "'xml_validator' forwarded Packet #13 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #13",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1467,7 +1517,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 13,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
@@ -1484,7 +1537,7 @@
       "batchIds": [
         13
       ],
-      "detail": "'network_egress' consumed Packet #13",
+      "detail": "network_egress consumed Packet #13",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1497,6 +1550,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 13,
           "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
@@ -1574,7 +1629,7 @@
       "batchIds": [
         14
       ],
-      "detail": "'xml_validator' forwarded Packet #14 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #14",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1587,7 +1642,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 14,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
@@ -1604,7 +1662,7 @@
       "batchIds": [
         14
       ],
-      "detail": "'network_egress' consumed Packet #14",
+      "detail": "network_egress consumed Packet #14",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1617,6 +1675,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 14,
           "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
@@ -1694,15 +1754,13 @@
       "batchIds": [
         15
       ],
-      "detail": "'xml_validator' dropped Packet #15: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #15",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 15,
       "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
       "traces": [
@@ -1710,6 +1768,8 @@
           "channel": "orders_raw",
           "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
           "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
           "inputChannel": "orders_raw",
           "msgId": 15,
           "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
@@ -1788,7 +1848,7 @@
       "batchIds": [
         16
       ],
-      "detail": "'xml_validator' forwarded Packet #16 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #16",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1801,7 +1861,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 16,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
@@ -1818,7 +1881,7 @@
       "batchIds": [
         16
       ],
-      "detail": "'network_egress' consumed Packet #16",
+      "detail": "network_egress consumed Packet #16",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1831,6 +1894,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 16,
           "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
@@ -1908,7 +1973,7 @@
       "batchIds": [
         17
       ],
-      "detail": "'xml_validator' forwarded Packet #17 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #17",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1921,7 +1986,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 17,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
@@ -1938,7 +2006,7 @@
       "batchIds": [
         17
       ],
-      "detail": "'network_egress' consumed Packet #17",
+      "detail": "network_egress consumed Packet #17",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1951,6 +2019,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 17,
           "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
@@ -2028,7 +2098,7 @@
       "batchIds": [
         18
       ],
-      "detail": "'xml_validator' forwarded Packet #18 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #18",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -2041,7 +2111,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 18,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
@@ -2058,7 +2131,7 @@
       "batchIds": [
         18
       ],
-      "detail": "'network_egress' consumed Packet #18",
+      "detail": "network_egress consumed Packet #18",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -2071,6 +2144,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 18,
           "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
@@ -2148,7 +2223,7 @@
       "batchIds": [
         19
       ],
-      "detail": "'xml_validator' forwarded Packet #19 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #19",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -2161,7 +2236,10 @@
       "traces": [
         {
           "channel": "orders_verified",
-          "detail": "Forwarded to 'orders_verified'",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
           "msgId": 19,
           "outputChannel": "orders_verified",
           "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
@@ -2178,7 +2256,7 @@
       "batchIds": [
         19
       ],
-      "detail": "'network_egress' consumed Packet #19",
+      "detail": "network_egress consumed Packet #19",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -2191,6 +2269,8 @@
         {
           "channel": "orders_verified",
           "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
           "inputChannel": "orders_verified",
           "msgId": 19,
           "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
@@ -2268,15 +2348,13 @@
       "batchIds": [
         20
       ],
-      "detail": "'xml_validator' dropped Packet #20: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #20",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 20,
       "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
       "traces": [
@@ -2284,6 +2362,8 @@
           "channel": "orders_raw",
           "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
           "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
           "inputChannel": "orders_raw",
           "msgId": 20,
           "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",

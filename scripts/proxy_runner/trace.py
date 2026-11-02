@@ -113,6 +113,8 @@ class TraceManager:
     TRACE_COMPARED_FIELDS = (
         "traceId",
         "msgId",
+        "handler",
+        "handlerType",
         "channel",
         "inputChannel",
         "outputChannel",
