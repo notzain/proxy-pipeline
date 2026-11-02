@@ -33,7 +33,6 @@ from proxy_runner import (
     load_chain_config,
     project_chain_topology,
     publish_topology,
-    start_dashboard_server,
 )
 
 
@@ -59,7 +58,7 @@ def run_chain(
     work_dir_override: str | None = None,
     backend_override: str | None = None,
     pcap_path: str | None = None,
-    dashboard_port: int | None = 8090,
+    dashboard_port: int | None = None,
     headless: bool = False,
     export_trace_path: str | None = None,
     assert_trace_path: str | None = None,
@@ -124,20 +123,10 @@ def run_chain(
             print(f"[ChainRunner] Preloaded {len(pcap_packets)} packet(s) from PCAP: {pcap_path}")
 
     coordinator: Optional[InteractiveSimulationCoordinator] = None
-    http_server_instance = None
+    is_headless_execution = headless or bool(export_trace_path or assert_trace_path)
 
-    if backend == "sim" or headless:
+    if is_headless_execution and (backend == "sim" or pcap_packets or export_trace_path or assert_trace_path):
         coordinator = InteractiveSimulationCoordinator(chain_def, pcap_packets)
-        if backend == "sim" and dashboard_port and not headless:
-            http_server_instance = start_dashboard_server(
-                dashboard_port,
-                coordinator,
-                str(pcap_path) if pcap_path else "None",
-            )
-            print(f"=======================================================")
-            print(f" 🚀 Interactive Simulation Dashboard live at:")
-            print(f" 👉 http://localhost:{dashboard_port}")
-            print(f"=======================================================")
 
     processes: list[tuple[str, subprocess.Popen, Path]] = []
     shutting_down = False
@@ -274,11 +263,6 @@ def run_chain(
     finally:
         if coordinator:
             coordinator.close()
-        if http_server_instance:
-            try:
-                http_server_instance.shutdown()
-            except Exception:
-                pass
 
         for name, proc, _ in reversed(processes):
             _signal_process_group(proc, signal.SIGINT)
@@ -332,8 +316,8 @@ def main() -> int:
     parser.add_argument(
         "--port",
         type=int,
-        default=8090,
-        help="HTTP port for interactive Visual Simulation Dashboard (default: 8090)",
+        default=None,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--bin-dir",

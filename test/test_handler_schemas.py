@@ -4,7 +4,11 @@ test_handler_schemas.py - Unit test suite for decoupled per-handler schemas and 
 
 import json
 from pathlib import Path
+import sys
 import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from proxy_runner.schema_validator import (
     discover_handler_schemas,

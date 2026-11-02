@@ -86,3 +86,17 @@ add_test(
         -p "test_live_telemetry.py"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
+add_test(
+    NAME frontend_runner_tests
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s "${CMAKE_SOURCE_DIR}/test"
+        -p "test_frontend_runner.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+add_test(
+    NAME handler_schemas_tests
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s "${CMAKE_SOURCE_DIR}/test"
+        -p "test_handler_schemas.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)

@@ -13,7 +13,44 @@
   <!-- Top Header Navigation -->
   <header>
     <div class="brand">
-      <span class="brand-badge">VISUAL BUILDER</span>
+      <div class="workspace-dropdown">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+          <span class="badge-icon">🎨</span>
+          <span class="badge-text">VISUAL BUILDER</span>
+          <span class="badge-caret">▾</span>
+        </button>
+        <div class="workspace-menu">
+          <a href="/" class="workspace-item">
+            <span class="item-icon">🏠</span>
+            <div class="item-text">
+              <span class="item-title">Control Plane</span>
+              <span class="item-desc">Portal &amp; chain supervisor</span>
+            </div>
+          </a>
+          <a href="/builder/" class="workspace-item active">
+            <span class="item-icon">🎨</span>
+            <div class="item-text">
+              <span class="item-title">Visual Builder</span>
+              <span class="item-desc">DAG pipeline composer &amp; schemas</span>
+            </div>
+            <span class="item-active-check">✓</span>
+          </a>
+          <a href="/dashboard/" class="workspace-item">
+            <span class="item-icon">🔍</span>
+            <div class="item-text">
+              <span class="item-title">Simulation Visualizer</span>
+              <span class="item-desc">Packet queue, stepping &amp; traces</span>
+            </div>
+          </a>
+          <a href="/telemetry/" class="workspace-item">
+            <span class="item-icon">📊</span>
+            <div class="item-text">
+              <span class="item-title">Live Telemetry</span>
+              <span class="item-desc">StatsD rates, latencies &amp; topology</span>
+            </div>
+          </a>
+        </div>
+      </div>
       <div class="brand-title">
         <span>Proxy Pipeline Studio</span>
       </div>
@@ -25,16 +62,20 @@
 
     <div class="header-actions">
       <button @click="exportToml()" title="Download as .toml chain file">
-        📥 Export TOML
+        <span class="btn-icon">📥</span>
+        <span class="btn-text">Export TOML</span>
       </button>
       <button @click="exportJson()" title="Download as .json chain file">
-        📥 Export JSON
+        <span class="btn-icon">📥</span>
+        <span class="btn-text">Export JSON</span>
       </button>
       <button class="primary" @click="saveToDisk()" title="Save chain to working directory">
-        💾 Save Chain
+        <span class="btn-icon">💾</span>
+        <span class="btn-text">Save Chain</span>
       </button>
       <button class="success" @click="runSimulation()" title="Launch chain in interactive simulation runner">
-        ▶ Run in Simulation
+        <span class="btn-icon">▶</span>
+        <span class="btn-text">Run in Simulation</span>
       </button>
     </div>
   </header>
@@ -327,6 +368,14 @@
   <script src="js/builder_canvas.js"></script>
   <script src="js/builder_app.js"></script>
   <script>
+    function toggleWorkspaceDropdown(e) {
+      e.stopPropagation();
+      const dd = e.currentTarget.closest('.workspace-dropdown');
+      if (dd) dd.classList.toggle('open');
+    }
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.workspace-dropdown.open').forEach(el => el.classList.remove('open'));
+    });
     window.appInstance = createApp();
     PetiteVue.createApp(window.appInstance).mount("body");
     window.appInstance.init();
