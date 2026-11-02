@@ -99,8 +99,8 @@ flowchart TD
    - *Rationale*: The `ChainProcessManager` spawns `chain_runner.py` with `start_new_session=True` and delivers `os.killpg(pid, signal.SIGINT)`. This guarantees that `chain_runner.py`'s built-in graceful shutdown logic executes cleanly across all child C++ handlers.
 3. **Decoupled Simulation Coordinator**:
    - *Rationale*: When running with the `sim` backend, `frontend_runner.py` instantiates `InteractiveSimulationCoordinator`, binding the Unix domain sockets (`/tmp/proxy_sim_events.sock` and `/tmp/proxy_sim_hold_<ch>.sock`). C++ binaries launched by `chain_runner.py` connect to these existing hold sockets, allowing step-by-step simulation directly from the web interface.
-4. **Unified Navigation Bar**:
-   - *Rationale*: Added consistent top navigation links (`🏠 Portal`, `🎨 Builder`, `🔍 Simulation`, `📊 Telemetry`) across all dashboards to ensure seamless navigation between workspace views.
+4. **Unified Top Bar & Integrated Workspace Dropdown**:
+   - *Rationale*: Instead of cluttering the top bar with redundant individual navigation buttons across every screen, the top-left workspace badge functions as an interactive dropdown selector. Users can jump directly between Control Plane, Visual Builder, Simulation Visualizer, and Telemetry, while the top-right header area remains reserved for workspace-specific controls.
 
 ---
 
@@ -148,7 +148,7 @@ Output:
 - [x] Implement `ChainProcessManager` with start, stop, restart, and asynchronous log streaming APIs.
 - [x] Refactor `scripts/chain_runner.py` to remove web dashboard server startup logic while preserving headless execution.
 - [x] Update `scripts/read_telemetry.py` to make standalone web server optional (`--web`) and point to `frontend_runner.py`.
-- [x] Update headers in `scripts/dashboard/index.html`, `scripts/builder/index.html`, and `scripts/telemetry_dashboard.html` with unified navigation.
+- [x] Update headers in `scripts/dashboard/index.html`, `scripts/builder/index.html`, and `scripts/telemetry_dashboard.html` with unified workspace dropdown badge.
 - [x] Implement unit tests in `test/test_frontend_runner.py` and register in `test/CMakeLists.txt`.
 - [x] Verify full regression suite and CTest `simulation_trace_regression_test`.
 

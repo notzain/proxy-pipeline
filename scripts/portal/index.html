@@ -12,22 +12,48 @@
   <!-- Sticky Top Navigation Header -->
   <header class="portal-header">
     <div class="brand-section">
-      <span class="brand-badge">CONTROL PLANE</span>
+      <div class="workspace-dropdown">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+          <span>🏠 CONTROL PLANE</span>
+          <span class="badge-caret">▾</span>
+        </button>
+        <div class="workspace-menu">
+          <a href="/" class="workspace-item active">
+            <span class="item-icon">🏠</span>
+            <div class="item-text">
+              <span class="item-title">Control Plane</span>
+              <span class="item-desc">Portal &amp; chain supervisor</span>
+            </div>
+            <span class="item-active-check">✓</span>
+          </a>
+          <a href="/builder/" class="workspace-item">
+            <span class="item-icon">🎨</span>
+            <div class="item-text">
+              <span class="item-title">Visual Builder</span>
+              <span class="item-desc">DAG pipeline composer &amp; schemas</span>
+            </div>
+          </a>
+          <a href="/dashboard/" class="workspace-item">
+            <span class="item-icon">🔍</span>
+            <div class="item-text">
+              <span class="item-title">Simulation Visualizer</span>
+              <span class="item-desc">Packet queue, stepping &amp; traces</span>
+            </div>
+          </a>
+          <a href="/telemetry/" class="workspace-item">
+            <span class="item-icon">📊</span>
+            <div class="item-text">
+              <span class="item-title">Live Telemetry</span>
+              <span class="item-desc">StatsD rates, latencies &amp; topology</span>
+            </div>
+          </a>
+        </div>
+      </div>
       <span class="brand-title">Proxy Web Studio</span>
       <span class="brand-subtitle">Unified Pipeline Interface</span>
     </div>
 
     <div class="header-status-group">
-      <!-- Universal Navigation Links -->
-      <nav class="nav-links">
-        <a href="/" style="text-decoration: none;"><button class="active" title="Control Plane Portal">🏠 Portal</button></a>
-        <a href="/builder/" style="text-decoration: none;"><button title="Visual Chain Builder">🎨 Builder</button></a>
-        <a href="/dashboard/" style="text-decoration: none;"><button title="Simulation Visualizer">🔍 Simulation</button></a>
-        <a href="/telemetry/" style="text-decoration: none;"><button title="Live Telemetry Dashboard">📊 Telemetry</button></a>
-      </nav>
-
-      <div class="nav-divider"></div>
-
       <!-- Chain Runner Status Pill -->
       <div class="status-pill" :title="'Process State: ' + status.state">
         <span class="dot" :class="{

@@ -11,11 +11,48 @@
   <!-- Top Header Navigation & Mode-Specific Controls -->
   <header>
     <div class="brand">
+      <div class="workspace-dropdown">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+          <span>🔍 SIMULATION</span>
+          <span class="badge-caret">▾</span>
+        </button>
+        <div class="workspace-menu">
+          <a href="/" class="workspace-item">
+            <span class="item-icon">🏠</span>
+            <div class="item-text">
+              <span class="item-title">Control Plane</span>
+              <span class="item-desc">Portal &amp; chain supervisor</span>
+            </div>
+          </a>
+          <a href="/builder/" class="workspace-item">
+            <span class="item-icon">🎨</span>
+            <div class="item-text">
+              <span class="item-title">Visual Builder</span>
+              <span class="item-desc">DAG pipeline composer &amp; schemas</span>
+            </div>
+          </a>
+          <a href="/dashboard/" class="workspace-item active">
+            <span class="item-icon">🔍</span>
+            <div class="item-text">
+              <span class="item-title">Simulation Visualizer</span>
+              <span class="item-desc">Packet queue, stepping &amp; traces</span>
+            </div>
+            <span class="item-active-check">✓</span>
+          </a>
+          <a href="/telemetry/" class="workspace-item">
+            <span class="item-icon">📊</span>
+            <div class="item-text">
+              <span class="item-title">Live Telemetry</span>
+              <span class="item-desc">StatsD rates, latencies &amp; topology</span>
+            </div>
+          </a>
+        </div>
+      </div>
       <span class="badge-mode" :class="mode === 'trace' ? 'mode-trace' : 'mode-realtime'">
-        {{ mode === 'trace' ? '🟣 TRACE SIMULATION' : '🟢 REAL-TIME SIMULATION' }}
+        {{ mode === 'trace' ? '🟣 TRACE' : '🟢 REAL-TIME' }}
       </span>
-      <h2 style="font-size: 15px; font-weight: 600;">
-        {{ mode === 'trace' ? 'Execution Trace Stepper' : 'Live SimBackend Runner' }}
+      <h2 style="font-size: 14px; font-weight: 600;">
+        {{ mode === 'trace' ? 'Trace Stepper' : 'Pipeline Visualizer' }}
       </h2>
       <span id="chain-badge" style="font-size: 11px; color: var(--text-muted); background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
         <span v-if="mode === 'trace'">
@@ -28,24 +65,6 @@
     </div>
 
     <div class="controls">
-      <!-- Universal Navigation Links -->
-      <div class="nav-links">
-        <a href="/" style="text-decoration: none;">
-          <button title="Return to Control Plane Portal">🏠 Portal</button>
-        </a>
-        <a href="/builder/" style="text-decoration: none;">
-          <button title="Open Visual Chain Builder">🎨 Builder</button>
-        </a>
-        <a href="/dashboard/" style="text-decoration: none;">
-          <button class="active" title="Simulation Visualizer">🔍 Simulation</button>
-        </a>
-        <a href="/telemetry/" style="text-decoration: none;">
-          <button title="Live Telemetry Dashboard">📊 Telemetry</button>
-        </a>
-      </div>
-
-      <div class="nav-divider"></div>
-
       <!-- REAL-TIME SIMULATION CONTROLS -->
       <div v-if="mode === 'realtime'" style="display: contents;">
         <button class="primary"
@@ -411,6 +430,16 @@
   </main>
 
   <!-- ES6 App Module Bootstrapper -->
+  <script>
+    window.toggleWorkspaceDropdown = function (e) {
+      e.stopPropagation();
+      const dd = e.currentTarget.closest('.workspace-dropdown');
+      if (dd) dd.classList.toggle('open');
+    };
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.workspace-dropdown.open').forEach(el => el.classList.remove('open'));
+    });
+  </script>
   <script type="module">
     import { createSimulationApp } from "./js/app.js?v=11";
 

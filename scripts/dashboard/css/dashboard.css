@@ -50,6 +50,118 @@ header {
   gap: 12px;
 }
 
+/* Workspace Dropdown Badge */
+.workspace-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.workspace-badge-btn {
+  background: #0284c7;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.workspace-badge-btn:hover {
+  background: #0369a1;
+  border-color: #38bdf8;
+}
+
+.badge-caret {
+  font-size: 9px;
+  opacity: 0.8;
+  transition: transform 0.15s ease;
+}
+
+.workspace-dropdown.open .badge-caret {
+  transform: rotate(180deg);
+}
+
+.workspace-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 250px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workspace-dropdown.open .workspace-menu {
+  display: flex;
+}
+
+.workspace-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: #f8fafc;
+  text-decoration: none;
+  transition: background 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.workspace-item:hover {
+  background: #1e293b;
+}
+
+.workspace-item.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.workspace-item .item-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.workspace-item .item-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.workspace-item .item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+  line-height: 1.2;
+}
+
+.workspace-item .item-desc {
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.workspace-item .item-active-check {
+  margin-left: auto;
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .badge-pcap, .badge-mode {
   font-size: 11px;
   background: #0284c7;
