@@ -37,6 +37,8 @@ add_executable(proxy_tests
     "${CMAKE_SOURCE_DIR}/handler/udp_egress_handler/src/UdpEgressHandler.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/RouteHandler.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/RouteRule.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/scatter_handler/src/ScatterHandler.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/gather_handler/src/GatherHandler.cpp"
 )
 
 target_include_directories(proxy_tests PRIVATE
@@ -45,6 +47,8 @@ target_include_directories(proxy_tests PRIVATE
     "${CMAKE_SOURCE_DIR}/handler/udp_ingress_handler/include"
     "${CMAKE_SOURCE_DIR}/handler/udp_egress_handler/include"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/include"
+    "${CMAKE_SOURCE_DIR}/handler/scatter_handler/include"
+    "${CMAKE_SOURCE_DIR}/handler/gather_handler/include"
 )
 
 target_link_libraries(proxy_tests PRIVATE

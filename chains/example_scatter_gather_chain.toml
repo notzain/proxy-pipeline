@@ -1,0 +1,49 @@
+# Chain configuration demonstrating Parallelized Inspection (Scatter-Gather / Fork-Join pattern)
+backend = "file"
+
+[config]
+# Shared / backend directory configuration
+file.path = "/tmp/watch/default"
+log.console = true
+"channel.packet_ingress.path" = "/tmp/watch/packet_ingress"
+"channel.insp_branch_a.path" = "/tmp/watch/insp_branch_a"
+"channel.insp_branch_b.path" = "/tmp/watch/insp_branch_b"
+"channel.insp_res_a.path" = "/tmp/watch/insp_res_a"
+"channel.insp_res_b.path" = "/tmp/watch/insp_res_b"
+"channel.verified_egress.path" = "/tmp/watch/verified_egress"
+
+# Generator sending packets to packet_ingress
+[[handlers]]
+name = "packet_generator"
+type = "dummy_send"
+output_channel = "packet_ingress"
+[handlers.config]
+"dummy.message" = "{\"event\":\"DPI_INSPECT_TARGET\",\"data\":\"active_stream_payload\"}"
+"dummy.delay_ms" = 1000
+
+# Scatter Handler distributing packets across 2 inspection channels
+[[handlers]]
+name = "scatter_dispatcher"
+type = "scatter_handler"
+input_channel = "packet_ingress"
+output_channels = "insp_branch_a,insp_branch_b"
+
+# Parallel Inspector A: Forwarding split with verdict = Pass (represented here by dummy receiver or inspection worker)
+# In production, this can be an xml_verification_handler or custom DPI rule engine
+# Parallel Inspector B: Running concurrently on branch B
+
+# Gather Orchestrator: Waiting for all inspection splits to pass before emitting to egress
+[[handlers]]
+name = "gather_merger"
+type = "gather_handler"
+input_channels = "insp_res_a,insp_res_b"
+output_channel = "verified_egress"
+[handlers.config]
+"gather.timeout_ms" = 2000
+
+# Final consumer sink
+[[handlers]]
+name = "egress_sink"
+type = "print_handler"
+input_channel = "verified_egress"
+

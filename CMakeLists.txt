@@ -71,6 +71,8 @@ add_subdirectory(handler/order_validation_handler)
 add_subdirectory(handler/udp_ingress_handler)
 add_subdirectory(handler/udp_egress_handler)
 add_subdirectory(handler/route_handler)
+add_subdirectory(handler/scatter_handler)
+add_subdirectory(handler/gather_handler)
 
 # Tests and Benchmarks
 enable_testing()
