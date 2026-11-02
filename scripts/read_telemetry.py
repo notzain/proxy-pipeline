@@ -359,6 +359,7 @@ def main():
     parser = argparse.ArgumentParser(description="Proxy Pipeline Real-time Telemetry Listener")
     parser.add_argument("--host", default="0.0.0.0", help="Listen address (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8125, help="UDP port (default: 8125)")
+    parser.add_argument("--web", action="store_true", help="Also start legacy standalone web server (use scripts/frontend_runner.py for unified studio)")
     parser.add_argument("--web-port", type=int, default=8126, help="Web dashboard port (default: 8126)")
     parser.add_argument("--web-host", default="127.0.0.1", help="Dashboard bind address (default: 127.0.0.1)")
     parser.add_argument("--interval", type=float, default=1.0, help="Display refresh interval in seconds")
@@ -373,13 +374,16 @@ def main():
     )
     listener_thread.start()
 
-    web_thread = threading.Thread(
-        target=run_web_server, args=(collector, args.web_port, args.web_host), daemon=True
-    )
-    web_thread.start()
+    if args.web:
+        web_thread = threading.Thread(
+            target=run_web_server, args=(collector, args.web_port, args.web_host), daemon=True
+        )
+        web_thread.start()
+        print(f"\033[1;32m[read_telemetry] Legacy Web Dashboard at http://{args.web_host}:{args.web_port}\033[0m")
+    else:
+        print("\033[1;34m[read_telemetry] Tip: Use ./scripts/frontend_runner.py for the unified web studio & telemetry dashboard.\033[0m")
 
     print(f"\033[1;36m[read_telemetry] Listening on UDP {args.host}:{args.port}\033[0m")
-    print(f"\033[1;32m[read_telemetry] Live Web Dashboard available at http://{args.web_host}:{args.web_port}\033[0m")
 
     prev_time = time.time()
     prev_counters = defaultdict(int)

@@ -31,16 +31,17 @@ body {
 }
 
 header {
-  background: rgba(13, 17, 28, 0.95);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 20px;
+  height: 52px;
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom: 1px solid #334155;
+  padding: 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   backdrop-filter: blur(12px);
   flex-shrink: 0;
-  height: 54px;
   z-index: 100;
+  box-sizing: border-box;
 }
 
 .brand {
@@ -50,56 +51,98 @@ header {
 }
 
 .badge-pcap, .badge-mode {
-  background: linear-gradient(135deg, #0284c7, #2563eb);
-  color: white;
   font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  background: #0284c7;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
   letter-spacing: 0.5px;
 }
 
 .badge-mode.mode-realtime {
-  background: linear-gradient(135deg, #059669, #0284c7);
+  background: #059669;
 }
 
 .badge-mode.mode-trace {
-  background: linear-gradient(135deg, #7c3aed, #db2777);
+  background: #7c3aed;
 }
 
 .controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-button {
-  background: #1e293b;
-  color: var(--text);
-  border: 1px solid var(--border);
-  padding: 6px 12px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
+.nav-links {
+  display: flex;
   align-items: center;
   gap: 6px;
 }
 
-button:hover {
+.nav-divider {
+  width: 1px;
+  height: 22px;
   background: #334155;
+  margin: 0 4px;
+}
+
+button {
+  background: #182234;
+  color: var(--text);
+  border: 1px solid #334155;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
+button:hover {
+  background: #1e293b;
+  border-color: #94a3b8;
+}
+
+button.active, button.nav-active {
+  background: #1e293b;
   border-color: var(--accent);
+  color: var(--accent);
 }
 
 button.primary {
-  background: #0284c7;
-  border-color: #38bdf8;
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
 }
 
 button.primary:hover {
-  background: #0369a1;
+  background: #1d4ed8;
+}
+
+button.success {
+  background: #059669;
+  border-color: #10b981;
+  color: #fff;
+}
+
+button.success:hover {
+  background: #047857;
+}
+
+button.danger {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #fff;
+}
+
+button.danger:hover {
+  background: #b91c1c;
 }
 
 button.btn-load {

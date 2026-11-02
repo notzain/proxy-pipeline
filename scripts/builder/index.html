@@ -24,6 +24,21 @@
     </div>
 
     <div class="header-actions">
+      <div class="nav-links">
+        <a href="/" style="text-decoration: none;">
+          <button title="Return to Control Plane Portal">🏠 Portal</button>
+        </a>
+        <a href="/builder/" style="text-decoration: none;">
+          <button class="active" title="Visual Chain Builder">🎨 Builder</button>
+        </a>
+        <a href="/dashboard/" style="text-decoration: none;">
+          <button title="Simulation Visualizer">🔍 Simulation</button>
+        </a>
+        <a href="/telemetry/" style="text-decoration: none;">
+          <button title="Live Telemetry Dashboard">📊 Telemetry</button>
+        </a>
+      </div>
+      <div class="nav-divider"></div>
       <button @click="exportToml()" title="Download as .toml chain file">
         📥 Export TOML
       </button>

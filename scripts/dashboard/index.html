@@ -28,6 +28,24 @@
     </div>
 
     <div class="controls">
+      <!-- Universal Navigation Links -->
+      <div class="nav-links">
+        <a href="/" style="text-decoration: none;">
+          <button title="Return to Control Plane Portal">🏠 Portal</button>
+        </a>
+        <a href="/builder/" style="text-decoration: none;">
+          <button title="Open Visual Chain Builder">🎨 Builder</button>
+        </a>
+        <a href="/dashboard/" style="text-decoration: none;">
+          <button class="active" title="Simulation Visualizer">🔍 Simulation</button>
+        </a>
+        <a href="/telemetry/" style="text-decoration: none;">
+          <button title="Live Telemetry Dashboard">📊 Telemetry</button>
+        </a>
+      </div>
+
+      <div class="nav-divider"></div>
+
       <!-- REAL-TIME SIMULATION CONTROLS -->
       <div v-if="mode === 'realtime'" style="display: contents;">
         <button class="primary"
@@ -44,21 +62,16 @@
         </button>
         <button @click="exportTrace()"
                 :disabled="state.events.length === 0"
-                style="border-color: #34d399; color: #34d399;"
+                style="color: var(--success);"
                 title="Download deterministic export.trace.json">
           💾 Export Trace
         </button>
         <button @click="switchToTraceModeFromLive()"
                 :disabled="state.events.length === 0"
-                style="border-color: #c084fc; color: #c084fc;"
+                style="color: #c084fc;"
                 title="Inspect current execution trace in Trace Simulation Mode (step forwards & backwards)">
           🔍 Trace Mode
         </button>
-        <a href="/builder/" target="_blank" style="text-decoration: none;">
-          <button style="border-color: #38bdf8; color: #38bdf8;" title="Open Visual Chain Builder">
-            🎨 Chain Builder
-          </button>
-        </a>
       </div>
 
       <!-- TRACE SIMULATION CONTROLS -->
@@ -82,7 +95,7 @@
         </button>
         <button v-if="realtimeAvailable"
                 @click="returnToRealtimeMode()"
-                style="border-color: #34d399; color: #34d399;"
+                style="color: var(--success);"
                 title="Return to live Real-Time Simulation">
           🟢 Live Sim Mode
         </button>
@@ -90,7 +103,7 @@
 
       <input type="file" id="trace-file-input" accept=".json" style="display: none;" @change="handleTraceFile($event)">
       <button onclick="document.getElementById('trace-file-input').click()"
-              style="border-color: #38bdf8; color: #38bdf8;"
+              style="color: var(--accent);"
               title="Load an export.trace.json file into Trace Simulation Mode">
         📂 Load Trace
       </button>

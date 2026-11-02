@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy :: Control Plane &amp; Studio Portal</title>
+  <link rel="stylesheet" href="/portal/css/portal.css?v=1">
+  <script src="/portal/vendor/petite-vue.iife.js"></script>
+</head>
+<body v-scope @vue:mounted="init()">
+
+  <!-- Sticky Top Navigation Header -->
+  <header class="portal-header">
+    <div class="brand-section">
+      <span class="brand-badge">CONTROL PLANE</span>
+      <span class="brand-title">Proxy Web Studio</span>
+      <span class="brand-subtitle">Unified Pipeline Interface</span>
+    </div>
+
+    <div class="header-status-group">
+      <!-- Universal Navigation Links -->
+      <nav class="nav-links">
+        <a href="/" style="text-decoration: none;"><button class="active" title="Control Plane Portal">🏠 Portal</button></a>
+        <a href="/builder/" style="text-decoration: none;"><button title="Visual Chain Builder">🎨 Builder</button></a>
+        <a href="/dashboard/" style="text-decoration: none;"><button title="Simulation Visualizer">🔍 Simulation</button></a>
+        <a href="/telemetry/" style="text-decoration: none;"><button title="Live Telemetry Dashboard">📊 Telemetry</button></a>
+      </nav>
+
+      <div class="nav-divider"></div>
+
+      <!-- Chain Runner Status Pill -->
+      <div class="status-pill" :title="'Process State: ' + status.state">
+        <span class="dot" :class="{
+          'dot-green': status.state === 'running',
+          'dot-red': status.state === 'error',
+          'dot-amber': status.state === 'stopped',
+          'dot-gray': status.state === 'idle'
+        }"></span>
+        <span>Chain: <strong>{{ status.state.toUpperCase() }}</strong></span>
+        <span v-if="status.state === 'running' && status.pid" style="color: var(--accent-cyan);">
+          (PID {{ status.pid }})
+        </span>
+      </div>
+
+      <!-- Telemetry Listener Pill -->
+      <div class="status-pill" title="StatsD UDP Telemetry Collector">
+        <span class="dot dot-green"></span>
+        <span>Telemetry: <strong>UDP :8125</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="portal-main">
+
+    <!-- Hero Overview -->
+    <section class="hero-card">
+      <div class="hero-text">
+        <h1>Proxy Pipeline Studio &amp; Control Plane</h1>
+        <p>
+          Single unified runner for all front-end tools: compose DAG pipelines in the Visual Builder,
+          interactively step packet execution in the Simulator, and monitor real-time throughput and microsecond latencies
+          via StatsD telemetry.
+        </p>
+      </div>
+    </section>
+
+    <!-- Interactive Navigation Cards -->
+    <section>
+      <div class="section-title">
+        <span>Studio Workspaces</span>
+      </div>
+      <div class="modules-grid">
+        <!-- Visual Builder Card -->
+        <div class="module-card">
+          <div>
+            <span class="module-badge badge-builder">DAG Studio</span>
+            <h2>Visual Chain Builder</h2>
+            <p>
+              Interactive drag-and-drop pipeline composer. Design topologies, configure handlers with
+              strongly-typed schema validation, link channels, and export TOML/JSON configurations.
+            </p>
+          </div>
+          <div class="module-card-footer">
+            <span class="hint">Port: Unified /builder</span>
+            <a href="/builder/" class="btn-open">Open Builder →</a>
+          </div>
+        </div>
+
+        <!-- Simulation Visualizer Card -->
+        <div class="module-card">
+          <div>
+            <span class="module-badge badge-sim">Real-time &amp; Trace</span>
+            <h2>Simulation Visualizer</h2>
+            <p>
+              Step-by-step pipeline execution and trace debugger. Inspect packets in-flight, observe
+              hold sockets and fan-out branches, trigger burst generators, and export deterministic trace artifacts.
+            </p>
+          </div>
+          <div class="module-card-footer">
+            <span class="hint">Port: Unified /dashboard</span>
+            <a href="/dashboard/" class="btn-open">Open Visualizer →</a>
+          </div>
+        </div>
+
+        <!-- Live Telemetry Card -->
+        <div class="module-card">
+          <div>
+            <span class="module-badge badge-telemetry">StatsD &amp; Topology</span>
+            <h2>Live Telemetry Dashboard</h2>
+            <p>
+              Real-time pipeline monitoring and topology inspection. Track end-to-end throughput,
+              per-stage microsecond latency distributions, buffer utilization, and live DAG routes.
+            </p>
+          </div>
+          <div class="module-card-footer">
+            <span class="hint">Port: Unified /telemetry</span>
+            <a href="/telemetry/" class="btn-open">Open Telemetry →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chain Runner Control Deck -->
+    <section class="control-deck">
+      <div class="control-deck-header">
+        <div class="deck-title">
+          <div>
+            <h2>Chain Runner Control Deck</h2>
+            <p>Launch, monitor, and gracefully terminate handler chains without restarting the web interface.</p>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn-action btn-start"
+                  @click="startChain()"
+                  :disabled="status.state === 'running' || actionLoading || !selectedChain"
+                  title="Spawn chain_runner.py with selected chain and backend">
+            ▶ Start Chain
+          </button>
+          <button class="btn-action btn-stop"
+                  @click="stopChain()"
+                  :disabled="status.state !== 'running' || actionLoading"
+                  title="Gracefully stop running chain via SIGINT">
+            ⏹ Stop Chain
+          </button>
+          <button class="btn-action btn-restart"
+                  @click="restartChain()"
+                  :disabled="status.state !== 'running' || actionLoading"
+                  title="Restart running chain">
+            ↺ Restart Chain
+          </button>
+        </div>
+      </div>
+
+      <!-- Config & Backend Selectors -->
+      <div class="control-form-grid">
+        <div class="form-group">
+          <label for="chain-select">Select Chain Configuration</label>
+          <select id="chain-select" class="form-select" v-model="selectedChain" @change="onChainSelected()" :disabled="status.state === 'running'">
+            <option v-for="c in chains" :key="c.path" :value="c.path">
+              {{ c.name }} ({{ c.handlersCount }} handlers, default {{ c.backend }})
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="backend-select">Transport Backend</label>
+          <select id="backend-select" class="form-select" v-model="selectedBackend" :disabled="status.state === 'running'">
+            <option value="sim">sim (Simulation with hold sockets)</option>
+            <option value="socket">socket (UDP datagram transport)</option>
+            <option value="file">file (Filesystem directory transport)</option>
+            <option value="uds">uds (Unix Domain Sockets)</option>
+            <option value="shm">shm (Shared Memory Ring Buffer)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="pcap-select">Ingress PCAP Capture (Optional)</label>
+          <select id="pcap-select" class="form-select" v-model="selectedPcap" :disabled="status.state === 'running'">
+            <option value="">(None / Autonomous generators)</option>
+            <option v-for="p in pcaps" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Live Runner Status Strip -->
+      <div class="runner-status-strip">
+        <div class="status-stat">
+          <span class="stat-label">Supervisor State</span>
+          <span class="stat-value" :style="{
+            color: status.state === 'running' ? 'var(--accent-green)' : (status.state === 'stopped' ? 'var(--accent-amber)' : 'var(--text-muted)')
+          }">
+            {{ status.state.toUpperCase() }}
+          </span>
+        </div>
+
+        <div class="status-stat">
+          <span class="stat-label">Process ID</span>
+          <span class="stat-value">{{ status.pid ? status.pid : '—' }}</span>
+        </div>
+
+        <div class="status-stat">
+          <span class="stat-label">Active Backend</span>
+          <span class="stat-value">{{ status.backend ? status.backend.toUpperCase() : (selectedBackend ? selectedBackend.toUpperCase() : '—') }}</span>
+        </div>
+
+        <div class="status-stat">
+          <span class="stat-label">Uptime</span>
+          <span class="stat-value">{{ formatUptime(status.uptimeSec) }}</span>
+        </div>
+
+        <div class="status-stat">
+          <span class="stat-label">Active Configuration</span>
+          <span class="stat-value" :title="status.configPath || selectedChain">
+            {{ status.configPath || selectedChain || '—' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Live Terminal Output -->
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div class="terminal-title">
+            <span>Terminal Output</span>
+            <span v-if="status.state === 'running'" style="color: var(--accent-green); font-size: 11px;">● LIVE</span>
+          </div>
+          <div class="terminal-controls">
+            <label>
+              <input type="checkbox" v-model="autoScroll"> Auto-scroll
+            </label>
+            <button class="btn-xs" @click="clearLogs()">Clear</button>
+          </div>
+        </div>
+        <div id="terminal-output" class="terminal-body">
+          <div v-if="logs.length === 0" style="color: var(--text-muted); font-style: italic;">
+            Waiting for chain runner process to start... Click 'Start Chain' to launch.
+          </div>
+          <div v-for="(line, idx) in logs" :key="idx" class="terminal-line" :class="getLogClass(line)">
+            {{ line }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Sticky Footer -->
+  <footer class="portal-footer">
+    <span>Proxy High-Performance Trading Architecture &middot; Web Studio &amp; Control Plane</span>
+  </footer>
+
+  <script src="/portal/js/portal.js?v=1"></script>
+</body>
+</html>
+
