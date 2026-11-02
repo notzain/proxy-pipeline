@@ -29,7 +29,7 @@ public:
      * @brief Constructs ThreadPoolStrategy with a specified number of worker threads.
      *
      * @param numWorkerThreads Number of pool workers. Defaults to hardware concurrency.
-     * @param strictFifo When true (default), messages from the same client flow/channel are pinned to the same worker to guarantee strict FIFO ordering. When false, batches are distributed round-robin across worker queues for unconstrained parallel throughput.
+     * @param strictFifo When true (default), messages from the same client flow/channel are pinned to the same worker via dedicated per-worker SPSC queues to guarantee strict FIFO ordering. When false, incoming tasks are enqueued onto a shared lock-free MPMC queue where worker threads consume them concurrently for unconstrained parallel throughput.
      * @param serializeHandlerAccess When true, processBatch() and step() calls are serialized.
      */
     explicit ThreadPoolStrategy(

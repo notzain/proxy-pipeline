@@ -35,6 +35,64 @@ Common::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(
     return Common::Memory::Borrow<::Backend::IInputChannel>(*rawPtr);
 }
 
+Common::Memory::Borrow<::Backend::IInputChannel> IHandler::bindInputChannel(
+    std::string_view channelName,
+    const Config::Configuration& config)
+{
+    auto channel = m_backend.createInputChannel(channelName, config);
+    if (!channel) {
+        Proxy::Log::error("[IHandler] Failed to create input channel '{}'", channelName);
+        throw std::runtime_error(std::string("Failed to create input channel: ") + std::string(channelName));
+    }
+    return registerInputChannel(std::move(channel));
+}
+
+std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> IHandler::tryBindInputChannel(
+    std::string_view channelName,
+    const Config::Configuration& config) noexcept
+{
+    try {
+        auto channel = m_backend.createInputChannel(channelName, config);
+        if (!channel) {
+            Proxy::Log::error("[IHandler] Failed to create input channel '{}'", channelName);
+            return std::nullopt;
+        }
+        return registerInputChannel(std::move(channel));
+    } catch (const std::exception& e) {
+        Proxy::Log::error("[IHandler] Exception creating input channel '{}': {}", channelName, e.what());
+        return std::nullopt;
+    }
+}
+
+Common::Memory::Borrow<::Backend::IOutputChannel> IHandler::bindOutputChannel(
+    std::string_view channelName,
+    const Config::Configuration& config)
+{
+    auto channel = m_backend.createOutputChannel(channelName, config);
+    if (!channel) {
+        Proxy::Log::error("[IHandler] Failed to create output channel '{}'", channelName);
+        throw std::runtime_error(std::string("Failed to create output channel: ") + std::string(channelName));
+    }
+    return registerOutputChannel(std::move(channel));
+}
+
+std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> IHandler::tryBindOutputChannel(
+    std::string_view channelName,
+    const Config::Configuration& config) noexcept
+{
+    try {
+        auto channel = m_backend.createOutputChannel(channelName, config);
+        if (!channel) {
+            Proxy::Log::error("[IHandler] Failed to create output channel '{}'", channelName);
+            return std::nullopt;
+        }
+        return registerOutputChannel(std::move(channel));
+    } catch (const std::exception& e) {
+        Proxy::Log::error("[IHandler] Exception creating output channel '{}': {}", channelName, e.what());
+        return std::nullopt;
+    }
+}
+
 std::size_t IHandler::inputChannelCount() const noexcept
 {
     return m_inputChannels.size();

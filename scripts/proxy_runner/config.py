@@ -113,6 +113,7 @@ def generate_handler_config(
         lines.append(f"dummy.channel={in_ch}")
         lines.append(f"print.channel={in_ch}")
         lines.append(f"split.input_channel={in_ch}")
+        lines.append(f"scatter.input_channel={in_ch}")
         lines.append(f"xml.input_channel={in_ch}")
         lines.append(f"order.input_channel={in_ch}")
         lines.append(f"route.input_channel={in_ch}")
@@ -120,14 +121,17 @@ def generate_handler_config(
         in_chs = handler_spec["input_channels"]
         if isinstance(in_chs, list):
             lines.append(f"merge.input_channels={','.join(in_chs)}")
+            lines.append(f"gather.input_channels={','.join(in_chs)}")
         else:
             lines.append(f"merge.input_channels={in_chs}")
+            lines.append(f"gather.input_channels={in_chs}")
     if "output_channel" in handler_spec:
         out_ch = handler_spec["output_channel"]
         lines.append(f"channel.output={out_ch}")
         lines.append(f"ingress.output_channel={out_ch}")
         lines.append(f"dummy.channel={out_ch}")
         lines.append(f"merge.output_channel={out_ch}")
+        lines.append(f"gather.output_channel={out_ch}")
         lines.append(f"xml.output_channel={out_ch}")
         lines.append(f"order.output_channel={out_ch}")
         lines.append(f"route.default_output={out_ch}")
@@ -135,8 +139,10 @@ def generate_handler_config(
         out_chs = handler_spec["output_channels"]
         if isinstance(out_chs, list):
             lines.append(f"split.output_channels={','.join(out_chs)}")
+            lines.append(f"scatter.output_channels={','.join(out_chs)}")
         else:
             lines.append(f"split.output_channels={out_chs}")
+            lines.append(f"scatter.output_channels={out_chs}")
 
     params = handler_spec.get("config", {})
     for key, val in flatten_dict(params):

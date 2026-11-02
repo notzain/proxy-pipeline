@@ -12,13 +12,7 @@ namespace Proxy::Handler {
 bool PrintHandler::onConfigure(const Core::Config::Configuration& config)
 {
     const auto channelName = config.getOr<std::string>("print.channel", "default");
-    auto inChannel = backend().createInputChannel(channelName, config);
-    if (!inChannel) {
-        Proxy::Log::error("[PrintHandler] Failed to create input channel '{}'", channelName);
-        return false;
-    }
-    registerInputChannel(std::move(inChannel));
-    return true;
+    return tryBindInputChannel(channelName, config).has_value();
 }
 
 Backend::MessageResult PrintHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
