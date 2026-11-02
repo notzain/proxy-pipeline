@@ -78,6 +78,8 @@ header.portal-header {
   gap: 6px;
   font-family: inherit;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .workspace-badge-btn:hover {
@@ -211,6 +213,33 @@ header.portal-header {
   padding: 5px 10px;
   font-size: 11px;
   font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-icon, .badge-icon {
+  font-style: normal;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-text, .badge-text {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  header.portal-header button .btn-text,
+  header.portal-header .status-pill .pill-text {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace-badge-btn .badge-text,
+  .brand-subtitle,
+  .brand-title {
+    display: none;
+  }
 }
 
 .dot {

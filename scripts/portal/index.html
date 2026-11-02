@@ -14,7 +14,8 @@
     <div class="brand-section">
       <div class="workspace-dropdown">
         <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
-          <span>🏠 CONTROL PLANE</span>
+          <span class="badge-icon">🏠</span>
+          <span class="badge-text">CONTROL PLANE</span>
           <span class="badge-caret">▾</span>
         </button>
         <div class="workspace-menu">
@@ -62,8 +63,8 @@
           'dot-amber': status.state === 'stopped',
           'dot-gray': status.state === 'idle'
         }"></span>
-        <span>Chain: <strong>{{ status.state.toUpperCase() }}</strong></span>
-        <span v-if="status.state === 'running' && status.pid" style="color: var(--accent-cyan);">
+        <span class="pill-text">Chain: <strong>{{ status.state.toUpperCase() }}</strong></span>
+        <span v-if="status.state === 'running' && status.pid" class="pill-text" style="color: var(--accent-cyan);">
           (PID {{ status.pid }})
         </span>
       </div>
@@ -71,7 +72,7 @@
       <!-- Telemetry Listener Pill -->
       <div class="status-pill" title="StatsD UDP Telemetry Collector">
         <span class="dot dot-green"></span>
-        <span>Telemetry: <strong>UDP :8125</strong></span>
+        <span class="pill-text">Telemetry: <strong>UDP :8125</strong></span>
       </div>
     </div>
   </header>

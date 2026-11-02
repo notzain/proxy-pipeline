@@ -13,7 +13,8 @@
     <div class="brand">
       <div class="workspace-dropdown">
         <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
-          <span>🔍 SIMULATION</span>
+          <span class="badge-icon">🔍</span>
+          <span class="badge-text">SIMULATION</span>
           <span class="badge-caret">▾</span>
         </button>
         <div class="workspace-menu">
@@ -51,15 +52,15 @@
       <span class="badge-mode" :class="mode === 'trace' ? 'mode-trace' : 'mode-realtime'">
         {{ mode === 'trace' ? '🟣 TRACE' : '🟢 REAL-TIME' }}
       </span>
-      <h2 style="font-size: 14px; font-weight: 600;">
-        {{ mode === 'trace' ? 'Trace Stepper' : 'Pipeline Visualizer' }}
+      <h2 style="font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0;">
+        {{ mode === 'trace' ? 'Trace' : 'Visualizer' }}
       </h2>
-      <span id="chain-badge" style="font-size: 11px; color: var(--text-muted); background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border);">
+      <span id="chain-badge" style="font-size: 11px; color: var(--text-muted); background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); white-space: nowrap; flex-shrink: 0;">
         <span v-if="mode === 'trace'">
-          Artifact: {{ state.pcap }} ({{ traceAllEvents.length }} events · Step {{ traceStepIdx }}/{{ traceAllEvents.length }})
+          {{ state.pcap || 'trace' }} ({{ traceStepIdx }}/{{ traceAllEvents.length }})
         </span>
         <span v-else>
-          Backend: {{ (state.chain.backend || "SIM").toUpperCase() }} | PCAP: {{ state.pcap }}
+          {{ (state.chain.backend || "SIM").toUpperCase() }} · {{ state.pcap }}
         </span>
       </span>
     </div>
@@ -71,25 +72,30 @@
                 @click="stepForward()"
                 :disabled="!state.inFlight && !state.hasPendingQueue && state.currentPacketIdx >= state.packetCount"
                 title="Step forward through handlers or auto-load the next packet">
-          ⏭ Step Forward
+          <span class="btn-icon">⏭</span>
+          <span class="btn-text">Step</span>
         </button>
         <button @click="togglePlay()" title="Automatically load and step packets through the chain">
-          {{ isPlaying ? "⏸ Pause" : "▶ Auto-Play" }}
+          <span class="btn-icon">{{ isPlaying ? "⏸" : "▶" }}</span>
+          <span class="btn-text">{{ isPlaying ? "Pause" : "Play" }}</span>
         </button>
         <button @click="resetSim()" title="Reset simulation state and return to Packet #1">
-          ↺ Reset
+          <span class="btn-icon">↺</span>
+          <span class="btn-text">Reset</span>
         </button>
         <button @click="exportTrace()"
                 :disabled="state.events.length === 0"
                 style="color: var(--success);"
                 title="Download deterministic export.trace.json">
-          💾 Export Trace
+          <span class="btn-icon">💾</span>
+          <span class="btn-text">Export</span>
         </button>
         <button @click="switchToTraceModeFromLive()"
                 :disabled="state.events.length === 0"
                 style="color: #c084fc;"
                 title="Inspect current execution trace in Trace Simulation Mode (step forwards & backwards)">
-          🔍 Trace Mode
+          <span class="btn-icon">🔍</span>
+          <span class="btn-text">Trace</span>
         </button>
       </div>
 
@@ -98,25 +104,30 @@
         <button @click="stepBack()"
                 :disabled="traceStepIdx <= 0"
                 title="Step backward one event in the execution trace (Left Arrow)">
-          ⏮ Step Back
+          <span class="btn-icon">⏮</span>
+          <span class="btn-text">Back</span>
         </button>
         <button class="primary"
                 @click="stepForward()"
                 :disabled="traceStepIdx >= traceAllEvents.length"
                 title="Step forward one event in the execution trace (Right Arrow)">
-          ⏭ Step Forward
+          <span class="btn-icon">⏭</span>
+          <span class="btn-text">Step</span>
         </button>
         <button @click="togglePlay()" title="Replay trace events automatically (Space)">
-          {{ isPlaying ? "⏸ Pause" : "▶ Play Trace" }}
+          <span class="btn-icon">{{ isPlaying ? "⏸" : "▶" }}</span>
+          <span class="btn-text">{{ isPlaying ? "Pause" : "Play" }}</span>
         </button>
         <button @click="resetSim()" title="Rewind to the start of the trace (R)">
-          ↺ Rewind
+          <span class="btn-icon">↺</span>
+          <span class="btn-text">Rewind</span>
         </button>
         <button v-if="realtimeAvailable"
                 @click="returnToRealtimeMode()"
                 style="color: var(--success);"
                 title="Return to live Real-Time Simulation">
-          🟢 Live Sim Mode
+          <span class="btn-icon">🟢</span>
+          <span class="btn-text">Live</span>
         </button>
       </div>
 
@@ -124,13 +135,14 @@
       <button onclick="document.getElementById('trace-file-input').click()"
               style="color: var(--accent);"
               title="Load an export.trace.json file into Trace Simulation Mode">
-        📂 Load Trace
+        <span class="btn-icon">📂</span>
+        <span class="btn-text">Load</span>
       </button>
 
-      <div class="speed-ctrl">
-        <span>Speed</span>
+      <div class="speed-ctrl" title="Step playback speed">
+        <span class="speed-label">⚡</span>
         <input type="range" min="0.2" max="3.0" step="0.2" :value="(stepInterval / 1000).toFixed(1)" @input="updateSpeed($event.target.value)">
-        <span>{{ (stepInterval / 1000).toFixed(1) }}s</span>
+        <span class="speed-val">{{ (stepInterval / 1000).toFixed(1) }}s</span>
       </div>
     </div>
   </header>

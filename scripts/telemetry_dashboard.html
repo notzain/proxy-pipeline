@@ -29,7 +29,7 @@
             align-items: center;
         }
         .workspace-badge-btn {
-            background: #059669;
+            background: #0284c7;
             color: #fff;
             font-size: 11px;
             font-weight: 600;
@@ -44,10 +44,12 @@
             gap: 6px;
             font-family: inherit;
             transition: all 0.15s ease;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .workspace-badge-btn:hover {
-            background: #047857;
-            border-color: #10b981;
+            background: #0369a1;
+            border-color: #38bdf8;
         }
         .badge-caret {
             font-size: 9px;
@@ -133,6 +135,31 @@
             gap: 6px;
             transition: all 0.15s ease;
             font-family: inherit;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-icon, .badge-icon {
+            font-style: normal;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .btn-text, .badge-text {
+            white-space: nowrap;
+        }
+        @media (max-width: 900px) {
+            header .btn-text {
+                display: none;
+            }
+            #connection-status .status-text {
+                display: none;
+            }
+        }
+        @media (max-width: 720px) {
+            .workspace-badge-btn .badge-text,
+            .telemetry-brand-title,
+            #last-update {
+                display: none;
+            }
         }
         .builder-btn:hover {
             background: #1e293b;
@@ -184,7 +211,8 @@
         <div style="display: flex; align-items: center; gap: 12px;">
             <div class="workspace-dropdown">
                 <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
-                    <span>📊 LIVE TELEMETRY</span>
+                    <span class="badge-icon">📊</span>
+                    <span class="badge-text">LIVE TELEMETRY</span>
                     <span class="badge-caret">▾</span>
                 </button>
                 <div class="workspace-menu">
@@ -219,16 +247,17 @@
                     </a>
                 </div>
             </div>
-            <div style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+            <div class="telemetry-brand-title" style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
                 <span>Proxy Pipeline Telemetry</span>
             </div>
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px;">
-            <span id="connection-status" class="connection-offline px-3 py-1 text-xs rounded border border-amber-800 bg-amber-950 text-amber-400 flex items-center gap-1.5" style="border-radius: 6px; padding: 5px 10px; font-family: ui-monospace, monospace; font-size: 11px;">
-                Connecting to collector
+            <span id="connection-status" class="connection-offline px-3 py-1 text-xs rounded border border-amber-800 bg-amber-950 text-amber-400 flex items-center gap-1.5" style="border-radius: 6px; padding: 5px 10px; font-family: ui-monospace, monospace; font-size: 11px; white-space: nowrap; flex-shrink: 0;">
+                <span class="status-dot" style="width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block;"></span>
+                <span class="status-text">Connecting to collector</span>
             </span>
-            <span id="last-update" class="text-xs text-[var(--muted)] font-mono" style="font-size: 11px; padding: 0 4px;">Updated: Just now</span>
+            <span id="last-update" class="text-xs text-[var(--muted)] font-mono" style="font-size: 11px; padding: 0 4px; white-space: nowrap; flex-shrink: 0;">Updated: Just now</span>
         </div>
     </header>
 
@@ -506,10 +535,7 @@
                     renderTopology(data);
                 }
             } catch (err) {
-                const connectionStatus = document.getElementById("connection-status");
-                connectionStatus.textContent = "Collector disconnected";
-                connectionStatus.className =
-                    "connection-offline px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
+                setConnectionStatus("Collector disconnected", false);
                 document.getElementById("topology-freshness").textContent = "Collector unavailable";
                 const topologyStatus = document.getElementById("topology-status");
                 topologyStatus.hidden = false;
@@ -518,9 +544,16 @@
             }
         }
 
-        function setTopologyVisibility(svg, visible) {
-            if (visible) svg.removeAttribute("hidden");
-            else svg.setAttribute("hidden", "");
+        function setConnectionStatus(text, isLive) {
+            const connectionStatus = document.getElementById("connection-status");
+            if (!connectionStatus) return;
+            const dot = isLive
+                ? '<span class="status-dot" style="width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.6); display: inline-block;"></span>'
+                : '<span class="status-dot" style="width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.6); display: inline-block;"></span>';
+            connectionStatus.innerHTML = `${dot}<span class="status-text">${text}</span>`;
+            connectionStatus.className = isLive
+                ? "px-3 py-1 text-xs rounded border border-emerald-800 bg-emerald-950 text-emerald-400 flex items-center gap-1.5"
+                : "connection-offline px-3 py-1 text-xs rounded border border-amber-800 bg-amber-950 text-amber-400 flex items-center gap-1.5";
         }
 
         function svgElement(name, attributes = {}, text = null) {
@@ -932,15 +965,10 @@
             const lastReceivedAt = Number(data.lastReceivedAt || 0);
             const metricAge = lastReceivedAt ? Date.now() / 1000 - lastReceivedAt : Infinity;
             const metricsLive = metricAge <= 5;
-            const connectionStatus = document.getElementById("connection-status");
-            connectionStatus.textContent = metricsLive
-                ? "Live Monitoring"
-                : lastReceivedAt
-                    ? "Metrics stale"
-                    : "Waiting for metrics";
-            connectionStatus.className = metricsLive
-                ? "px-3 py-1 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1.5"
-                : "connection-offline px-3 py-1 text-xs rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center gap-1.5";
+            setConnectionStatus(
+                metricsLive ? "Live Monitoring" : lastReceivedAt ? "Metrics stale" : "Waiting for metrics",
+                metricsLive
+            );
             const namespaces = extractNamespaces(data);
             renderTabs(namespaces);
 

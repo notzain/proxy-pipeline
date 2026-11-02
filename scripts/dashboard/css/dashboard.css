@@ -73,6 +73,8 @@ header {
   gap: 6px;
   font-family: inherit;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .workspace-badge-btn:hover {
@@ -185,12 +187,14 @@ header {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .nav-links {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .nav-divider {
@@ -214,6 +218,38 @@ button {
   align-items: center;
   gap: 6px;
   font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-icon, .badge-icon {
+  font-style: normal;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.btn-text, .badge-text {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  header button .btn-text,
+  .controls button .btn-text {
+    display: none;
+  }
+
+  header button,
+  .controls button {
+    padding: 6px 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace-badge-btn .badge-text,
+  #chain-badge,
+  .badge-mode {
+    display: none;
+  }
 }
 
 button:hover {
@@ -274,18 +310,29 @@ button:disabled {
 .speed-ctrl {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 11px;
   color: var(--text-muted);
   background: #1e293b;
-  padding: 4px 10px;
-  border-radius: 7px;
+  padding: 4px 8px;
+  border-radius: 6px;
   border: 1px solid var(--border);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.speed-ctrl input {
+.speed-ctrl input[type="range"] {
   accent-color: var(--accent);
   cursor: pointer;
+  width: 54px;
+  height: 4px;
+}
+
+.speed-ctrl .speed-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #f8fafc;
+  min-width: 26px;
 }
 
 main {
