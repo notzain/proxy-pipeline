@@ -83,6 +83,11 @@ class BuilderCanvas {
   }
 
   onMouseDown(e) {
+    // If click on interactive elements (input, select, button, etc.), don't initiate node drag or pan
+    if (e.target.closest('input, select, button, textarea, label')) {
+      return;
+    }
+
     // If click on socket, initiate wire creation
     const socketEl = e.target.closest('.port-socket');
     if (socketEl) {
@@ -95,6 +100,15 @@ class BuilderCanvas {
 
       if (portType === 'output') {
         const pt = this.getSocketCenterInWorld(socketEl);
+
+        // Check if this output socket already has a connected wire being modified/reassigned
+        const existingWire = this.app.wires.find(
+          (w) =>
+            w.fromNodeId === nodeId &&
+            w.fromPort === portName &&
+            (w.fromIndex || 0) === portIndex
+        );
+
         this.activeDraftWire = {
           fromNodeId: nodeId,
           fromPort: portName,
@@ -103,7 +117,10 @@ class BuilderCanvas {
           startY: pt.y,
           currX: pt.x,
           currY: pt.y,
+          reassigningWireId: existingWire ? existingWire.id : null,
         };
+        // Re-render wires so the existing wire is temporarily hidden while its destination is dragged
+        this.app.updateWires();
         this.renderDraftWire();
       }
       return;
@@ -210,6 +227,8 @@ class BuilderCanvas {
 
       this.activeDraftWire = null;
       this.clearDraftWire();
+      // Ensure wire elements and labels are restored / refreshed if drag was cancelled without a target
+      this.app.updateWires();
     }
   }
 

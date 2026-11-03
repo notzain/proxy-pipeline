@@ -8,67 +8,12 @@ backend = "sim"
 [[handlers]]
 name = "dummy_send_1"
 type = "dummy_send"
-output_channel = "d1s2"
+output_channel = "test_channel"
 [handlers.config]
 "dummy.message" = "Hello from DummySend!"
 "dummy.delay_ms" = "1000"
 
 [[handlers]]
-name = "split_1"
-type = "split_handler"
-input_channel = "d1s2"
-output_channels = "s1s3,split_1_output_channels_3"
-
-[[handlers]]
-name = "split_2"
-type = "split_handler"
-input_channel = "split_1_output_channels_3"
-output_channels = "s2m2,s2s4,s2r5"
-
-[[handlers]]
-name = "split_3"
-type = "split_handler"
-input_channel = "s1s3"
-output_channels = "s3r1,s3r4"
-
-[[handlers]]
-name = "split_4"
-type = "split_handler"
-input_channel = "s2s4"
-output_channels = "s4r3,s4r6"
-
-[[handlers]]
-name = "merge_1"
-type = "merge_handler"
-input_channels = "s1m1,s2m2"
-output_channel = "m1r2"
-
-[[handlers]]
 name = "dummy_receive_1"
 type = "dummy_receive"
-input_channel = "s3r1"
-
-[[handlers]]
-name = "dummy_receive_2"
-type = "dummy_receive"
-input_channel = "m1r2"
-
-[[handlers]]
-name = "dummy_receive_3"
-type = "dummy_receive"
-input_channel = "s4r3"
-
-[[handlers]]
-name = "dummy_receive_4"
-type = "dummy_receive"
-input_channel = "s3r4"
-
-[[handlers]]
-name = "dummy_receive_5"
-type = "dummy_receive"
-input_channel = "s2r5"
-
-[[handlers]]
-name = "dummy_receive_6"
-type = "dummy_receive"
-input_channel = "s4r6"
+input_channel = "test_channel"

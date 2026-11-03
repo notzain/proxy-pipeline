@@ -72,6 +72,34 @@ class TestHandlerSchemas(unittest.TestCase):
         errors = validate_handler_instance(bad_spec, schema)
         self.assertTrue(any("xml.xsd_path" in e for e in errors))
 
+    def test_duplicate_wire_detection(self):
+        # Verify that multiple producers on the same connection wire/channel are flagged as an error
+        chain_def = {
+            "backend": "sim",
+            "handlers": [
+                {
+                    "name": "sender_1",
+                    "type": "dummy_send",
+                    "output_channel": "shared_pipe",
+                    "config": {"dummy.message": "A", "dummy.delay_ms": 10},
+                },
+                {
+                    "name": "sender_2",
+                    "type": "dummy_send",
+                    "output_channel": "shared_pipe",
+                    "config": {"dummy.message": "B", "dummy.delay_ms": 10},
+                },
+                {
+                    "name": "receiver_1",
+                    "type": "dummy_receive",
+                    "input_channel": "shared_pipe",
+                },
+            ],
+        }
+        res = validate_chain_topology(chain_def, self.schemas)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("uniquely named" in err for err in res["errors"]))
+
     def test_out_of_tree_discovery(self):
         # Verify discovery works dynamically on an arbitrary external directory
         import tempfile

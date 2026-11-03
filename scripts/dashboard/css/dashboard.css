@@ -842,7 +842,21 @@ canvas {
 .role-generator { background: #7c2d12; color: #fdba74; }
 .role-external_ingress { background: #14532d; color: #86efac; }
 .role-external_egress { background: #1e3a8a; color: #93c5fd; }
-.role-sink { background: #064e3b; color: #6ee7b7; }
+.role-sink { background: #701a75; color: #f472b6; border: 1px solid rgba(244, 114, 182, 0.35); }
 .role-processor { background: #312e81; color: #c4b5fd; }
+
+/* Responsive Panel Collapse when Resized Smaller */
+.panel-left.compact-queue .packet-payload-summary {
+  display: none !important;
+}
+
+.panel-right.compact-trace .trace-latency {
+  display: none !important;
+}
+
+.panel-right.compact-trace .trace-item-detail {
+  display: none !important;
+}
+
 
 

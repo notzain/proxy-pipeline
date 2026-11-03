@@ -54,6 +54,13 @@
       <div class="brand-title">
         <span>Proxy Pipeline Studio</span>
       </div>
+      <div class="chain-name-wrapper" title="Click to edit chain name">
+        <input type="text"
+               class="chain-name-input"
+               v-model="chainName"
+               @input="validateChain()"
+               placeholder="pipeline_name">
+      </div>
       <span v-if="statusMsg"
         style="font-size: 11px; color: var(--accent-green); background: #064e3b; padding: 2px 8px; border-radius: 4px; border: 1px solid #059669;">
         {{ statusMsg }}
@@ -61,15 +68,15 @@
     </div>
 
     <div class="header-actions">
-      <button @click="exportToml()" title="Download as .toml chain file">
+      <button @click="openExportModal()" title="Export chain definition as TOML or JSON">
         <span class="btn-icon">📥</span>
-        <span class="btn-text">Export TOML</span>
+        <span class="btn-text">Export</span>
       </button>
-      <button @click="exportJson()" title="Download as .json chain file">
-        <span class="btn-icon">📥</span>
-        <span class="btn-text">Export JSON</span>
+      <button class="danger-outline" @click="resetChain()" title="Clear and reset chain canvas to blank state">
+        <span class="btn-icon">↺</span>
+        <span class="btn-text">Reset</span>
       </button>
-      <button class="primary" @click="saveToDisk()" title="Save chain to working directory">
+      <button class="primary" @click="openSaveModal()" title="Save chain to working directory">
         <span class="btn-icon">💾</span>
         <span class="btn-text">Save Chain</span>
       </button>
@@ -83,15 +90,24 @@
   <!-- Workspace Container -->
   <div class="workspace">
 
-    <!-- Left Sidebar: Handler Palette & Global Settings -->
+    <!-- Left Sidebar: Handler Palette & Search -->
     <aside class="sidebar-palette">
       <div class="panel-header">
         <span>Handler Palette</span>
-        <span style="font-size: 10px; color: var(--accent);">{{ Object.keys(schemas).length }} available</span>
+        <span style="font-size: 10px; color: var(--accent);">{{ filteredHandlersCount }} available</span>
+      </div>
+
+      <div class="palette-search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text"
+               v-model="searchQuery"
+               placeholder="Filter handlers by name or role..."
+               class="palette-search-input">
+        <button v-if="searchQuery" @click="searchQuery = ''" class="search-clear-btn" title="Clear search">✕</button>
       </div>
 
       <div class="palette-scroll">
-        <div v-for="(handlers, category) in schemaCategories" :key="category" class="palette-group">
+        <div v-for="(handlers, category) in filteredSchemaCategories" :key="category" class="palette-group">
           <div class="palette-group-title" @click="toggleCategory(category)">
             <span>{{ category }} ({{ handlers.length }})</span>
             <span class="palette-toggle-icon">
@@ -112,19 +128,9 @@
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Global Chain Configuration -->
-      <div class="global-config-bar">
-        <div class="field-group">
-          <label class="field-label">Transport Backend</label>
-          <select v-model="backend" @change="validateChain()">
-            <option value="file">File (Directory watch/write)</option>
-            <option value="socket">Socket (UDP Datagram)</option>
-            <option value="shm">SHM (Shared Memory POSIX Ring)</option>
-            <option value="uds">UDS (Unix Domain Socket)</option>
-            <option value="sim">Sim (Interactive Simulation)</option>
-          </select>
+        <div v-if="filteredHandlersCount === 0" class="empty-palette-search">
+          No handlers match "<strong>{{ searchQuery }}</strong>"
         </div>
       </div>
     </aside>
@@ -139,28 +145,72 @@
 
         <!-- Rendered Handler Nodes -->
         <div class="canvas-nodes-layer">
-          <div v-for="node in nodes" :key="node.id" class="node-card" :class="{ selected: selectedNodeId === node.id }"
+          <div v-for="node in nodes" :key="node.id" class="node-card"
+            :class="{ selected: selectedNodeId === node.id, 'has-errors': getNodeErrors(node).length > 0, 'has-warnings': getNodeErrors(node).length === 0 && getNodeWarnings(node).length > 0 }"
             :data-node-id="node.id" :style="{ transform: 'translate(' + node.x + 'px, ' + node.y + 'px)' }">
 
+            <!-- Node Header with Inline Rename, Badges, Collapse and Delete -->
             <div class="node-header">
-              <span class="node-title" :title="node.name">{{ node.name }}</span>
+              <button class="node-collapse-btn" @click.stop="toggleNodeCollapse(node)"
+                :title="node.collapsed ? 'Expand node parameters' : 'Collapse node to sockets only'">
+                {{ node.collapsed ? '▸' : '▾' }}
+              </button>
+              <input type="text" class="node-title-input" v-model="node.name" @input="validateChain()"
+                @mousedown.stop title="Click to rename handler instance">
               <span class="role-badge"
                 :class="'role-' + ((schemas[node.type] && schemas[node.type].role) || 'processor')">
                 {{ ((schemas[node.type] && schemas[node.type].role) || 'processor').replace('external_', '') }}
               </span>
+              <button class="node-delete-btn" @click.stop="deleteNode(node.id)" title="Delete handler node">✕</button>
             </div>
 
+            <!-- Node Body: Sockets & Embedded Configuration -->
             <div class="node-body">
-              <div class="node-type-label">{{ node.type }}</div>
+              <div class="node-subhead">
+                <span class="node-type-label">{{ node.type }}</span>
+                <div v-if="getNodeErrors(node).length > 0" class="node-err-badge-wrap">
+                  <span class="node-err-badge">
+                    {{ getNodeErrors(node).length === 1 ? '1 Error' : getNodeErrors(node).length + ' Errors' }}
+                  </span>
+                  <div class="node-err-tooltip" @mousedown.stop>
+                    <div class="node-err-tooltip-header">Issues in {{ node.name }}</div>
+                    <div v-for="(err, eIdx) in getNodeErrors(node)" :key="'ne-' + eIdx" class="node-err-tooltip-item">
+                      {{ err }}
+                    </div>
+                  </div>
+                </div>
+                <div v-else-if="getNodeWarnings(node).length > 0" class="node-warn-badge-wrap">
+                  <span class="node-warn-badge">
+                    {{ getNodeWarnings(node).length === 1 ? '1 Warning' : getNodeWarnings(node).length + ' Warnings' }}
+                  </span>
+                  <div class="node-warn-tooltip" @mousedown.stop>
+                    <div class="node-warn-tooltip-header">Warnings in {{ node.name }}</div>
+                    <div v-for="(warn, wIdx) in getNodeWarnings(node)" :key="'nw-' + wIdx" class="node-warn-tooltip-item">
+                      {{ warn }}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
+              <!-- Discrete Input / Output Sockets Row -->
               <div class="node-ports-row">
                 <!-- Input Ports (Left) -->
                 <div class="node-ports-left">
                   <div v-for="item in getNodeInputPorts(node)" :key="'in-' + item.portName + '-' + item.index" class="port-item">
-                    <div class="port-socket" :class="{ connected: Boolean(item.channel) }" :data-node-id="node.id"
+                    <div class="port-socket" :class="{ connected: isPortLinked(node.id, 'input', item.portName, item.index) }" :data-node-id="node.id"
                       :data-port-name="item.portName" :data-port-index="item.index" data-port-type="input"
                       title="Input socket (drag wire from an output port)"></div>
-                    <span>{{ item.label }}</span>
+                    <span class="port-label" :title="isPortLinked(node.id, 'input', item.portName, item.index) ? 'Channel: ' + item.channel : 'Unconnected'">
+                      {{ item.label }}
+                    </span>
+                    <button v-if="Array.isArray(node.inputs[item.portName]) && node.inputs[item.portName].length > 1 && item.index === node.inputs[item.portName].length - 1"
+                      class="port-btn-del" @click.stop="removeChannelItem(node, 'inputs', item.portName, item.index)"
+                      title="Remove socket">-</button>
+                  </div>
+                  <!-- Plus button for multi-input ports -->
+                  <div v-for="(val, pName) in node.inputs" :key="'add-in-' + pName">
+                    <button v-if="Array.isArray(val)" class="port-btn-add" @click.stop="addChannelItem(node, 'inputs', pName)"
+                      title="Add input socket">+ socket</button>
                   </div>
                 </div>
 
@@ -168,13 +218,50 @@
                 <div class="node-ports-right">
                   <div v-for="item in getNodeOutputPorts(node)" :key="'out-' + item.portName + '-' + item.index" class="port-item"
                     style="justify-content: flex-end;">
-                    <span>{{ item.label }}</span>
-                    <div class="port-socket" :class="{ connected: Boolean(item.channel) }" :data-node-id="node.id"
+                    <button v-if="Array.isArray(node.outputs[item.portName]) && node.outputs[item.portName].length > 1 && item.index === node.outputs[item.portName].length - 1"
+                      class="port-btn-del" @click.stop="removeChannelItem(node, 'outputs', item.portName, item.index)"
+                      title="Remove socket">-</button>
+                    <span class="port-label" :title="isPortLinked(node.id, 'output', item.portName, item.index) ? 'Channel: ' + item.channel : 'Unconnected'">
+                      {{ item.label }}
+                    </span>
+                    <div class="port-socket" :class="{ connected: isPortLinked(node.id, 'output', item.portName, item.index) }" :data-node-id="node.id"
                       :data-port-name="item.portName" :data-port-index="item.index" data-port-type="output"
                       title="Output socket (drag wire to downstream input port)"></div>
                   </div>
+                  <!-- Plus button for multi-output ports -->
+                  <div v-for="(val, pName) in node.outputs" :key="'add-out-' + pName" style="display: flex; justify-content: flex-end;">
+                    <button v-if="Array.isArray(val)" class="port-btn-add" @click.stop="addChannelItem(node, 'outputs', pName)"
+                      title="Add output socket">+ socket</button>
+                  </div>
                 </div>
               </div>
+
+              <!-- Inline Parameters (Embedded Inside Node Card) -->
+              <div v-if="!node.collapsed && schemas[node.type] && schemas[node.type].parameters && Object.keys(schemas[node.type].parameters).length > 0"
+                class="node-params-section" @mousedown.stop>
+                <div class="node-params-title">Parameters</div>
+                <div v-for="(pDef, pKey) in schemas[node.type].parameters" :key="pKey" class="node-param-row">
+                  <div class="node-param-header">
+                    <span class="node-param-label" :title="pDef.description">
+                      {{ pDef.label || pKey }}<span v-if="pDef.required" style="color: var(--accent-rose);">*</span>
+                    </span>
+                  </div>
+
+                  <!-- Enum dropdown -->
+                  <select v-if="pDef.enum" v-model="node.config[pKey]" @change="validateChain()" class="node-param-input">
+                    <option v-for="opt in pDef.enum" :key="opt" :value="opt">{{ opt }}</option>
+                  </select>
+
+                  <!-- Integer / Float input -->
+                  <input v-else-if="pDef.type === 'integer' || pDef.type === 'int'" type="number" :min="pDef.min"
+                    :max="pDef.max" v-model.number="node.config[pKey]" @input="validateChain()" class="node-param-input">
+
+                  <!-- Text input -->
+                  <input v-else type="text" v-model="node.config[pKey]" @input="validateChain()"
+                    :placeholder="pDef.default !== undefined ? String(pDef.default) : ''" class="node-param-input">
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -189,180 +276,110 @@
         <button @click="canvasInstance.resetZoom()" title="Reset Pan / Zoom">⌂</button>
       </div>
 
+      <!-- Floating Diagnostics Toast & Popover in Canvas Corner -->
+      <div class="floating-diagnostics">
+        <button class="diag-pill-btn" :class="{ 'is-clean': validation.valid && validation.warnings.length === 0, 'has-warnings': validation.valid && validation.warnings.length > 0, 'has-issues': !validation.valid }"
+          @click="showDiagnosticsDrawer = !showDiagnosticsDrawer" title="Toggle pipeline diagnostics">
+          <span class="pill-dot">●</span>
+          <span class="pill-text">{{ !validation.valid ? validation.errors.length + ' Issues' : (validation.warnings.length > 0 ? validation.warnings.length + ' Warnings' : 'Pipeline Clean') }}</span>
+          <span class="pill-arrow">{{ showDiagnosticsDrawer ? '▾' : '▴' }}</span>
+        </button>
+
+        <!-- Expanded Diagnostics Drawer -->
+        <div v-if="showDiagnosticsDrawer" class="diag-drawer">
+          <div class="diag-drawer-header">
+            <span>Diagnostics</span>
+            <button class="modal-close-btn" @click="showDiagnosticsDrawer = false">✕</button>
+          </div>
+          <div class="diag-drawer-body">
+            <div v-if="validation.valid && validation.warnings.length === 0" class="diag-item diag-valid">
+              ✓ Pipeline topology and handler configurations are verified.
+            </div>
+            <div v-for="(diag, idx) in formattedDiagnostics" :key="'diag-' + idx"
+                 class="diag-item" :class="'diag-' + diag.type">
+              <div class="diag-title">{{ diag.nodeName }}</div>
+              <div class="diag-msg">
+                <span class="diag-icon">{{ diag.type === 'error' ? '✕' : '⚠' }}</span>
+                <span>{{ diag.message }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
 
-    <!-- Right Sidebar: Inspector & Diagnostics -->
-    <aside class="sidebar-inspector">
-      <div class="panel-header">
-        <span>Configuration Inspector</span>
-        <button v-if="selectedNodeId" @click="deleteNode(selectedNodeId)"
-          style="padding: 2px 6px; color: var(--accent-rose); border-color: var(--accent-rose);">
-          ✕ Delete
-        </button>
-        <button v-else-if="selectedWireId" @click="deleteWire(selectedWireId)"
-          style="padding: 2px 6px; color: var(--accent-rose); border-color: var(--accent-rose);">
-          ✕ Disconnect
-        </button>
+  </div>
+
+  <!-- Modal: Save Chain Prompt (With Backend Selector) -->
+  <div v-if="showSaveModal" class="modal-backdrop" @click="closeSaveModal()">
+    <div class="modal-dialog" @click.stop>
+      <div class="modal-header">
+        <span class="modal-title">💾 Save Pipeline Chain</span>
+        <button class="modal-close-btn" @click="closeSaveModal()">✕</button>
       </div>
-
-      <!-- Selected Node Properties -->
-      <div v-if="selectedNode" class="inspector-scroll">
-        <div class="field-group">
-          <label class="field-label">Instance Name</label>
-          <input type="text" v-model="selectedNode.name" @input="validateChain()"
-            placeholder="Unique handler name">
+      <div class="modal-body">
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Chain Name</label>
+          <input type="text" v-model="chainName" @input="onChainNameChanged()" placeholder="e.g. custom_chain">
         </div>
-
-        <div class="field-group">
-          <label class="field-label">Handler Type</label>
-          <div
-            style="font-family: monospace; font-size: 12px; color: var(--text-muted); background: var(--bg-panel-header); padding: 6px; border-radius: 4px;">
-            {{ selectedNode.type }}
-          </div>
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Filename (.toml)</label>
+          <input type="text" v-model="saveFilename" placeholder="custom_chain.toml">
         </div>
-
-        <!-- Port Channel Bindings -->
-        <div style="border-top: 1px solid var(--border); padding-top: 10px;">
-          <div
-            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
-            Channel Bindings
-          </div>
-
-          <!-- Input Ports in Inspector (View-only channel tags; editable on the link) -->
-          <div v-for="(val, portName) in selectedNode.inputs" :key="'in-group-' + portName" style="margin-bottom: 10px;">
-            <div v-if="Array.isArray(val)">
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                <label class="field-label">{{ portName }} (multiple)</label>
-                <button @click="addChannelItem(selectedNode, 'inputs', portName)" style="padding: 1px 6px; font-size: 11px;">
-                  + Add Input Socket
-                </button>
-              </div>
-              <div v-for="(chItem, idx) in val" :key="'in-' + portName + '-' + idx" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                <div style="flex: 1; font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; color: var(--accent);">
-                  {{ chItem || '(unconnected)' }}
-                </div>
-                <button v-if="val.length > 1" @click="removeChannelItem(selectedNode, 'inputs', portName, idx)" style="padding: 2px 6px; color: var(--accent-rose);">
-                  -
-                </button>
-              </div>
-            </div>
-            <div v-else class="field-group">
-              <label class="field-label">Input Port: {{ portName }}</label>
-              <div style="font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--accent);">
-                {{ selectedNode.inputs[portName] || '(unconnected)' }}
-              </div>
-            </div>
-          </div>
-
-          <!-- Output Ports in Inspector (View-only channel tags; editable on the link) -->
-          <div v-for="(val, portName) in selectedNode.outputs" :key="'out-group-' + portName" style="margin-bottom: 10px;">
-            <div v-if="Array.isArray(val)">
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                <label class="field-label">{{ portName }} (multiple)</label>
-                <button @click="addChannelItem(selectedNode, 'outputs', portName)" style="padding: 1px 6px; font-size: 11px;">
-                  + Add Output Socket
-                </button>
-              </div>
-              <div v-for="(chItem, idx) in val" :key="'out-' + portName + '-' + idx" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                <div style="flex: 1; font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; color: var(--accent);">
-                  {{ chItem || '(unconnected)' }}
-                </div>
-                <button v-if="val.length > 1" @click="removeChannelItem(selectedNode, 'outputs', portName, idx)" style="padding: 2px 6px; color: var(--accent-rose);">
-                  -
-                </button>
-              </div>
-            </div>
-            <div v-else class="field-group">
-              <label class="field-label">Output Port: {{ portName }}</label>
-              <div style="font-family: monospace; font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; color: var(--accent);">
-                {{ selectedNode.outputs[portName] || '(unconnected)' }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Schema Parameters Form -->
-        <div
-          v-if="selectedSchema && selectedSchema.parameters && Object.keys(selectedSchema.parameters).length > 0"
-          style="border-top: 1px solid var(--border); padding-top: 10px;">
-          <div
-            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
-            Parameters (Schema-Driven)
-          </div>
-
-          <div v-for="(pDef, pKey) in selectedSchema.parameters" :key="pKey" class="field-group"
-            style="margin-bottom: 10px;">
-            <label class="field-label" :title="pDef.description">
-              {{ pDef.label || pKey }}
-              <span v-if="pDef.required" style="color: var(--accent-rose);">*</span>
-            </label>
-
-            <!-- Enum dropdown -->
-            <select v-if="pDef.enum" v-model="selectedNode.config[pKey]" @change="validateChain()">
-              <option v-for="opt in pDef.enum" :key="opt" :value="opt">{{ opt }}</option>
-            </select>
-
-            <!-- Integer / Float input -->
-            <input v-else-if="pDef.type === 'integer' || pDef.type === 'int'" type="number" :min="pDef.min"
-              :max="pDef.max" v-model.number="selectedNode.config[pKey]" @input="validateChain()">
-
-            <!-- Standard text / string / filepath -->
-            <input v-else type="text" v-model="selectedNode.config[pKey]" @input="validateChain()"
-              :placeholder="pDef.default !== undefined ? String(pDef.default) : ''">
-
-            <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3; margin-top: 2px;">
-              {{ pDef.description }}
-            </div>
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Transport Backend</label>
+          <select v-model="backend" @change="validateChain()">
+            <option value="file">File (Directory watch/write)</option>
+            <option value="socket">Socket (UDP Datagram)</option>
+            <option value="shm">SHM (Shared Memory POSIX Ring)</option>
+            <option value="uds">UDS (Unix Domain Socket)</option>
+            <option value="sim">Sim (Interactive Simulation)</option>
+          </select>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+            Selects the IPC / transport fabric runtime for this pipeline.
           </div>
         </div>
       </div>
+      <div class="modal-footer">
+        <button @click="closeSaveModal()">Cancel</button>
+        <button class="primary" @click="confirmSaveToDisk()">Save to Disk</button>
+      </div>
+    </div>
+  </div>
 
-      <!-- Selected Wire Properties -->
-      <div v-else-if="selectedWireId" class="inspector-scroll">
-        <div style="font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 8px;">
-          🔗 Connection Wire
-        </div>
-        <div class="field-group">
-          <label class="field-label">Channel Identifier (Shared across link)</label>
-          <input type="text"
-                 v-model="getSelectedWire().channel"
-                 @input="updateWireChannelName(getSelectedWire().id, getSelectedWire().channel)"
-                 placeholder="e.g. fast_pipe">
-          <div style="font-size: 10px; color: var(--text-muted); line-height: 1.35; margin-top: 4px;">
-            Renaming this channel automatically updates the linked source output socket and destination input socket.
-          </div>
+  <!-- Modal: Export Chain Prompt (TOML or JSON) -->
+  <div v-if="showExportModal" class="modal-backdrop" @click="closeExportModal()">
+    <div class="modal-dialog" @click.stop style="max-width: 420px;">
+      <div class="modal-header">
+        <span class="modal-title">📥 Export Chain Definition</span>
+        <button class="modal-close-btn" @click="closeExportModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
+          Choose the export format for pipeline <strong>{{ chainName }}</strong>:
+        </p>
+        <div style="display: flex; gap: 10px;">
+          <button class="export-choice-card" @click="exportToml(); closeExportModal();">
+            <span style="font-size: 24px;">📄</span>
+            <div style="text-align: left;">
+              <div style="font-weight: 700; color: #fff;">TOML Format</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Standard proxy configuration (.toml)</div>
+            </div>
+          </button>
+          <button class="export-choice-card" @click="exportJson(); closeExportModal();">
+            <span style="font-size: 24px;">📋</span>
+            <div style="text-align: left;">
+              <div style="font-weight: 700; color: #fff;">JSON Format</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Structured pipeline schema object (.json)</div>
+            </div>
+          </button>
         </div>
       </div>
-
-      <!-- Empty Selection State -->
-      <div v-else class="empty-state">
-        <div style="font-size: 24px; margin-bottom: 8px;">🖱️</div>
-        <div>Select a handler node or connection wire on the canvas to inspect and edit properties.</div>
+      <div class="modal-footer">
+        <button @click="closeExportModal()">Close</button>
       </div>
-
-      <!-- Live Diagnostics Banner -->
-      <div class="diagnostics-panel">
-        <div class="diag-title">
-          <span>Diagnostics</span>
-          <span :style="{ color: validation.valid ? 'var(--accent-green)' : 'var(--accent-rose)' }">
-            {{ validation.valid ? '✓ Clean' : '! ' + validation.errors.length + ' Issues' }}
-          </span>
-        </div>
-
-        <div v-if="validation.valid && validation.warnings.length === 0" class="diag-item diag-valid">
-          ✓ Pipeline topology and handler configurations are verified.
-        </div>
-
-        <div v-for="(err, idx) in validation.errors" :key="'e-' + idx" class="diag-item diag-error">
-          ✕ {{ err }}
-        </div>
-
-        <div v-for="(warn, idx) in validation.warnings" :key="'w-' + idx" class="diag-item diag-warning">
-          ⚠ {{ warn }}
-        </div>
-      </div>
-    </aside>
-
+    </div>
   </div>
 
   <script src="js/builder_canvas.js"></script>

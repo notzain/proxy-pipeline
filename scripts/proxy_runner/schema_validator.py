@@ -227,6 +227,13 @@ def validate_chain_topology(
                     if c_clean:
                         input_channels.setdefault(c_clean, []).append(name)
 
+    # Check for duplicate output channels across handlers (each connection wire / output channel must be uniquely named)
+    for ch, producers in output_channels.items():
+        if len(producers) > 1:
+            errors.append(
+                f"Channel wire '{ch}' is produced by multiple handlers ({producers}). Connection wires must be uniquely named."
+            )
+
     # Check for disconnected channels
     for ch, consumers in input_channels.items():
         if ch not in output_channels:

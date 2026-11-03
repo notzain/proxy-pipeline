@@ -7,6 +7,11 @@ function createApp() {
     schemas: {},
     schemaCategories: {},
     collapsedCategories: {},
+    searchQuery: '',
+    chainName: 'custom_chain',
+    saveFilename: 'custom_chain.toml',
+    showSaveModal: false,
+    showExportModal: false,
     backend: 'file',
     globalConfig: {
       'file.path': '/tmp/proxy_watch',
@@ -20,6 +25,7 @@ function createApp() {
     selectedNode: null,
     selectedSchema: null,
     selectedWireId: null,
+    showDiagnosticsDrawer: false,
 
     validation: {
       valid: true,
@@ -70,6 +76,34 @@ function createApp() {
         cats[cat].push(schema);
       }
       this.schemaCategories = cats;
+    },
+
+    get filteredSchemaCategories() {
+      const q = (this.searchQuery || '').trim().toLowerCase();
+      if (!q) return this.schemaCategories;
+
+      const filtered = {};
+      for (const [cat, handlers] of Object.entries(this.schemaCategories)) {
+        const matches = handlers.filter((h) => {
+          const name = (h.name || '').toLowerCase();
+          const disp = (h.displayName || '').toLowerCase();
+          const role = (h.role || '').toLowerCase();
+          const desc = (h.description || '').toLowerCase();
+          return name.includes(q) || disp.includes(q) || role.includes(q) || desc.includes(q);
+        });
+        if (matches.length > 0) {
+          filtered[cat] = matches;
+        }
+      }
+      return filtered;
+    },
+
+    get filteredHandlersCount() {
+      let count = 0;
+      for (const handlers of Object.values(this.filteredSchemaCategories)) {
+        count += handlers.length;
+      }
+      return count;
     },
 
     toggleCategory(category) {
@@ -125,29 +159,28 @@ function createApp() {
         type: handlerType,
         x: x || 250,
         y: y || 150,
+        collapsed: false,
         config: config,
         inputs: {},
         outputs: {},
       };
 
-      // Set default channel names from schema
+      // Initialize socket structures empty (do not populate default/placeholder channel names)
       if (schema.ports && schema.ports.inputs) {
         for (const p of schema.ports.inputs) {
           if (p.cardinality === 'multiple') {
-            const defs = (p.default || 'in_channel').split(',').map((s) => s.trim()).filter(Boolean);
-            newNode.inputs[p.name] = defs.length > 0 ? defs : ['in_channel'];
+            newNode.inputs[p.name] = [''];
           } else {
-            newNode.inputs[p.name] = p.default || 'in_channel';
+            newNode.inputs[p.name] = '';
           }
         }
       }
       if (schema.ports && schema.ports.outputs) {
         for (const p of schema.ports.outputs) {
           if (p.cardinality === 'multiple') {
-            const defs = (p.default || 'out_channel').split(',').map((s) => s.trim()).filter(Boolean);
-            newNode.outputs[p.name] = defs.length > 0 ? defs : ['out_channel'];
+            newNode.outputs[p.name] = [''];
           } else {
-            newNode.outputs[p.name] = p.default || 'out_channel';
+            newNode.outputs[p.name] = '';
           }
         }
       }
@@ -179,6 +212,14 @@ function createApp() {
     updateWireChannelName(wireId, newName) {
       const wire = this.wires.find((w) => w.id === wireId);
       if (!wire) return;
+      const cleanName = (newName || '').trim();
+
+      // Check wire name uniqueness across all other wires
+      const isDuplicate = this.wires.some((w) => w.id !== wireId && w.channel === cleanName);
+      if (cleanName && isDuplicate) {
+        this.flashStatus(`⚠️ Warning: Channel '${cleanName}' is already used by another wire!`);
+      }
+
       wire.channel = newName;
 
       // Automatically update source node output
@@ -207,6 +248,129 @@ function createApp() {
       this.validateChain();
     },
 
+    toggleNodeCollapse(node) {
+      if (!node) return;
+      node.collapsed = !node.collapsed;
+      setTimeout(() => {
+        this.updateWires();
+      }, 40);
+    },
+
+    getNodeErrors(node) {
+      if (!node) return [];
+      const nodeDiags = this.formattedDiagnostics.filter((d) => d.nodeName === node.name && d.type === 'error');
+      return nodeDiags.map((d) => d.message);
+    },
+
+    getNodeWarnings(node) {
+      if (!node) return [];
+      const nodeDiags = this.formattedDiagnostics.filter((d) => d.nodeName === node.name && d.type === 'warning');
+      return nodeDiags.map((d) => d.message);
+    },
+
+    get formattedDiagnostics() {
+      const items = [];
+      const rawErrors = (this.validation && this.validation.errors) || [];
+      const rawWarnings = (this.validation && this.validation.warnings) || [];
+
+      // Build mapping from channel name -> { nodeName, portLabel } for both outputs and inputs
+      const channelToOutputPort = new Map();
+      const channelToInputPort = new Map();
+
+      for (const node of this.nodes) {
+        const outPorts = this.getNodeOutputPorts(node);
+        for (const p of outPorts) {
+          if (p.channel) {
+            channelToOutputPort.set(p.channel, { nodeName: node.name, label: `'${p.label}'` });
+          }
+        }
+        const inPorts = this.getNodeInputPorts(node);
+        for (const p of inPorts) {
+          if (p.channel) {
+            channelToInputPort.set(p.channel, { nodeName: node.name, label: `'${p.label}'` });
+          }
+        }
+      }
+
+      const processMsg = (rawMsg, type) => {
+        let msg = rawMsg;
+        let nodeName = 'Pipeline';
+
+        // 1. Check for Handler 'name' prefix pattern: Handler 'xxx' missing required ...
+        const handlerMatch = msg.match(/^Handler '([^']+)'\s*(.*)/i);
+        if (handlerMatch) {
+          nodeName = handlerMatch[1];
+          let rest = handlerMatch[2];
+          // Transform port name in rest if present (e.g. "missing required input binding: input_channel" or "input_channels")
+          rest = rest.replace(/input_channels?/g, 'input socket');
+          rest = rest.replace(/output_channels?/g, 'output socket');
+          // Capitalize first character
+          msg = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : msg;
+          return { nodeName, message: msg, type };
+        }
+
+        // 2. Check for Duplicate handler name 'xxx' pattern
+        const dupHandlerMatch = msg.match(/^Duplicate handler name '([^']+)'/i);
+        if (dupHandlerMatch) {
+          return { nodeName: dupHandlerMatch[1], message: `Duplicate handler instance name '${dupHandlerMatch[1]}'`, type };
+        }
+
+        // 3. Check for Output channel 'xxx' produced by ['yyy'] is not consumed by any handler...
+        const outUnconsumedMatch = msg.match(/^Output channel '([^']+)' produced by (?:\[?'?([^'\]]+)'?\]?)\s*(.*)/i);
+        if (outUnconsumedMatch) {
+          const ch = outUnconsumedMatch[1];
+          const producer = outUnconsumedMatch[2];
+          const rest = outUnconsumedMatch[3];
+          nodeName = producer;
+          const portInfo = channelToOutputPort.get(ch);
+          const portLabel = portInfo ? portInfo.label : `'${ch}'`;
+          msg = `${portLabel} is not consumed by any downstream handler`;
+          return { nodeName, message: msg, type };
+        }
+
+        // 4. Check for Input channel 'xxx' consumed by ['yyy'] has no producing handler...
+        const inUnproducedMatch = msg.match(/^Input channel '([^']+)' consumed by (?:\[?'?([^'\]]+)'?\]?)\s*(.*)/i);
+        if (inUnproducedMatch) {
+          const ch = inUnproducedMatch[1];
+          const consumer = inUnproducedMatch[2];
+          nodeName = consumer;
+          const portInfo = channelToInputPort.get(ch);
+          const portLabel = portInfo ? portInfo.label : `'${ch}'`;
+          msg = `${portLabel} has no upstream producing handler connected`;
+          return { nodeName, message: msg, type };
+        }
+
+        // 5. Check for Channel wire 'xxx' is produced by multiple handlers ([...])
+        const multiProduceMatch = msg.match(/^Channel wire '([^']+)' is produced by multiple handlers \(([^)]+)\)/i);
+        if (multiProduceMatch) {
+          const ch = multiProduceMatch[1];
+          const producers = multiProduceMatch[2];
+          const portInfo = channelToOutputPort.get(ch);
+          const portLabel = portInfo ? portInfo.label : `'${ch}'`;
+          return {
+            nodeName: producers.split(',')[0].replace(/['\s\[\]]/g, '') || 'Channel Wire',
+            message: `Wire ${portLabel} is produced by multiple handlers (${producers}). Wire names must be unique.`,
+            type,
+          };
+        }
+
+        // 6. Generic node name match if any node's name appears in single quotes
+        for (const n of this.nodes) {
+          if (msg.includes(`'${n.name}'`)) {
+            nodeName = n.name;
+            break;
+          }
+        }
+
+        return { nodeName, message: msg, type };
+      };
+
+      rawErrors.forEach((e) => items.push(processMsg(e, 'error')));
+      rawWarnings.forEach((w) => items.push(processMsg(w, 'warning')));
+
+      return items;
+    },
+
     getSelectedNode() {
       return this.selectedNode;
     },
@@ -226,12 +390,44 @@ function createApp() {
     },
 
     deleteWire(wireId) {
+      const wire = this.wires.find((w) => w.id === wireId);
+      if (wire) {
+        // Disconnect channel bindings from the connected ports on both ends
+        const fromNode = this.nodes.find((n) => n.id === wire.fromNodeId);
+        if (fromNode && fromNode.outputs && fromNode.outputs[wire.fromPort] !== undefined) {
+          if (Array.isArray(fromNode.outputs[wire.fromPort])) {
+            fromNode.outputs[wire.fromPort][wire.fromIndex || 0] = '';
+          } else {
+            fromNode.outputs[wire.fromPort] = '';
+          }
+        }
+        const toNode = this.nodes.find((n) => n.id === wire.toNodeId);
+        if (toNode && toNode.inputs && toNode.inputs[wire.toPort] !== undefined) {
+          if (Array.isArray(toNode.inputs[wire.toPort])) {
+            toNode.inputs[wire.toPort][wire.toIndex || 0] = '';
+          } else {
+            toNode.inputs[wire.toPort] = '';
+          }
+        }
+      }
+
       this.wires = this.wires.filter((w) => w.id !== wireId);
       if (this.selectedWireId === wireId) {
         this.selectedWireId = null;
       }
       this.updateWires();
       this.validateChain();
+    },
+
+    isPortLinked(nodeId, direction, portName, portIndex = 0) {
+      if (direction === 'output') {
+        return this.wires.some(
+          (w) => w.fromNodeId === nodeId && w.fromPort === portName && (w.fromIndex || 0) === portIndex
+        );
+      }
+      return this.wires.some(
+        (w) => w.toNodeId === nodeId && w.toPort === portName && (w.toIndex || 0) === portIndex
+      );
     },
 
     getNodeInputPorts(node) {
@@ -285,8 +481,7 @@ function createApp() {
     addChannelItem(node, direction, portName) {
       if (!node || !node[direction] || !Array.isArray(node[direction][portName])) return;
       const arr = node[direction][portName];
-      const newName = `${node.name}_${portName}_${arr.length + 1}`;
-      arr.push(newName);
+      arr.push('');
       this.onChannelUpdated();
     },
 
@@ -346,7 +541,7 @@ function createApp() {
       fromIndex = fromIndex || 0;
       toIndex = toIndex || 0;
 
-      // Existing wire check
+      // Existing wire check (exact same link)
       const exists = this.wires.some(
         (w) =>
           w.fromNodeId === fromNodeId &&
@@ -358,20 +553,48 @@ function createApp() {
       );
       if (exists) return;
 
-      // Determine or assign unique channel name
-      let channelName = '';
+      // Single outgoing link rule: An output socket may only ever have 1 existing link.
+      // If a link already originates from this output socket, modify/replace that previous link.
+      const existingOutWireIdx = this.wires.findIndex(
+        (w) =>
+          w.fromNodeId === fromNodeId &&
+          w.fromPort === fromPort &&
+          (w.fromIndex || 0) === fromIndex
+      );
+
+      if (existingOutWireIdx !== -1) {
+        const oldWire = this.wires[existingOutWireIdx];
+        // Clear channel name on the old target input port if it was bound
+        const oldToNode = this.nodes.find((n) => n.id === oldWire.toNodeId);
+        if (oldToNode && oldToNode.inputs) {
+          if (Array.isArray(oldToNode.inputs[oldWire.toPort])) {
+            oldToNode.inputs[oldWire.toPort][oldWire.toIndex || 0] = '';
+          } else {
+            oldToNode.inputs[oldWire.toPort] = '';
+          }
+        }
+        // Remove old wire
+        this.wires.splice(existingOutWireIdx, 1);
+      }
+
+      // Also check if target input socket already had a wire connected; if so, disconnect it
+      const existingInWireIdx = this.wires.findIndex(
+        (w) =>
+          w.toNodeId === toNodeId &&
+          w.toPort === toPort &&
+          (w.toIndex || 0) === toIndex
+      );
+      if (existingInWireIdx !== -1) {
+        this.wires.splice(existingInWireIdx, 1);
+      }
+
+      // Always generate a fresh unique channel wire name when creating a new link
+      const channelName = this.generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex);
+
       if (Array.isArray(fromNode.outputs[fromPort])) {
-        channelName = fromNode.outputs[fromPort][fromIndex];
-        if (!channelName || channelName.includes('out_channel')) {
-          channelName = this.generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex);
-          fromNode.outputs[fromPort][fromIndex] = channelName;
-        }
+        fromNode.outputs[fromPort][fromIndex] = channelName;
       } else {
-        channelName = fromNode.outputs[fromPort];
-        if (!channelName || channelName === 'out_channel') {
-          channelName = this.generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex);
-          fromNode.outputs[fromPort] = channelName;
-        }
+        fromNode.outputs[fromPort] = channelName;
       }
 
       // Assign to target input port
@@ -409,6 +632,11 @@ function createApp() {
       labels.forEach((l) => l.remove());
 
       for (const wire of this.wires) {
+        // If wire is currently being modified/reassigned by user drag, hide its static SVG elements
+        if (this.canvasInstance && this.canvasInstance.activeDraftWire && this.canvasInstance.activeDraftWire.reassigningWireId === wire.id) {
+          continue;
+        }
+
         const fromIdx = wire.fromIndex !== undefined ? wire.fromIndex : 0;
         const toIdx = wire.toIndex !== undefined ? wire.toIndex : 0;
 
@@ -478,6 +706,40 @@ function createApp() {
           labelGroup.appendChild(rectEl);
           labelGroup.appendChild(textEl);
 
+          // If wire is selected, render an interactive disconnect/delete button '✕'
+          if (isSelected) {
+            const delRadius = 8;
+            const delCenterX = midX + estWidth / 2 + 10;
+            const delCenterY = midY;
+
+            const delGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            delGroup.setAttribute('class', 'wire-delete-btn');
+            delGroup.setAttribute('cursor', 'pointer');
+            delGroup.setAttribute('pointer-events', 'auto');
+
+            const delCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            delCircle.setAttribute('cx', delCenterX);
+            delCircle.setAttribute('cy', delCenterY);
+            delCircle.setAttribute('r', delRadius);
+            delCircle.setAttribute('class', 'wire-delete-circle');
+
+            const delCross = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            delCross.setAttribute('x', delCenterX);
+            delCross.setAttribute('y', delCenterY);
+            delCross.setAttribute('class', 'wire-delete-text');
+            delCross.textContent = '✕';
+
+            delGroup.appendChild(delCircle);
+            delGroup.appendChild(delCross);
+
+            delGroup.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.deleteWire(wire.id);
+            });
+
+            labelGroup.appendChild(delGroup);
+          }
+
           labelGroup.addEventListener('click', (e) => {
             e.stopPropagation();
             this.selectWire(wire.id);
@@ -514,6 +776,7 @@ function createApp() {
       }
 
       return {
+        name: this.chainName || 'custom_chain',
         backend: this.backend,
         config: { ...this.globalConfig },
         handlers: handlers,
@@ -523,6 +786,10 @@ function createApp() {
     importChainDefinition(chainDef) {
       this.nodes = [];
       this.wires = [];
+      if (chainDef.name) {
+        this.chainName = chainDef.name;
+        this.onChainNameChanged();
+      }
       this.backend = chainDef.backend || 'file';
       this.globalConfig = { ...(chainDef.config || {}) };
 
@@ -641,6 +908,7 @@ function createApp() {
             type: h.type,
             x: colX,
             y: nodeY,
+            collapsed: false,
             config: { ...(h.config || {}) },
             inputs: {},
             outputs: {},
@@ -731,7 +999,11 @@ function createApp() {
     },
 
     toTomlString(obj) {
-      let out = `# Generated by Proxy Visual Chain Builder\nbackend = "${obj.backend}"\n\n[config]\n`;
+      let out = `# Generated by Proxy Visual Chain Builder\n`;
+      if (obj.name) {
+        out += `# Pipeline Name: ${obj.name}\n`;
+      }
+      out += `backend = "${obj.backend}"\n\n[config]\n`;
       for (const [k, v] of Object.entries(obj.config || {})) {
         if (typeof v === 'boolean') {
           out += `"${k}" = ${v}\n`;
@@ -778,19 +1050,63 @@ function createApp() {
     exportToml() {
       const chainDef = this.exportChainDefinition();
       const tomlStr = this.toTomlString(chainDef);
-      this.downloadFile('chain.toml', tomlStr);
-      this.flashStatus('Exported chain.toml successfully!');
+      const filename = (this.chainName ? this.chainName.trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'chain') + '.toml';
+      this.downloadFile(filename, tomlStr);
+      this.flashStatus(`Exported ${filename} successfully!`);
     },
 
     exportJson() {
       const chainDef = this.exportChainDefinition();
       const jsonStr = JSON.stringify(chainDef, null, 2);
-      this.downloadFile('chain.json', jsonStr);
-      this.flashStatus('Exported chain.json successfully!');
+      const filename = (this.chainName ? this.chainName.trim().replace(/[^a-zA-Z0-9_-]/g, '_') : 'chain') + '.json';
+      this.downloadFile(filename, jsonStr);
+      this.flashStatus(`Exported ${filename} successfully!`);
     },
 
-    async saveToDisk() {
+    onChainNameChanged() {
+      const clean = (this.chainName || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      this.saveFilename = (clean || 'custom_chain') + '.toml';
+      this.validateChain();
+    },
+
+    openSaveModal() {
+      this.onChainNameChanged();
+      this.showSaveModal = true;
+    },
+
+    closeSaveModal() {
+      this.showSaveModal = false;
+    },
+
+    openExportModal() {
+      this.showExportModal = true;
+    },
+
+    closeExportModal() {
+      this.showExportModal = false;
+    },
+
+    resetChain() {
+      if (this.nodes.length > 0) {
+        if (!confirm('Are you sure you want to reset the chain? All nodes and wire connections will be removed.')) {
+          return;
+        }
+      }
+      this.nodes = [];
+      this.wires = [];
+      this.selectedNodeId = null;
+      this.selectedNode = null;
+      this.selectedSchema = null;
+      this.selectedWireId = null;
+      this.updateWires();
+      this.validateChain();
+      this.flashStatus('Chain reset to blank state.');
+    },
+
+    async confirmSaveToDisk() {
+      this.closeSaveModal();
       const chainDef = this.exportChainDefinition();
+      chainDef.filename = this.saveFilename || 'custom_chain.toml';
       try {
         const res = await fetch('/api/chain/save', {
           method: 'POST',
@@ -806,6 +1122,10 @@ function createApp() {
       } catch (err) {
         alert('Save request failed: ' + err);
       }
+    },
+
+    async saveToDisk() {
+      this.openSaveModal();
     },
 
     async runSimulation() {
