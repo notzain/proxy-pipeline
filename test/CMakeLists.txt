@@ -46,6 +46,7 @@ add_executable(proxy_tests
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/TextCondition.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/PortCondition.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/ProtocolCondition.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/route_handler/src/MetadataFieldCondition.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/CompositeConditions.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/ConditionExpressionParser.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/LuaCondition.cpp"

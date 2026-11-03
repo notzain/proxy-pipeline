@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CompositeConditions.hpp"
+#include "MetadataFieldCondition.hpp"
 #include "PortCondition.hpp"
 #include "ProtocolCondition.hpp"
 #include "RouteAction.hpp"
@@ -10,6 +11,32 @@
 #include <string>
 
 namespace Proxy::Handler {
+
+/**
+ * @brief Fluent factory for generic protocol metadata field conditions.
+ */
+class MetadataField {
+public:
+    static MetadataFieldCondition equals(std::string fieldName, Core::Serialization::Ir::Value expected)
+    {
+        return MetadataFieldCondition(std::move(fieldName), FieldOperator::Equal, std::move(expected));
+    }
+
+    static MetadataFieldCondition notEquals(std::string fieldName, Core::Serialization::Ir::Value expected)
+    {
+        return MetadataFieldCondition(std::move(fieldName), FieldOperator::NotEqual, std::move(expected));
+    }
+
+    static MetadataFieldCondition greaterThan(std::string fieldName, Core::Serialization::Ir::Value expected)
+    {
+        return MetadataFieldCondition(std::move(fieldName), FieldOperator::GreaterThan, std::move(expected));
+    }
+
+    static MetadataFieldCondition lessThan(std::string fieldName, Core::Serialization::Ir::Value expected)
+    {
+        return MetadataFieldCondition(std::move(fieldName), FieldOperator::LessThan, std::move(expected));
+    }
+};
 
 /**
  * @brief Fluent factory for text-based conditions.

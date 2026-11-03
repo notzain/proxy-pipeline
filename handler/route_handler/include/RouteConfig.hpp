@@ -3,6 +3,7 @@
 #include "CompositeConditions.hpp"
 #include "ConditionExpressionParser.hpp"
 #include "LuaCondition.hpp"
+#include "MetadataFieldCondition.hpp"
 #include "PortCondition.hpp"
 #include "ProtocolCondition.hpp"
 #include "RouteAction.hpp"
@@ -31,6 +32,8 @@ struct RouteRuleConfig {
     std::string rejectReason;
     std::string expr;
     std::string script;
+    std::string field;
+    std::string op { "==" };
     int rejectErrorCode { 400 };
     int numericValue { 0 };
     int times { 1 };
@@ -45,6 +48,8 @@ struct RouteRuleConfig {
     static constexpr std::string_view KeySuffixRejectErrorCode { "error_code" };
     static constexpr std::string_view KeySuffixExpr { "expr" };
     static constexpr std::string_view KeySuffixScript { "script" };
+    static constexpr std::string_view KeySuffixField { "field" };
+    static constexpr std::string_view KeySuffixOp { "op" };
 
     /**
      * @brief Constructs a RouteRuleConfig from the given prefix and configuration store.
@@ -58,6 +63,8 @@ struct RouteRuleConfig {
         rule.expr = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixExpr), "");
         rule.script = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixScript), "");
         rule.type = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixType), "contains");
+        rule.field = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixField), "");
+        rule.op = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixOp), "==");
         rule.pattern = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixPattern), "");
         rule.target = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixTarget), "");
         rule.actionType = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixAction), "forward");
@@ -93,6 +100,24 @@ struct RouteRuleConfig {
                 condition = std::make_unique<TextCondition>(pattern, TextMatchMode::Exact, 1);
             } else if (type == "client_port" || type == "port") {
                 condition = std::make_unique<PortCondition>(static_cast<std::uint16_t>(numericValue));
+            } else if (type == "metadata_field" || type == "field") {
+                FieldOperator fieldOp = FieldOperator::Equal;
+                if (op == "!=")
+                    fieldOp = FieldOperator::NotEqual;
+                else if (op == "<")
+                    fieldOp = FieldOperator::LessThan;
+                else if (op == "<=")
+                    fieldOp = FieldOperator::LessThanOrEqual;
+                else if (op == ">")
+                    fieldOp = FieldOperator::GreaterThan;
+                else if (op == ">=")
+                    fieldOp = FieldOperator::GreaterThanOrEqual;
+
+                Core::Serialization::Ir::Value val = pattern.empty()
+                    ? Core::Serialization::Ir::Value(numericValue)
+                    : Core::Serialization::Ir::Value(pattern);
+
+                condition = std::make_unique<MetadataFieldCondition>(field, fieldOp, std::move(val));
             } else if (type == "protocol") {
                 condition = std::make_unique<ProtocolCondition>(Backend::ProtocolId { static_cast<std::uint8_t>(numericValue) });
             } else if (type == "default" || type == "fallback") {

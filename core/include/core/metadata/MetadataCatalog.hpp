@@ -24,6 +24,7 @@ namespace Core::Metadata {
 class MetadataCatalog {
 public:
     using ToIrFn = std::function<std::optional<Serialization::Ir::Value>(Common::Compat::span<const std::byte>)>;
+    using FieldExtractorFn = std::function<std::optional<Serialization::Ir::Value>(Common::Compat::span<const std::byte>, std::string_view)>;
 
     /**
      * @brief Registers a strongly-typed metadata struct `T` into the catalog instance.
@@ -42,6 +43,31 @@ public:
             std::memcpy(&obj, bytes.data(), sizeof(T));
             return Serialization::Ir::toIntermediate(obj);
         });
+
+        registerFieldExtractorFn(Backend::MetadataTraits<T>::protocol, [](Common::Compat::span<const std::byte> bytes, std::string_view fieldName) -> std::optional<Serialization::Ir::Value> {
+            if (bytes.size() < sizeof(T)) {
+                return std::nullopt;
+            }
+            T obj { };
+            std::memcpy(&obj, bytes.data(), sizeof(T));
+            constexpr auto fieldTuple = Serialization::TypeTraits<T>::fields();
+
+            std::optional<Serialization::Ir::Value> result = std::nullopt;
+            std::apply([&](const auto&... desc) {
+                auto extractOne = [&](const auto& d) {
+                    if (result.has_value()) {
+                        return;
+                    }
+                    if (d.name == fieldName) {
+                        result = Serialization::Ir::toIntermediate(obj.*(d.memberPtr));
+                    }
+                };
+                (extractOne(desc), ...);
+            },
+                fieldTuple);
+
+            return result;
+        });
     }
 
     /**
@@ -59,9 +85,24 @@ public:
     static std::optional<Serialization::Ir::Value> toIr(Backend::ProtocolId proto, Common::Compat::span<const std::byte> bytes);
 
     /**
+     * @brief Extracts a single field from metadata bytes by field name.
+     */
+    static std::optional<Serialization::Ir::Value> getField(Backend::ProtocolId proto, Common::Compat::span<const std::byte> bytes, std::string_view fieldName);
+
+    /**
      * @brief Explicitly registers an IR converter function for a protocol ID.
      */
     void registerFn(Backend::ProtocolId proto, ToIrFn fn);
+
+    /**
+     * @brief Explicitly registers a field extractor function for a protocol ID.
+     */
+    void registerFieldExtractorFn(Backend::ProtocolId proto, FieldExtractorFn fn);
+
+    /**
+     * @brief Formats metadata bytes into a human-readable JSON string.
+     */
+    static std::string formatJson(Backend::ProtocolId proto, Common::Compat::span<const std::byte> bytes, bool pretty = false);
 
     /**
      * @brief Returns singleton instance of the catalog.
@@ -71,6 +112,7 @@ public:
 private:
     MetadataCatalog();
     std::unordered_map<Backend::ProtocolId, ToIrFn> m_converters;
+    std::unordered_map<Backend::ProtocolId, FieldExtractorFn> m_fieldExtractors;
 };
 
 } // namespace Core::Metadata
