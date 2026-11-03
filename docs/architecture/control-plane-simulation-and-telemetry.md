@@ -7,9 +7,10 @@ Distributed, multi-process message pipelines are notoriously difficult to observ
 - **Deterministic Replay**: Verifying that a new routing rule or validator behaves identically across edge-case packets requires reproducible execution traces.
 
 The Proxy system addresses this with a comprehensive **Python and Web-based Control Plane**:
-1. **Interactive Step-Wise Simulation Coordinator (`proxy_runner`)**
-2. **Real-Time StatsD Ingestion & Telemetry Dashboard (`read_telemetry.py`)**
-3. **Multi-Process Pipeline Supervisor (`chain_runner.py`)**
+1. **Unified Web Studio & Control Plane Runner (`scripts/frontend_runner.py`)**: Authoritative landing portal (`http://localhost:8080/`), persistent background service, DAG visual builder (`/builder/`), simulation visualizer (`/dashboard/`), and real-time telemetry dashboard (`/telemetry/`).
+2. **Interactive Step-Wise Simulation Coordinator (`scripts/proxy_runner/coordinator.py`)**: Multi-process socket hold interception, multi-trace fan-out aggregation, and dynamic payload generator injection.
+3. **Real-Time StatsD Ingestion & Telemetry Aggregator (`scripts/read_telemetry.py` & embedded collector)**: Collects metrics over UDP port 8125 with lock-free hot path recording.
+4. **Headless Multi-Process Pipeline Supervisor (`scripts/chain_runner.py`)**: Focused exclusively on process spawning, configuration file isolation, process-group signal routing, and CI trace assertions.
 
 ---
 
@@ -113,7 +114,8 @@ flowchart LR
 
 ## 4. Multi-Process Pipeline Orchestration (`chain_runner.py`)
 
-- Coordinates running arbitrary topologies defined in `.toml` or `.json` files across any backend.
-- Automatically handles binary resolution, isolated process groups, environment variable propagation, and unified `Ctrl+C` graceful termination.
-- Supports trace assertion mode: captures deterministic execution traces and compares them against reference artifacts in CI regression suites.
+- **Dedicated Headless Supervisor**: Refocused strictly on process lifecycle management, environment resolution, and process-group signal delivery (`os.killpg(pid, SIGINT)`). Stripped of web server hosting to prevent connection drops on chain restarts.
+- **Topology Resolution**: Automatically resolves handler binary targets across backends (`file`, `socket`, `uds`, `shm`, `sim`, `vendor`) and generates isolated temporary configuration files.
+- **Trace Assertion & CI Verification**: Captures normalized execution traces (`--trace`) and asserts identity against golden baselines (`--assert-trace`), failing with exact line and column locations if divergence occurs.
+- **Decoupled Web Studio Integration**: Managed seamlessly in the background by `scripts/frontend_runner.py` via REST endpoints (`/api/runner/start`, `/api/runner/stop`, `/api/runner/status`).
 

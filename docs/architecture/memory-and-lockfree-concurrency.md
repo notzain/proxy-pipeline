@@ -93,6 +93,8 @@ flowchart LR
   Represents non-owning, non-dangling pointer references to long-lived objects (e.g. channel references in handlers).
 - **`Common::Memory::Borrow<T>`**:
   Explicit move-only reference token enforcing borrowing semantics without copy overhead.
+- **`Common::Memory::ByteView` & `Common::Memory::MutableByteView`**:
+  High-performance, zero-allocation wrappers over contiguous byte memory, offering safe sub-slicing and conversion to `std::string_view` without heap allocation.
 - **`Common::IO::UniqueFd`**:
   Strict RAII wrapper for POSIX file descriptors (`int fd`). Automatically invokes `close()` on destruction, preventing descriptor leaks on socket or file errors.
 

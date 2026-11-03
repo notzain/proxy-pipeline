@@ -8,7 +8,9 @@ The architecture is founded on strict **orthogonal separation**: business applic
 ```mermaid
 flowchart TB
     subgraph Control_Plane ["Control Plane & Orchestration (Python / Web UI)"]
-        CR["chain_runner.py (Supervisor & Topology Resolver)"]
+        FR["frontend_runner.py (Unified Web Studio & Control Plane :8080)"]
+        CR["chain_runner.py (Headless Process Supervisor & Topology Resolver)"]
+        CB["chain_builder.py / UI (Visual DAG Builder & Schema Validator)"]
         SIM["proxy_runner (Step-wise Simulation Coordinator)"]
         TEL["read_telemetry.py (StatsD Collector & Dashboard)"]
         GEN["send_ingress.py (High-Throughput PCAP / Traffic Gen)"]
@@ -19,13 +21,16 @@ flowchart TB
         H_INGRESS["UdpIngressHandler"]
         H_VAL["OrderValidationHandler / XmlVerificationHandler"]
         H_ROUTE["RouteHandler / SplitHandler / MergeHandler"]
+        H_SG["ScatterHandler / GatherHandler (Fork-Join Inspection)"]
         H_EGRESS["UdpEgressHandler"]
     end
 
     subgraph Core_Engine ["Core Engine"]
         HR["HandlerRunner (Supervision, Concurrency & Signal Safety)"]
+        SIG["PosixSignalManager (Process Signal Ownership & Safety)"]
         EXEC["ExecutionStrategy (Sequential, DedicatedThread, ThreadPool)"]
         ENV["MessageEnvelope & WireFormat"]
+        MC["MetadataCatalog (Decentralized Protocol Reflection)"]
         STAT["MetricsRegistry & StatsDExporter"]
     end
 
@@ -37,19 +42,22 @@ flowchart TB
         B_INP["backend-inproc (Lock-Free In-Memory Queues)"]
         B_SIM["backend-sim (Simulation & Step-wise Hold Sockets)"]
         B_FILE["backend-file (Directory & File Queues)"]
+        B_VEND["backend-vendor (3rd-Party Transport SDK & Leased Views)"]
     end
 
     subgraph Foundation ["Common Foundation (common/*)"]
         COMPAT["Common::Compat (span, jthread, stop_token, latch, atomic_wait)"]
-        MEM["BufferPool, BufferSlice, NotNull, Borrow, SmallSpanBuffer"]
+        MEM["BufferPool, BufferSlice, NotNull, Borrow, SmallSpanBuffer, ByteView"]
         QUEUES["Lock-Free SpscQueue, MpmcQueue"]
     end
 
     Control_Plane -->|Orchestrates processes & topologies| Core_Engine
     Handler_Domain -->|Inherits from| H_BASE
     H_BASE -->|Lifecycle supervised by| HR
+    HR --> SIG
     HR -->|Dispatches through| EXEC
     Handler_Domain -->|Exchanges framed envelopes| ENV
+    Handler_Domain -->|Reflects protocol headers| MC
     Core_Engine -->|Operates solely through| BI
     BI --> B_SHM
     BI --> B_SOCK
@@ -57,6 +65,7 @@ flowchart TB
     BI --> B_INP
     BI --> B_SIM
     BI --> B_FILE
+    BI --> B_VEND
     Core_Engine -->|Relies on primitives| Foundation
     Transport_Layer -->|Relies on primitives| Foundation
 ```
@@ -103,5 +112,6 @@ The codebase builds by default under C++20 while maintaining strict C++17 compat
 | **Separate Executables per Backend (`<h>_<b>`)** | Eliminates virtual dispatch overhead on transport hot paths and allows minimal container footprints. | Single monolithic binary with dynamic plugin loading (adds dlopen overhead, runtime resolution failures, and larger binary footprints). |
 | **Cache-Line Aligned SPSC Shared Memory Rings** | Sub-microsecond IPC with zero kernel boundary crossings; separate 64-byte aligned read/write indices prevent false sharing. | Unix Domain Sockets (requires kernel mode transitions); MPMC shared memory (requires atomic CAS contention). |
 | **Declarative Multi-Process Topologies (`.toml`)** | Clear, version-controlled pipeline configuration decoupled from compiled binaries; reproducible in CI and production. | Hardcoded shell scripts (fragile, platform-dependent, error-prone signal handling). |
+| **Unified Web Studio & Decoupled Supervisor** | `frontend_runner.py` provides persistent multi-tool UI lifecycle; `chain_runner.py` focuses purely on headless process supervision and signal handling. | Monolithic runner embedding web servers inside worker processes, killing browser connections on chain restarts. |
 | **Interactive Step-Wise Simulation via Hold Sockets** | Allows native C++ binaries to be paused, inspected, and stepped packet-by-packet in a browser UI without modifying production C++ code. | Running in GDB/LLDB (slow, hard to coordinate across 5 simultaneous processes); pure Python mock simulation (fails to test actual C++ binary bugs). |
 

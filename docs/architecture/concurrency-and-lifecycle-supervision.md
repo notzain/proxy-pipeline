@@ -94,24 +94,30 @@ Handling operating system termination signals (`SIGINT`, `SIGTERM`) cleanly in m
 sequenceDiagram
     autonumber
     actor OS as Operating System / Kernel
-    participant SigHandler as Signal Handler (C-style)
+    participant SigManager as PosixSignalManager (RAII & Ownership)
+    participant SigHandler as Async-Signal Handler (C-style)
     participant AtomicFlag as Signal Pipe / Atomic Flag
     participant Runner as HandlerRunner Event Loop
     participant Strat as Execution Strategy
     participant Channels as Input & Output Channels
 
+    Note over Runner,SigManager: HandlerRunner acquires PosixSignalManager::acquire(this)
     OS->>SigHandler: SIGINT / SIGTERM
     Note over SigHandler: Async-Signal-Safe write to self-pipe<br/>or atomic stop_source request
-    SigHandler-->>AtomicFlag: request_stop()
+    SigHandler-->>AtomicFlag: request_stop() / isShutdownRequested()
     AtomicFlag-->>Runner: Wakes up poller (poll / futex wake)
     Runner->>Strat: stop()
     Strat->>Channels: Drain in-flight queues & flush pending buffers
     Strat-->>Runner: Threads joined cleanly
+    Note over Runner,SigManager: PosixSignalManager::release(this) restores previous sigaction
     Runner-->>OS: Process exits with code 0
 ```
 
-1. **Async-Signal-Safe Signal Handler**: Installs a POSIX signal handler that exclusively sets an atomic stop flag or writes a single byte to a self-pipe.
-2. **Cooperative Interruption (`Common::Compat::stop_token`)**: Polling loops monitor `stop_token::stop_requested()`. When signaled, pollers terminate immediately without lingering in blocking system calls.
+1. **Async-Signal-Safe Signal Handler & Ownership (`PosixSignalManager`)**:
+   - Decoupled into `Core::Handler::PosixSignalManager`, ensuring exclusive ownership so only one active runner or lifecycle manager installs signal handlers at a time.
+   - Restores previous signal actions upon release.
+   - Installs a POSIX signal handler that exclusively sets an atomic stop flag or writes a single byte to an async-signal-safe self-pipe.
+2. **Cooperative Interruption (`Common::Compat::stop_token`)**: Polling loops monitor `stop_token::stop_requested()` and `PosixSignalManager::isShutdownRequested()`. When signaled, pollers terminate immediately without lingering in blocking system calls.
 3. **Queue Draining**: In-flight messages in lock-free queues are processed and output channels flushed before worker threads are joined.
 4. **Channel Unlinking**: Destructors run deterministically on process exit, ensuring shared memory files (`/dev/shm`) and Unix domain sockets (`/tmp/*.sock`) are unlinked cleanly.
 

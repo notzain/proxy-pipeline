@@ -58,7 +58,7 @@ sequenceDiagram
 ## 3. Deep Dive: Trace Schema & Normalization
 
 ### Trace Document Structure
-An exported trace document contains two primary blocks: `topology` and `events`.
+An exported trace document contains two primary blocks: `topology` and `events`. Events employ a uniform `traces: [...]` array structure supporting single hops, drops, and concurrent multi-branch fan-outs (`SplitHandler`, `ScatterHandler`):
 
 ```json
 {
@@ -78,31 +78,65 @@ An exported trace document contains two primary blocks: `topology` and `events`.
   "events": [
     {
       "eventId": 1,
-      "packetId": 101,
-      "node": "ingress",
-      "channel": "orders_raw",
-      "action": "Forwarded",
-      "payloadLength": 128,
-      "payloadCrc32": "0x3f8a91b2"
+      "msgId": 1,
+      "type": "ingress",
+      "handler": "ingress",
+      "handlerType": "udp_ingress_handler",
+      "inputChannel": "orders_raw",
+      "result": "Loaded",
+      "status": "loaded",
+      "traces": [
+        {
+          "traceId": 1,
+          "msgId": 1,
+          "channel": "orders_raw",
+          "result": "Loaded",
+          "status": "loaded"
+        }
+      ]
     },
     {
       "eventId": 2,
-      "packetId": 101,
-      "node": "validator",
-      "channel": "orders_raw",
-      "action": "Forwarded",
-      "targetChannel": "orders_verified",
-      "payloadLength": 128,
-      "payloadCrc32": "0x3f8a91b2"
+      "msgId": 1,
+      "type": "hop",
+      "handler": "validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
+      "outputChannel": "orders_verified",
+      "result": "Forwarded",
+      "status": "forwarded",
+      "traces": [
+        {
+          "traceId": 1,
+          "msgId": 1,
+          "channel": "orders_verified",
+          "outputChannel": "orders_verified",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "payloadSummary": "<order>...</order>"
+        }
+      ]
     },
     {
       "eventId": 3,
-      "packetId": 102,
-      "node": "validator",
-      "channel": "orders_raw",
-      "action": "Dropped",
-      "reason": "XML Schema validation failed: missing required element <price>",
-      "errorCode": 400
+      "msgId": 2,
+      "type": "hop",
+      "handler": "validator",
+      "handlerType": "xml_verification_handler",
+      "inputChannel": "orders_raw",
+      "result": "Dropped",
+      "status": "dropped",
+      "detail": "XML Schema validation failed: missing required element <price>",
+      "traces": [
+        {
+          "traceId": 1,
+          "msgId": 2,
+          "channel": "orders_raw",
+          "result": "Dropped",
+          "status": "dropped",
+          "detail": "XML Schema validation failed: missing required element <price>"
+        }
+      ]
     }
   ]
 }
@@ -120,7 +154,7 @@ An exported trace document contains two primary blocks: `topology` and `events`.
 When an assertion fails, `TraceManager` does not merely output a raw text `diff`. It performs semantic analysis:
 
 ### 1. Structural Comparison
-- Identifies whether the failure is an **unexpected event**, a **missing event**, or a **field mismatch** (e.g. wrong destination channel or different error code).
+- Identifies whether the failure is an **unexpected event**, a **missing event**, or a **field mismatch** (e.g. wrong destination channel, differing sub-trace count in multi-branch fan-outs, or different error code).
 
 ### 2. Precise Source File Location (`TraceSourceLocator`)
 - `TraceSourceLocator` performs character-offset scanning on the reference JSON file:

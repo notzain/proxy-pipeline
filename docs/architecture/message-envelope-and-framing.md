@@ -79,9 +79,15 @@ sequenceDiagram
    - When receiving a message, handlers receive a `MessageView` that points directly into the channel's receive buffer without heap allocation.
    - Accessors (`view.payload()`, `view.metadata()`, `view.rawBuffer()`) return lightweight `Common::Compat::span<const std::byte>` slices.
    - Strongly-typed metadata is accessed via `view.getMetadata<T>()` through traits (`MetadataTraits<T>`) using alignment-safe copies.
-3. **Open Protocol Identification**:
-   - Replaced fixed enum identifiers with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` aligned with standard IANA 8-bit protocol numbers (e.g. `IPPROTO_UDP` = 17, `RawProtocol` = 0) and `MetadataTraits<T>`, allowing custom applications to declare protocol types without central changes.
-4. **Clock Domain Specification for `timestampNs`**:
+### 3. Open Protocol Identification & Decentralized Reflection (`MetadataCatalog`)
+- Replaced fixed enum identifiers with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` aligned with standard IANA 8-bit protocol numbers (e.g. `IPPROTO_UDP` = 17, `RawProtocol` = 0) and `MetadataTraits<T>`.
+- **Decentralized Protocol Reflection (`Core::Metadata::MetadataCatalog`)**: Protocol metadata structures (e.g. `Core::Net::UdpMetadata`) register with `MetadataCatalog` via `PROXY_REGISTER_METADATA(Type)` without creating circular dependencies on handlers or scripting engines.
+- **Direct Field Extraction & Dynamic Inspection**: Handlers and condition evaluators can inspect fields (`MetadataCatalog::getField(...)`) or format JSON diagnostics (`MetadataCatalog::formatJson(...)`) from raw metadata spans without full object instantiation.
+
+### 4. Parallel Inspection Tunneling (`InspectionHeader`)
+- In scatter-gather topologies (`ScatterHandler` and `GatherHandler`), parallel branches tunnel the orchestration envelope inside metadata via `InspectionHeader` (`0x50585F494E535043ULL`), preserving the original `ProtocolId` and underlying metadata intact.
+
+### 5. Clock Domain Specification for `timestampNs`
    - The 64-bit `timestampNs` field in `EnvelopeHeader` records **nanoseconds since UNIX epoch (`std::chrono::system_clock`)**.
    - **Cross-Host and Distributed Tracing**: Because `MessageEnvelope` traverses physical network sockets (UDP, TCP) and inter-process boundaries where producer and consumer processes may run on separate hosts or containers without a shared monotonic timebase, epoch wall-clock time is required for distributed correlation and simulation replay (e.g. PCAP captures, JSON traces).
    - **Intra-Host Monotonic Latency**: For internal hop timeouts, poller deadlines, and ring buffer synchronization, channels and execution strategies strictly use `std::chrono::steady_clock` to prevent clock shifts or NTP skew from causing deadlocks or erratic timeout behavior.

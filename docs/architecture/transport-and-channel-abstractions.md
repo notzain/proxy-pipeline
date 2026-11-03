@@ -62,6 +62,7 @@ graph TD
         INPROC["backend-inproc<br/>(Lock-free Spsc/Mpmc Ring Queues)"]
         SIM["backend-sim<br/>(Simulation Interception & Hold Sockets)"]
         FILEB["backend-file<br/>(Directory Polling & File System)"]
+        VEND["backend-vendor<br/>(3rd-Party Transport SDK & Leased Views)"]
     end
 ```
 
@@ -92,6 +93,10 @@ graph TD
 - **Use Case**: Offline debugging, audit recording, and file-based batch ingestion.
 - **Implementation**: Output channels write sequentially numbered files to a directory; input channels poll directories for new incoming payloads.
 
+### 7. `backend-vendor` (3rd-Party Transport SDK & Leased Views)
+- **Use Case**: Proprietary vendor SDK integration with mandatory settlement and opaque message lifecycles.
+- **Implementation**: Leverages out-of-band `Backend::Lease` attached to `BufferSlot` and `MessageView`. Supports zero-copy in-memory payload slices or file-mapped dynamic buffers, consuming-forward semantics without intermediate copies, and lock-free Treiber free-list `BufferPool` sharing via `IBackend`.
+
 ---
 
 ## 4. Architectural Trade-offs & Decisions
@@ -103,4 +108,5 @@ graph TD
 | **`socket`** | **5 – 15 µs** | **~ 1-2M msg/s** | Distributed (Network) | Requires UDP port allocation and network tuning. |
 | **`uds`** | **2 – 6 µs** | **~ 3-5M msg/s** | Process Isolated | Requires filesystem socket cleanup on crash. |
 | **`sim`** | **N/A (Stepped)** | **Stepped** | Multi-Process / Stepped | Requires Python simulation server. |
+| **`vendor`** | **SDK-Dependent** | **SDK-Dependent** | SDK-Isolated | Proprietary settlement semantics and lease management. |
 

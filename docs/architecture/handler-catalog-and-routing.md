@@ -23,9 +23,14 @@ graph TD
     end
 
     subgraph Routing_Topology ["Structural & Routing Handlers"]
-        RH["RouteHandler<br/>(Dynamic Content-Based Routing)"]
+        RH["RouteHandler<br/>(Dynamic Content & Lua Scripted Routing)"]
         SH["SplitHandler<br/>(1-to-N Broadcast Fan-Out)"]
         MH["MergeHandler<br/>(N-to-1 Aggregate Fan-In)"]
+    end
+
+    subgraph Parallel_Inspection ["Scatter-Gather Inspection"]
+        SCAT["ScatterHandler<br/>(Monotonic correlationId & InspectionHeader)"]
+        GATH["GatherHandler<br/>(Bitmask Barrier, Fast-Fail & Eviction)"]
     end
 
     subgraph Business_Validation ["Validation & Business Logic"]
@@ -40,10 +45,13 @@ graph TD
     end
 
     UIH -->|orders_raw| RH
-    RH -->|vip_orders| OVH
-    RH -->|standard_orders| XVH
-    OVH -->|orders_valid| MH
-    XVH -->|orders_valid| MH
+    RH -->|vip_orders| SCAT
+    SCAT -->|insp_branch_a| OVH
+    SCAT -->|insp_branch_b| XVH
+    OVH -->|verdict_a| GATH
+    XVH -->|verdict_b| GATH
+    GATH -->|orders_valid| MH
+    RH -->|standard_orders| MH
     MH -->|egress_stream| UEH
 ```
 
@@ -102,7 +110,22 @@ graph TD
 - **`SplitHandler` (Fan-Out)**: Receives from a single `input_channel` and duplicates/broadcasts messages to multiple comma-separated `output_channels` (`channel_a,channel_b`).
 - **`MergeHandler` (Fan-In)**: Registers multiple `input_channels` and multiplexes all arriving traffic into a single consolidated `output_channel`.
 
-### 5. `OrderValidationHandler` & `XmlVerificationHandler`
+### 5. `ScatterHandler` & `GatherHandler` (Fork-Join Inspection Pipeline)
+- **`ScatterHandler` (Parallel Workload Dispatcher)**:
+  - Dispatches an incoming message across $M$ parallel inspection branches while stamping an `InspectionHeader` (`0x50585F494E535043ULL`) into metadata.
+  - Embeds monotonic `correlationId`, `totalSplits`, and `splitIndex` without modifying the application `ProtocolId`.
+- **`GatherHandler` (Bitmask Convergence Barrier & Fast Rejection)**:
+  - Collects branch results using a 32-bit convergence bitmask barrier (`receivedMask == requiredMask`).
+  - Implements fast-fail rejection: drops immediately upon any branch returning `InspectionVerdict::Reject` or `Error`.
+  - Automatically sweeps and purges expired pending records older than `gather.timeout_ms`.
+  - Un-tunnels original metadata bytes and restores the original untouched `ProtocolId` before forwarding to `output_channel`.
+- **Configuration Keys**:
+  ```ini
+  [handlers.config]
+  gather.timeout_ms = 5000
+  ```
+
+### 6. `OrderValidationHandler` & `XmlVerificationHandler`
 - **`OrderValidationHandler`**: Benchmarked high-speed trading order validator. Implements zero-copy string views, Pugixml in-place DOM parsing, and compile-time bitmask validations (`price > 0`, `quantity > 0`, known symbol).
 - **`XmlVerificationHandler`**: Validates XML message payloads against a target W3C XSD schema using `libxml2`. Invalid XML messages are safely dropped with explicit `MessageResult::Dropped` error reporting.
 

@@ -52,7 +52,7 @@ classDiagram
 
 | Role | Canonical String | Description | Example Handlers |
 | :--- | :--- | :--- | :--- |
-| **`Processor`** | `"processor"` | Standard intermediate pipeline node. Receives messages from one or more `input_channels` and forwards/drops them to `output_channels`. Default role if unspecified. | `order_validation_handler`, `route_handler`, `xml_verification_handler`, `split_handler`, `merge_handler`, `print_handler`, `dummy_receive` |
+| **`Processor`** | `"processor"` | Standard intermediate pipeline node. Receives messages from one or more `input_channels` and forwards/drops them to `output_channels`. Default role if unspecified. | `order_validation_handler`, `route_handler`, `xml_verification_handler`, `split_handler`, `merge_handler`, `scatter_handler`, `gather_handler`, `print_handler`, `dummy_receive` |
 | **`Generator`** | `"generator"` | Autonomous message producer. Driven by internal timers or recurring `step()` ticks rather than incoming input channels. | `dummy_send` |
 | **`ExternalIngress`** | `"external_ingress"` | Gateway boundary node. Listens on external network interfaces (UDP socket, HTTP server), encapsulates incoming datagrams into `MessageEnvelope` frames with origin metadata, and pushes into pipeline channels. | `udp_ingress_handler` |
 | **`ExternalEgress`** | `"external_egress"` | Terminal gateway node. Consumes `MessageEnvelope` frames from pipeline channels, extracts client provenance (`UdpMetadata`), and transmits payloads outbound across external network protocols. | `udp_egress_handler` |
@@ -128,7 +128,25 @@ CMake automatically writes a descriptor file directly next to the compiled execu
 
 ---
 
-## 4. How Tooling Consumes the Manifest
+## 4. Parameter & Port Schemas (`handler.schema.json`)
+
+Complementing the binary runtime sidecar manifest (`<handler>.json`), each handler maintains a rich declarative schema manifest file in its source directory: `handler/<handler_name>/handler.schema.json`.
+
+During CMake configuration, `proxy_add_handler_all_backends` automatically copies this schema into `bin/<handler_name>.schema.json`.
+
+### Schema Contract:
+- **Port Definitions (`ports`)**: Defines cardinality (`single` vs `multiple`), port labels, default channel names, and descriptions for both `inputs` and `outputs`.
+- **Parameter Definitions (`parameters`)**: Declares strongly-typed configuration properties (`string`, `integer`, `boolean`, `enum`, `array`, `object`).
+- **UI Directives (`ui:widget`, `ui:visible_if`, `ui:language`)**:
+  - `ui:widget`: Rich form widgets including `rule-list` for dynamic arrays, `code-editor` for monospace scripts, and `channel-select` for dynamic dropdowns populated with output channels.
+  - `ui:visible_if`: Conditional field visibility rules (e.g. rendering Lua scripts only when rule type is `"lua"`).
+- **Consumption**:
+  - `scripts/proxy_runner/schema_validator.py` validates chain configurations against the schema.
+  - The Visual Chain Builder (`scripts/builder/`) dynamically generates interactive node cards and slide-out parameter drawers directly from these schemas.
+
+---
+
+## 5. How Tooling Consumes the Manifest
 
 ```mermaid
 sequenceDiagram
@@ -162,7 +180,7 @@ sequenceDiagram
 
 ---
 
-## 5. Architectural Benefits
+## 6. Architectural Benefits
 
 1. **Zero-Overhead Reflection**: No runtime reflection libraries, virtual method lookups, or symbol table parsing.
 2. **Single Source of Truth**: The handler's `CMakeLists.txt` defines its topological role, which is compiled directly into the binary distribution directory.
