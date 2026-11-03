@@ -243,7 +243,7 @@
               </div>
               <div class="batch-sub-items">
                 <div v-for="p in item.packets" :key="p.id" style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted);">
-                  <span>#{{ p.id }}: {{ p.payloadSummary }}</span>
+                  <span class="packet-payload-summary">#{{ p.id }}: {{ p.payloadSummary }}</span>
                   <span style="font-family: monospace;">{{ p.size }}B</span>
                 </div>
               </div>
@@ -268,7 +268,7 @@
                 </span>
               </div>
               <div class="log-desc">{{ item.packet.srcIp }}:{{ item.packet.srcPort }} ➔ {{ item.packet.dstIp }}:{{ item.packet.dstPort }}</div>
-              <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ item.packet.payloadSummary }}</div>
+              <div class="packet-payload-summary" style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ item.packet.payloadSummary }}</div>
             </div>
           </div>
         </div>
@@ -357,16 +357,16 @@
       <!-- Step / MessageResult Inspector -->
       <div class="inspector-box">
         <div class="inspector-title">
-          <span>Step &amp; MessageResult Inspector</span>
+          <span>STEP INSPECTOR</span>
           <span style="color: var(--accent); font-family: monospace;">
             {{ state.lastEvent ? 'Event #' + state.lastEvent.eventId : 'Idle' }}
           </span>
         </div>
         <div class="meta-grid" v-if="state.lastEvent">
           <span class="k">Packet ID:</span><span class="v">Packet #{{ state.lastEvent.msgId }}</span>
-          <span class="k">Handler / Location:</span><span class="v" style="color: var(--accent); font-weight: 600;">{{ formatCurrentLocation(state.lastEvent) }}</span>
-          <span class="k">Input Channel:</span><span class="v">{{ getEventIncomingChannel(state.lastEvent) || "(none)" }}</span>
-          <span class="k">MessageResult:</span>
+          <span class="k">Origin:</span><span class="v" style="color: var(--accent); font-weight: 600;">{{ formatCurrentLocation(state.lastEvent) }}</span>
+          <span class="k">Channel:</span><span class="v">{{ getEventIncomingChannel(state.lastEvent) || "(none)" }}</span>
+          <span class="k">Result:</span>
           <span class="v">
             <span class="log-tag" :class="'tag-' + state.lastEvent.type">
               {{ state.lastEvent.result || (state.lastEvent.status ? state.lastEvent.status.toUpperCase() : state.lastEvent.type.toUpperCase()) }}
@@ -425,7 +425,7 @@
                 </span>
               </div>
               <span class="log-time">
-                Step #{{ idx + 1 }} · Pkt #{{ ev.msgId }}<span v-if="ev.latencyUs !== undefined"> · {{ ev.latencyUs }}µs</span>
+                Step #{{ idx + 1 }} · Pkt #{{ ev.msgId }}<span v-if="ev.latencyUs !== undefined" class="trace-latency"> · {{ ev.latencyUs }}µs</span>
               </span>
             </div>
             <div class="log-desc">
@@ -446,7 +446,7 @@
                 <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
               </span>
             </div>
-            <div style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
+            <div class="trace-item-detail" style="font-size: 10px; font-family: monospace; color: var(--text-muted);">
               {{ ev.detail || ev.payloadSummary }}
             </div>
           </div>
@@ -466,7 +466,7 @@
                   {{ tr.result || 'Forwarded' }}
                 </span>
               </div>
-              <div class="subtrace-detail">
+              <div class="subtrace-detail trace-item-detail">
                 {{ tr.payloadSummary || tr.detail }}
               </div>
             </div>

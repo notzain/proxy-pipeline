@@ -767,6 +767,25 @@ export function createSimulationApp() {
       const leftPanel = document.getElementById("panel-left");
       const rightPanel = document.getElementById("panel-right");
 
+      const updateCompactClasses = () => {
+        if (leftPanel) {
+          const w = leftPanel.getBoundingClientRect().width;
+          if (w < 290) {
+            leftPanel.classList.add("compact-queue");
+          } else {
+            leftPanel.classList.remove("compact-queue");
+          }
+        }
+        if (rightPanel) {
+          const w = rightPanel.getBoundingClientRect().width;
+          if (w < 320) {
+            rightPanel.classList.add("compact-trace");
+          } else {
+            rightPanel.classList.remove("compact-trace");
+          }
+        }
+      };
+
       // Restore stored panel widths from localStorage if available
       try {
         const savedLeftW = localStorage.getItem("proxy_sim_panel_left_w");
@@ -776,6 +795,8 @@ export function createSimulationApp() {
       } catch (e) {
         // Ignore storage access errors
       }
+
+      updateCompactClasses();
 
       const setupDrag = (resizer, panel, isLeft) => {
         if (!resizer || !panel) return;
@@ -788,6 +809,7 @@ export function createSimulationApp() {
           const maxW = isLeft ? 650 : 700;
           const newW = Math.max(minW, Math.min(maxW, startW + dx));
           panel.style.width = `${newW}px`;
+          updateCompactClasses();
           try {
             localStorage.setItem(isLeft ? "proxy_sim_panel_left_w" : "proxy_sim_panel_right_w", newW);
           } catch (err) {}

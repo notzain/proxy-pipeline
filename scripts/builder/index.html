@@ -54,6 +54,13 @@
       <div class="brand-title">
         <span>Proxy Pipeline Studio</span>
       </div>
+      <div class="chain-name-wrapper" title="Click to edit chain name">
+        <input type="text"
+               class="chain-name-input"
+               v-model="chainName"
+               @input="validateChain()"
+               placeholder="pipeline_name">
+      </div>
       <span v-if="statusMsg"
         style="font-size: 11px; color: var(--accent-green); background: #064e3b; padding: 2px 8px; border-radius: 4px; border: 1px solid #059669;">
         {{ statusMsg }}
@@ -61,15 +68,15 @@
     </div>
 
     <div class="header-actions">
-      <button @click="exportToml()" title="Download as .toml chain file">
+      <button @click="openExportModal()" title="Export chain definition as TOML or JSON">
         <span class="btn-icon">📥</span>
-        <span class="btn-text">Export TOML</span>
+        <span class="btn-text">Export</span>
       </button>
-      <button @click="exportJson()" title="Download as .json chain file">
-        <span class="btn-icon">📥</span>
-        <span class="btn-text">Export JSON</span>
+      <button class="danger-outline" @click="resetChain()" title="Clear and reset chain canvas to blank state">
+        <span class="btn-icon">↺</span>
+        <span class="btn-text">Reset</span>
       </button>
-      <button class="primary" @click="saveToDisk()" title="Save chain to working directory">
+      <button class="primary" @click="openSaveModal()" title="Save chain to working directory">
         <span class="btn-icon">💾</span>
         <span class="btn-text">Save Chain</span>
       </button>
@@ -83,15 +90,24 @@
   <!-- Workspace Container -->
   <div class="workspace">
 
-    <!-- Left Sidebar: Handler Palette & Global Settings -->
+    <!-- Left Sidebar: Handler Palette & Search -->
     <aside class="sidebar-palette">
       <div class="panel-header">
         <span>Handler Palette</span>
-        <span style="font-size: 10px; color: var(--accent);">{{ Object.keys(schemas).length }} available</span>
+        <span style="font-size: 10px; color: var(--accent);">{{ filteredHandlersCount }} available</span>
+      </div>
+
+      <div class="palette-search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text"
+               v-model="searchQuery"
+               placeholder="Filter handlers by name or role..."
+               class="palette-search-input">
+        <button v-if="searchQuery" @click="searchQuery = ''" class="search-clear-btn" title="Clear search">✕</button>
       </div>
 
       <div class="palette-scroll">
-        <div v-for="(handlers, category) in schemaCategories" :key="category" class="palette-group">
+        <div v-for="(handlers, category) in filteredSchemaCategories" :key="category" class="palette-group">
           <div class="palette-group-title" @click="toggleCategory(category)">
             <span>{{ category }} ({{ handlers.length }})</span>
             <span class="palette-toggle-icon">
@@ -112,19 +128,9 @@
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Global Chain Configuration -->
-      <div class="global-config-bar">
-        <div class="field-group">
-          <label class="field-label">Transport Backend</label>
-          <select v-model="backend" @change="validateChain()">
-            <option value="file">File (Directory watch/write)</option>
-            <option value="socket">Socket (UDP Datagram)</option>
-            <option value="shm">SHM (Shared Memory POSIX Ring)</option>
-            <option value="uds">UDS (Unix Domain Socket)</option>
-            <option value="sim">Sim (Interactive Simulation)</option>
-          </select>
+        <div v-if="filteredHandlersCount === 0" class="empty-palette-search">
+          No handlers match "<strong>{{ searchQuery }}</strong>"
         </div>
       </div>
     </aside>
@@ -363,6 +369,77 @@
       </div>
     </aside>
 
+  </div>
+
+  <!-- Modal: Save Chain Prompt (With Backend Selector) -->
+  <div v-if="showSaveModal" class="modal-backdrop" @click="closeSaveModal()">
+    <div class="modal-dialog" @click.stop>
+      <div class="modal-header">
+        <span class="modal-title">💾 Save Pipeline Chain</span>
+        <button class="modal-close-btn" @click="closeSaveModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Chain Name</label>
+          <input type="text" v-model="chainName" @input="onChainNameChanged()" placeholder="e.g. custom_chain">
+        </div>
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Filename (.toml)</label>
+          <input type="text" v-model="saveFilename" placeholder="custom_chain.toml">
+        </div>
+        <div class="field-group" style="margin-bottom: 12px;">
+          <label class="field-label">Transport Backend</label>
+          <select v-model="backend" @change="validateChain()">
+            <option value="file">File (Directory watch/write)</option>
+            <option value="socket">Socket (UDP Datagram)</option>
+            <option value="shm">SHM (Shared Memory POSIX Ring)</option>
+            <option value="uds">UDS (Unix Domain Socket)</option>
+            <option value="sim">Sim (Interactive Simulation)</option>
+          </select>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+            Selects the IPC / transport fabric runtime for this pipeline.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeSaveModal()">Cancel</button>
+        <button class="primary" @click="confirmSaveToDisk()">Save to Disk</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Export Chain Prompt (TOML or JSON) -->
+  <div v-if="showExportModal" class="modal-backdrop" @click="closeExportModal()">
+    <div class="modal-dialog" @click.stop style="max-width: 420px;">
+      <div class="modal-header">
+        <span class="modal-title">📥 Export Chain Definition</span>
+        <button class="modal-close-btn" @click="closeExportModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
+          Choose the export format for pipeline <strong>{{ chainName }}</strong>:
+        </p>
+        <div style="display: flex; gap: 10px;">
+          <button class="export-choice-card" @click="exportToml(); closeExportModal();">
+            <span style="font-size: 24px;">📄</span>
+            <div style="text-align: left;">
+              <div style="font-weight: 700; color: #fff;">TOML Format</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Standard proxy configuration (.toml)</div>
+            </div>
+          </button>
+          <button class="export-choice-card" @click="exportJson(); closeExportModal();">
+            <span style="font-size: 24px;">📋</span>
+            <div style="text-align: left;">
+              <div style="font-weight: 700; color: #fff;">JSON Format</div>
+              <div style="font-size: 10px; color: var(--text-muted);">Structured pipeline schema object (.json)</div>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button @click="closeExportModal()">Close</button>
+      </div>
+    </div>
   </div>
 
   <script src="js/builder_canvas.js"></script>
