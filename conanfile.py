@@ -53,6 +53,7 @@ class ProxyConan(ConanFile):
         "with_pugixml": [True, False],
         "with_libxml2": [True, False],
         "with_xerces": [True, False],
+        "with_lua": [True, False],
     }
     default_options = {
         "backend_file": True,
@@ -63,6 +64,7 @@ class ProxyConan(ConanFile):
         "with_pugixml": True,
         "with_libxml2": True,
         "with_xerces": True,
+        "with_lua": True,
         "spdlog/*:header_only": True,
         "xerces-c/*:network": False,
         "xerces-c/*:transcoder": "iconv",
@@ -82,6 +84,9 @@ class ProxyConan(ConanFile):
             self.requires("libxml2/2.13.6")
         if self.options.with_xerces:
             self.requires("xerces-c/3.3.0")
+        if self.options.with_lua:
+            self.requires("lua/5.4.6")
+            self.requires("sol2/3.3.1")
         self.requires("catch2/3.8.0")
 
         # Backends discovered / required via Conan
@@ -103,6 +108,7 @@ class ProxyConan(ConanFile):
         tc.variables["PROXY_ENABLE_PUGIXML"] = bool(self.options.with_pugixml)
         tc.variables["PROXY_ENABLE_LIBXML2"] = bool(self.options.with_libxml2)
         tc.variables["PROXY_ENABLE_XERCES"] = bool(self.options.with_xerces)
+        tc.variables["PROXY_ENABLE_LUA"] = bool(self.options.with_lua)
         tc.generate()
 
         # Discover backends from Conan dependency graph

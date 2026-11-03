@@ -6,6 +6,14 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
 )
 
+set(ROUTE_HANDLER_EXTRA_LIBS)
+
+if(PROXY_ENABLE_LUA)
+    find_package(lua REQUIRED)
+    find_package(sol2 REQUIRED)
+    list(APPEND ROUTE_HANDLER_EXTRA_LIBS sol2::sol2 lua::lua)
+endif()
+
 # Automatically create target and binary for each discovered backend:
 # - route_handler_file
 # - route_handler_socket
@@ -16,5 +24,7 @@ proxy_add_handler_all_backends(route_handler
     INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    EXTRA_LIBS
+        ${ROUTE_HANDLER_EXTRA_LIBS}
 )
 

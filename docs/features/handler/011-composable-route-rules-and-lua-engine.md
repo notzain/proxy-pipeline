@@ -65,24 +65,25 @@ flowchart TD
 ## Tasks / Checklist
 
 ### Phase 1: Composable C++ Rule Engine & Fluent Builder
-- [ ] Define `IRouteCondition` interface and leaf conditions:
-  - [ ] `TextCondition` (contains with count/times, prefix, exact match).
-  - [ ] `PortCondition` (matches UDP port).
-  - [ ] `ProtocolCondition` (matches ProtocolId).
-- [ ] Define composite conditions:
-  - [ ] `AndCondition`, `OrCondition`, `NotCondition`.
-- [ ] Define `RouteAction` (`ForwardAction` vs `RejectAction` with reason and errorCode).
-- [ ] Create fluent builder helper classes (`Text`, `Port`, `RouteRule::when(...)`).
-- [ ] Update `RouteRule` to evaluate composable conditions and actions.
-- [ ] Update `RouteConfig` to parse composite conditions and reject actions from configuration.
-- [ ] Update `RouteHandler` to execute `RejectAction` (returning `Backend::Dropped`) and `ForwardAction`.
-- [ ] Unit tests for all condition combinations, fluent builders, and rejection reasons.
-- [ ] Code formatting via `clang-format`.
+- [x] Define `IRouteCondition` interface and leaf conditions:
+  - [x] `TextCondition` (contains with count/times, prefix, exact match).
+  - [x] `PortCondition` (matches UDP port).
+  - [x] `ProtocolCondition` (matches ProtocolId).
+- [x] Define composite conditions:
+  - [x] `AndCondition`, `OrCondition`, `NotCondition`.
+- [x] Define `RouteAction` (`ForwardAction` vs `RejectAction` with reason and errorCode).
+- [x] Create fluent builder helper classes (`Text`, `Port`, `RouteRule::when(...)`).
+- [x] Update `RouteRule` to evaluate composable conditions and actions.
+- [x] Update `RouteConfig` to parse composite conditions and reject actions from configuration.
+- [x] Implement `ConditionExpressionParser` for inline `expr = "..."` syntax with AND/OR/NOT.
+- [x] Update `RouteHandler` to execute `RejectAction` (returning `Backend::Dropped`) and `ForwardAction`.
+- [x] Unit tests for all condition combinations, fluent builders, and rejection reasons.
+- [x] Code formatting via `clang-format`.
 
 ### Phase 2: Embedded Lua Engine (sol2)
-- [ ] Add `lua` and `sol2` to `conanfile.py`.
-- [ ] Implement `LuaCondition` / `LuaRouter`.
-- [ ] Bind `MessageView` metadata and payload to Lua state.
-- [ ] Support both Lua predicate rules and dynamic dispatcher script.
-- [ ] Unit tests for Lua routing scripts and rejection handling.
+- [x] Add optional `with_lua` option in `conanfile.py` and `PROXY_ENABLE_LUA` in `CMakeLists.txt`.
+- [x] Implement `LuaCondition` evaluating dynamic Lua snippets or functions.
+- [x] Bind `MessageView` metadata and payload (`msg.payload`, `msg.protocol`, `msg.port`, `msg.dst_port`) to Lua table.
+- [x] Support Lua predicate rules (`type = "lua"`, `script = "..."`) and rejection actions from config.
+- [x] Unit tests for Lua routing scripts, parameter passing, and rejection handling.
 

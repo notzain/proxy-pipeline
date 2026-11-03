@@ -2,6 +2,7 @@
 
 #include "CompositeConditions.hpp"
 #include "ConditionExpressionParser.hpp"
+#include "LuaCondition.hpp"
 #include "PortCondition.hpp"
 #include "ProtocolCondition.hpp"
 #include "RouteAction.hpp"
@@ -29,6 +30,7 @@ struct RouteRuleConfig {
     std::string actionType { "forward" };
     std::string rejectReason;
     std::string expr;
+    std::string script;
     int rejectErrorCode { 400 };
     int numericValue { 0 };
     int times { 1 };
@@ -42,6 +44,7 @@ struct RouteRuleConfig {
     static constexpr std::string_view KeySuffixRejectReason { "reason" };
     static constexpr std::string_view KeySuffixRejectErrorCode { "error_code" };
     static constexpr std::string_view KeySuffixExpr { "expr" };
+    static constexpr std::string_view KeySuffixScript { "script" };
 
     /**
      * @brief Constructs a RouteRuleConfig from the given prefix and configuration store.
@@ -53,6 +56,7 @@ struct RouteRuleConfig {
         RouteRuleConfig rule;
         rule.name = std::string(ruleName);
         rule.expr = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixExpr), "");
+        rule.script = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixScript), "");
         rule.type = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixType), "contains");
         rule.pattern = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixPattern), "");
         rule.target = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixTarget), "");
@@ -74,6 +78,11 @@ struct RouteRuleConfig {
         // If an inline expression string (expr) is present, parse it
         if (!expr.empty()) {
             condition = ConditionExpressionParser::parse(expr);
+        }
+
+        // If a Lua script snippet is specified, create LuaCondition
+        if (!script.empty() || type == "lua") {
+            condition = std::make_unique<LuaCondition>(script.empty() ? pattern : script);
         }
 
         // Fallback to legacy/individual fields if expr was omitted or failed

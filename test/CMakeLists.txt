@@ -19,6 +19,12 @@ if(PROXY_ENABLE_XERCES)
     list(APPEND TEST_EXTRA_LIBS XercesC::XercesC)
 endif()
 
+if(PROXY_ENABLE_LUA)
+    find_package(lua REQUIRED)
+    find_package(sol2 REQUIRED)
+    list(APPEND TEST_EXTRA_LIBS sol2::sol2 lua::lua)
+endif()
+
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
@@ -42,6 +48,7 @@ add_executable(proxy_tests
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/ProtocolCondition.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/CompositeConditions.cpp"
     "${CMAKE_SOURCE_DIR}/handler/route_handler/src/ConditionExpressionParser.cpp"
+    "${CMAKE_SOURCE_DIR}/handler/route_handler/src/LuaCondition.cpp"
     "${CMAKE_SOURCE_DIR}/handler/scatter_handler/src/ScatterHandler.cpp"
     "${CMAKE_SOURCE_DIR}/handler/gather_handler/src/GatherHandler.cpp"
 )
