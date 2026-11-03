@@ -83,6 +83,11 @@ class BuilderCanvas {
   }
 
   onMouseDown(e) {
+    // If click on interactive elements (input, select, button, etc.), don't initiate node drag or pan
+    if (e.target.closest('input, select, button, textarea, label')) {
+      return;
+    }
+
     // If click on socket, initiate wire creation
     const socketEl = e.target.closest('.port-socket');
     if (socketEl) {

@@ -95,6 +95,16 @@ flowchart TD
     - Styled with a semi-transparent slate shaded background, vivid cyan accent text, bottom underline highlight (`border-bottom: 2px solid #38bdf8`), and `cursor: text` on hover.
 13. **Automatic Unique Wire Naming on Link Creation**:
     - When creating a new connection wire, `generateUniqueChannelName` is always called directly to produce an explicit, collision-free unique channel name across the entire DAG (e.g. `<src>_to_<dst>` or `<src>_b1_to_<dst>_2`), updating both the producing output socket and consuming input socket.
+14. **Inline In-Node Parameter Configuration**:
+    - Embedded schema parameters directly into node cards (`.node-params-section`) with compact inputs, inline collapse/expand toggle, and socket count modifiers.
+    - Removed the right sidebar inspector, allowing the canvas to span the full available viewport width.
+15. **Floating Corner Diagnostics Pill**:
+    - Positioned an interactive pill button (`.floating-diagnostics`) in the bottom-right corner of the canvas showing real-time clean, warning, or error states.
+    - Accurately differentiates between fully clean (valid with 0 warnings: green `Pipeline Clean`), warning state (valid with warnings: amber `N Warnings`), and invalid error state (rose `N Issues`).
+    - Clicking the pill opens a floating diagnostic drawer detailing errors and warnings.
+16. **In-Node Warning Diagnostics & Active Link Socket State**:
+    - Socket styling strictly distinguishes between active links and unlinked ports: sockets are muted/dark when unlinked (`opacity: 0.45`), glowing green only when linked by an active connection wire.
+    - Node cards display dedicated warning badges (`.node-warn-badge`) with amber borders and tooltips when a handler has warnings (e.g. unconsumed output or unproduced input channels).
 
 ---
 
@@ -144,4 +154,12 @@ for ch, producers in output_channels.items():
 - [x] Hide latency and details in simulation execution trace when resized smaller (`dashboard.css`, `app.js`).
 - [x] Rename simulation inspector title to `STEP INSPECTOR` and `Handler / Location` to `Origin`.
 - [x] Add unit test coverage in `test/test_handler_schemas.py` for duplicate wire channel validation.
+- [x] Embedded in-node configuration parameters eliminating the inspector sidebar.
+- [x] Display detailed error tooltips when hovering over node error badges.
+- [x] Visually grey out unconnected input and output sockets.
+- [x] Accurately reflect warning count in diagnostics pill instead of showing green Pipeline Clean.
+- [x] Display in-node warning badges and warning tooltips alongside error badges (clean text without superfluous icons).
+- [x] Initialize newly added nodes with empty port sockets to avoid spurious unconsumed channel diagnostics.
+- [x] Format diagnostics messages with handler titles, node-facing port names, level colors, and separator borders.
+- [x] Add interactive delete button badge (`✕`) to selected wire connection labels for intuitive disconnection.
 
