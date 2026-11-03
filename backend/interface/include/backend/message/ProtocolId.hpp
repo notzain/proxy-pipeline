@@ -2,6 +2,7 @@
 
 #include "common/types/StrongType.hpp"
 #include <cstdint>
+#include <functional>
 
 namespace Backend {
 
@@ -22,3 +23,15 @@ using ProtocolId = Common::Types::StrongType<std::uint8_t, ProtocolIdTag>;
 inline constexpr ProtocolId RawProtocol { 0 };
 
 } // namespace Backend
+
+namespace std {
+
+template <>
+struct hash<Backend::ProtocolId> {
+    std::size_t operator()(const Backend::ProtocolId& id) const noexcept
+    {
+        return std::hash<std::uint8_t> { }(id.value());
+    }
+};
+
+} // namespace std
