@@ -409,6 +409,84 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
     }
 }
 
+TEST_CASE("RouteHandler evaluates generic metadata field conditions and expr syntax", "[handler][router][metadata]")
+{
+    auto simBackend = std::make_unique<Core::Simulation::SimulationBackend>();
+    auto& backend = *simBackend;
+
+    Proxy::Handler::RouteHandler router(backend);
+
+    Core::Config::Configuration config;
+    config.set("route.input_channel", "sim_in");
+    config.set("route.rules", "rule_meta_expr,rule_meta_config");
+
+    // Rule 1: expr using metadata.<field> syntax
+    config.set("route.rule.rule_meta_expr.expr", "metadata.src_port == 7777 && prefix(\"SECURE:\")");
+    config.set("route.rule.rule_meta_expr.target", "sim_secure");
+
+    // Rule 2: structured metadata field config
+    config.set("route.rule.rule_meta_config.type", "metadata_field");
+    config.set("route.rule.rule_meta_config.field", "address_family");
+    config.set("route.rule.rule_meta_config.op", "==");
+    config.set("route.rule.rule_meta_config.value", "4");
+    config.set("route.rule.rule_meta_config.target", "sim_ipv4");
+
+    REQUIRE(router.configure(config));
+
+    SECTION("Rule matches metadata.src_port and prefix in expr")
+    {
+        Core::Net::UdpMetadata meta;
+        meta.srcPort = 7777; // matches metadata.src_port == 7777
+        meta.addressFamily = 4;
+
+        std::string payload = "SECURE:TopSecretData";
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto view = Backend::MessageView::from(env);
+        REQUIRE(view.has_value());
+
+        auto res = router.onMessageReceived("sim_in", *view);
+        REQUIRE(res.is<Backend::Forwarded>());
+        CHECK(res.get<Backend::Forwarded>()->get().channel == "sim_secure");
+    }
+
+    SECTION("Rule falls back to metadata_field address_family")
+    {
+        Core::Net::UdpMetadata meta;
+        meta.srcPort = 5555; // does not match rule 1
+        meta.addressFamily = 4;
+
+        std::string payload = "NORMAL:Data";
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto view = Backend::MessageView::from(env);
+        REQUIRE(view.has_value());
+
+        auto res = router.onMessageReceived("sim_in", *view);
+        REQUIRE(res.is<Backend::Forwarded>());
+        CHECK(res.get<Backend::Forwarded>()->get().channel == "sim_ipv4");
+    }
+
+    SECTION("MetadataFieldCondition fluent builder")
+    {
+        auto rule = Proxy::Handler::RouteRule::when(
+            Proxy::Handler::MetadataField::equals("src_port", 9999))
+                        .forwardTo("sim_special");
+
+        Core::Net::UdpMetadata metaMatch;
+        metaMatch.srcPort = 9999;
+        auto envMatch = Backend::MessageView::pack(metaMatch, Common::Memory::ByteView("payload"));
+        auto viewMatch = Backend::MessageView::from(envMatch);
+        REQUIRE(viewMatch.has_value());
+        CHECK(rule.matches(*viewMatch));
+
+        Core::Net::UdpMetadata metaNoMatch;
+        metaNoMatch.srcPort = 1111;
+        auto envNoMatch = Backend::MessageView::pack(metaNoMatch, Common::Memory::ByteView("payload"));
+        auto viewNoMatch = Backend::MessageView::from(envNoMatch);
+        REQUIRE(viewNoMatch.has_value());
+        CHECK_FALSE(rule.matches(*viewNoMatch));
+    }
+}
+
 #if defined(PROXY_HAS_LUA) && PROXY_HAS_LUA
 TEST_CASE("RouteHandler evaluates embedded Lua routing rules and rejections", "[handler][router][lua]")
 {

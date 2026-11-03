@@ -13,6 +13,12 @@
 #include "core/serialization/xml/XercesSerializer.hpp"
 #endif
 
+#include "backend/message/MetadataTraits.hpp"
+#include "core/metadata/MetadataCatalog.hpp"
+#include "core/net/UdpMetadata.hpp"
+#include <arpa/inet.h>
+#include <fmt/format.h>
+
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <map>
@@ -436,4 +442,33 @@ TEST_CASE("Intermediate representation (IR) value trees and generic facade", "[s
     REQUIRE(fromXerces.has_value());
     CHECK(*fromXerces == p);
 #endif
+}
+
+TEST_CASE("MetadataCatalog direct field extraction and JSON formatting", "[metadata][catalog]")
+{
+    Core::Net::UdpMetadata udp { };
+    udp.srcPort = htons(9001);
+    udp.dstPort = htons(8080);
+    udp.addressFamily = 4;
+
+    const auto bytes = Common::Compat::span<const std::byte>(
+        reinterpret_cast<const std::byte*>(&udp), sizeof(udp));
+
+    auto srcPortVal = Core::Metadata::MetadataCatalog::getField(
+        Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol, bytes, "src_port");
+    REQUIRE(srcPortVal.has_value());
+    CHECK(srcPortVal->asUInt() == htons(9001));
+
+    auto dstPortVal = Core::Metadata::MetadataCatalog::getField(
+        Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol, bytes, "dst_port");
+    REQUIRE(dstPortVal.has_value());
+    CHECK(dstPortVal->asUInt() == htons(8080));
+
+    auto missingVal = Core::Metadata::MetadataCatalog::getField(
+        Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol, bytes, "nonexistent");
+    CHECK_FALSE(missingVal.has_value());
+
+    std::string json = Core::Metadata::MetadataCatalog::formatJson(
+        Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol, bytes);
+    CHECK(json.find(fmt::format("\"dst_port\":{}", htons(8080))) != std::string::npos);
 }

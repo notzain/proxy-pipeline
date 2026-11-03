@@ -1,5 +1,6 @@
 #include "ConditionExpressionParser.hpp"
 #include "CompositeConditions.hpp"
+#include "MetadataFieldCondition.hpp"
 #include "PortCondition.hpp"
 #include "ProtocolCondition.hpp"
 #include "TextCondition.hpp"
@@ -21,9 +22,15 @@ namespace {
         Or,
         Not,
         EqualEqual,
+        ExclamationEqual,
+        LessThan,
+        LessThanOrEqual,
+        GreaterThan,
+        GreaterThanOrEqual,
         LParen,
         RParen,
         Comma,
+        Dot,
         EndOfInput,
         Invalid
     };
@@ -60,6 +67,30 @@ namespace {
             if (c == ',') {
                 ++m_pos;
                 return { TokenType::Comma, "," };
+            }
+            if (c == '.') {
+                ++m_pos;
+                return { TokenType::Dot, "." };
+            }
+            if (c == '!' && m_pos + 1 < m_input.size() && m_input[m_pos + 1] == '=') {
+                m_pos += 2;
+                return { TokenType::ExclamationEqual, "!=" };
+            }
+            if (c == '<' && m_pos + 1 < m_input.size() && m_input[m_pos + 1] == '=') {
+                m_pos += 2;
+                return { TokenType::LessThanOrEqual, "<=" };
+            }
+            if (c == '<') {
+                ++m_pos;
+                return { TokenType::LessThan, "<" };
+            }
+            if (c == '>' && m_pos + 1 < m_input.size() && m_input[m_pos + 1] == '=') {
+                m_pos += 2;
+                return { TokenType::GreaterThanOrEqual, ">=" };
+            }
+            if (c == '>') {
+                ++m_pos;
+                return { TokenType::GreaterThan, ">" };
             }
             if (c == '!') {
                 ++m_pos;
@@ -273,6 +304,49 @@ namespace {
             if (m_current.type == TokenType::Identifier) {
                 std::string id = std::move(m_current.text);
                 advance();
+
+                // Handle metadata.<field> comparison
+                if (id == "metadata" && match(TokenType::Dot)) {
+                    if (m_current.type != TokenType::Identifier) {
+                        Proxy::Log::error("[ConditionExpressionParser] Expected field name after 'metadata.'");
+                        return nullptr;
+                    }
+                    std::string fieldName = std::move(m_current.text);
+                    advance();
+
+                    FieldOperator op = FieldOperator::Equal;
+                    if (match(TokenType::EqualEqual)) {
+                        op = FieldOperator::Equal;
+                    } else if (match(TokenType::ExclamationEqual)) {
+                        op = FieldOperator::NotEqual;
+                    } else if (match(TokenType::LessThanOrEqual)) {
+                        op = FieldOperator::LessThanOrEqual;
+                    } else if (match(TokenType::LessThan)) {
+                        op = FieldOperator::LessThan;
+                    } else if (match(TokenType::GreaterThanOrEqual)) {
+                        op = FieldOperator::GreaterThanOrEqual;
+                    } else if (match(TokenType::GreaterThan)) {
+                        op = FieldOperator::GreaterThan;
+                    } else {
+                        Proxy::Log::error("[ConditionExpressionParser] Expected comparison operator after 'metadata.{}'", fieldName);
+                        return nullptr;
+                    }
+
+                    if (m_current.type == TokenType::NumberLiteral) {
+                        int num = std::stoi(m_current.text);
+                        advance();
+                        return std::make_unique<MetadataFieldCondition>(std::move(fieldName), op, Core::Serialization::Ir::Value(num));
+                    }
+                    if (m_current.type == TokenType::StringLiteral) {
+                        std::string s = std::move(m_current.text);
+                        advance();
+                        return std::make_unique<MetadataFieldCondition>(std::move(fieldName), op, Core::Serialization::Ir::Value(std::move(s)));
+                    }
+
+                    Proxy::Log::error("[ConditionExpressionParser] Expected literal value after comparison operator for 'metadata.{}'", fieldName);
+                    return nullptr;
+                }
+
                 return parseFunctionOrComparison(id);
             }
 
