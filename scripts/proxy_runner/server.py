@@ -271,7 +271,8 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
             if not node_name:
                 self._send_json(400, {"status": "error", "message": "Missing node name"})
                 return
-            result = self.coordinator.trigger_generator(str(node_name))
+            custom_payload = params.get("payload")
+            result = self.coordinator.trigger_generator(str(node_name), custom_payload=custom_payload)
             self._send_json(200, result)
         else:
             self.send_response(404)

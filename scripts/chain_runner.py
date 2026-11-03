@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any, Optional
 
@@ -200,10 +201,29 @@ def run_chain(
             print(f"[ChainRunner] Launching {handler_name} [{binary_name}] with config: {conf_file}")
             proc = subprocess.Popen(
                 [str(binary_path), str(conf_file)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
                 cwd=str(root_dir),
                 start_new_session=True,
             )
             processes.append((handler_name, proc, conf_file))
+
+            # Stream handler logs prefixed with handler name so they can be isolated per-handler
+            def _stream_handler_logs(p: subprocess.Popen, h_name: str):
+                try:
+                    if p.stdout:
+                        for line in iter(p.stdout.readline, ""):
+                            clean = line.rstrip()
+                            if clean:
+                                print(f"[{h_name}] {clean}", flush=True)
+                        p.stdout.close()
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_stream_handler_logs, args=(proc, handler_name), daemon=True)
+            t.start()
 
         if coordinator and backend == "sim":
             coordinator.wait_for_handlers_ready(timeout_sec=5.0)

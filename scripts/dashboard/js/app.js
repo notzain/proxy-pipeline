@@ -31,6 +31,7 @@ export function createSimulationApp() {
       selectedTraceEventId: null,
       selectedSubTraceId: null,
       expandedTraceEventIds: {},
+      rawLogs: [],
       stats: {
         delivered: 0,
         dropped: 0,
@@ -45,6 +46,15 @@ export function createSimulationApp() {
     stepInterval: 1000,
     playTimer: null,
     canvasRenderer: null,
+
+    // Inspector active tab: "config" | "logs"
+    inspectorTab: "config",
+
+    // Dynamic generator payload modal state
+    showPayloadModal: false,
+    payloadModalNode: null,
+    payloadModalText: "",
+    payloadModalDefault: "",
 
     async init() {
       const canvasEl = document.getElementById("sim-canvas");
@@ -115,6 +125,7 @@ export function createSimulationApp() {
         this.state.inFlightStage = data.inFlightStage || null;
         this.state.inFlightSummary = data.inFlightSummary || null;
         this.state.batchGroups = data.batchGroups || [];
+        this.state.rawLogs = data.logs || [];
 
         // If lastEvent is not set (e.g. on page refresh), restore the latest event from events array
         if (!this.state.lastEvent && this.state.events.length > 0) {
@@ -180,6 +191,38 @@ export function createSimulationApp() {
 
     inspectNode(node) {
       this.state.selectedNode = node;
+    },
+
+    getNodeLogs(node) {
+      if (!node) return [];
+      const nodeName = node.name || "";
+      const nodeType = node.type || "";
+      const raw = this.state.rawLogs || [];
+
+      // Derive common class names / tags (e.g. dummy_send -> DummySend, print_handler -> PrintHandler)
+      const pascalType = nodeType
+        .split("_")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join("");
+
+      return raw.filter(line => {
+        if (!line) return false;
+        // 1. Direct handler prefix from chain_runner: e.g. [node_name]
+        if (nodeName && (line.includes(`[${nodeName}]`) || line.startsWith(`[${nodeName}]`))) {
+          return true;
+        }
+        // 2. Direct handler type or class name in spdlog tag: e.g. [DummySend], [DummyReceive]
+        if (nodeType && (line.includes(`[${nodeType}]`) || line.includes(`[${pascalType}]`))) {
+          return true;
+        }
+        return false;
+      }).map(line => {
+        // Strip the [handler_name] prefix if present for clean viewing
+        if (nodeName && line.startsWith(`[${nodeName}] `)) {
+          return line.substring(nodeName.length + 3);
+        }
+        return line;
+      });
     },
 
     inspectPacket(pkt) {
@@ -553,13 +596,17 @@ export function createSimulationApp() {
       await this.fetchState();
     },
 
-    async triggerGenerator(nodeName) {
+    async triggerGenerator(nodeName, customPayload = null) {
       if (this.mode !== "realtime") return;
       try {
+        const bodyObj = { node: nodeName };
+        if (customPayload !== null && customPayload !== undefined) {
+          bodyObj.payload = String(customPayload);
+        }
         const resp = await fetch("/api/simulation/trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ node: nodeName })
+          body: JSON.stringify(bodyObj)
         });
         const res = await resp.json();
         if (res.status === "ok") {
@@ -583,6 +630,34 @@ export function createSimulationApp() {
       } catch (err) {
         console.error("Trigger error:", err);
       }
+    },
+
+    openCustomPayloadModal(node) {
+      if (!node) return;
+      const hConfig = node.config || {};
+      const defMsg = hConfig["dummy.message"] || `Message from ${node.name}`;
+      this.payloadModalNode = node;
+      this.payloadModalDefault = defMsg;
+      if (!this.payloadModalText) {
+        this.payloadModalText = defMsg;
+      }
+      this.showPayloadModal = true;
+    },
+
+    closeCustomPayloadModal() {
+      this.showPayloadModal = false;
+    },
+
+    resetPayloadModalToDefault() {
+      this.payloadModalText = this.payloadModalDefault;
+    },
+
+    async submitCustomPayload() {
+      if (!this.payloadModalNode) return;
+      const nodeName = this.payloadModalNode.name;
+      const payloadText = this.payloadModalText;
+      this.showPayloadModal = false;
+      await this.triggerGenerator(nodeName, payloadText);
     },
 
     async exportTrace() {

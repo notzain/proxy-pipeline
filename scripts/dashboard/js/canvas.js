@@ -782,7 +782,7 @@ export class CanvasRenderer {
             worldPt.y >= h.y - h.height / 2 && worldPt.y <= h.y + h.height / 2) {
           // If clicked directly on generator trigger button, let click handler handle it
           if (h.isGenerator) {
-            const btnW = 120;
+            const btnW = 124;
             const btnH = 20;
             const btnX = h.x - btnW / 2;
             const btnY = (h.y + h.height / 2) - 28;
@@ -873,12 +873,20 @@ export class CanvasRenderer {
             worldPt.y >= h.y - h.height / 2 && worldPt.y <= h.y + h.height / 2) {
 
           if (h.isGenerator) {
-            const btnW = 120;
+            const btnW = 124;
             const btnH = 20;
             const btnX = h.x - btnW / 2;
             const btnY = (h.y + h.height / 2) - 28;
             if (worldPt.x >= btnX && worldPt.x <= btnX + btnW && worldPt.y >= btnY && worldPt.y <= btnY + btnH) {
-              this.store.triggerGenerator(h.name);
+              const editW = 24;
+              const mainW = btnW - editW;
+              if (worldPt.x >= btnX + mainW) {
+                // Clicked on edit pill (pencil icon) -> Open custom payload modal
+                this.store.openCustomPayloadModal(h);
+              } else {
+                // Clicked on main emit button -> Trigger instantly with default
+                this.store.triggerGenerator(h.name);
+              }
               return;
             }
           }
@@ -1175,27 +1183,44 @@ export class CanvasRenderer {
         ctx.fillText(s.label, s.x - 8, s.y);
       });
 
-      // Generator Interactive Trigger Button
+      // Generator Interactive Trigger Split-Button (Emit vs. Custom Payload Modal)
       if (h.isGenerator) {
-        const btnW = 120;
+        const btnW = 124;
         const btnH = 20;
         const btnX = h.x - btnW / 2;
         const btnY = (y + h.height) - 28;
+        const editW = 24;
+        const mainW = btnW - editW;
 
-        ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+        // Button background
+        ctx.fillStyle = "rgba(56, 189, 248, 0.16)";
         ctx.beginPath();
         ctx.roundRect(btnX, btnY, btnW, btnH, 4);
         ctx.fill();
 
+        // Button border
         ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
         ctx.lineWidth = 1;
         ctx.stroke();
 
+        // Divider between main action and edit pill
+        ctx.beginPath();
+        ctx.moveTo(btnX + mainW, btnY);
+        ctx.lineTo(btnX + mainW, btnY + btnH);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.stroke();
+
+        // Main action text: "⚡ Trigger Emit"
         ctx.fillStyle = "#38bdf8";
         ctx.font = "bold 9px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("⚡ Trigger Emit", h.x, btnY + btnH / 2);
+        ctx.fillText("⚡ Trigger Emit", btnX + mainW / 2, btnY + btnH / 2);
+
+        // Edit pill icon: "✏️" / "⚙"
+        ctx.fillStyle = "#7dd3fc";
+        ctx.font = "10px sans-serif";
+        ctx.fillText("✏️", btnX + mainW + editW / 2, btnY + btnH / 2);
       }
 
       ctx.restore();

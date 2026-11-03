@@ -392,6 +392,54 @@
     </div>
   </div>
 
+  <!-- Modal: Generated Chain Definition / Syntax Error Viewer -->
+  <div v-if="showChainViewerModal" class="modal-backdrop" @click="closeChainViewer()">
+    <div class="modal-dialog chain-viewer-dialog" @click.stop>
+      <div class="modal-header">
+        <span class="modal-title">
+          <span>{{ chainViewerError ? '⚠️' : '📄' }}</span>
+          <span>{{ chainViewerTitle }}</span>
+        </span>
+        <button class="modal-close-btn" @click="closeChainViewer()" title="Close (Esc)">✕</button>
+      </div>
+
+      <div class="modal-body" style="padding: 12px 16px; gap: 10px; display: flex; flex-direction: column; overflow: hidden; max-height: calc(85vh - 120px);">
+        <!-- Error Banner if failed -->
+        <div v-if="chainViewerError" class="chain-viewer-error-banner">
+          <span style="font-size: 16px;">❌</span>
+          <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 12px; color: #fca5a5;">Syntax / Runner Error</div>
+            <div style="font-family: monospace; font-size: 11px; color: #fee2e2; margin-top: 2px;">{{ chainViewerError }}</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted);">
+          <span>Generated Pipeline TOML ({{ chainViewerLines.length }} lines):</span>
+          <span v-if="chainViewerError" style="color: #f87171; font-weight: 600;">Highlighted error line indicated below</span>
+        </div>
+
+        <!-- Code Editor with Line Numbers & Syntax Highlighting -->
+        <div class="chain-viewer-code-container">
+          <div class="chain-viewer-editor">
+            <div v-for="line in chainViewerLines" :key="'ln-' + line.num"
+                 class="chain-viewer-line"
+                 :class="{ 'chain-viewer-line-error': line.isErrorLine }">
+              <span class="chain-viewer-gutter">{{ line.num }}</span>
+              <span class="chain-viewer-content" v-html="line.html"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button @click="copyChainViewerText()" style="margin-right: auto;" title="Copy entire TOML to clipboard">
+          📋 Copy TOML
+        </button>
+        <button @click="closeChainViewer()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Slide-Out Complex Parameter Configuration Drawer -->
   <div v-if="drawerNode && drawerParamKey" class="param-drawer-backdrop" @click="closeParamDrawer()">
     <div class="param-drawer" @click.stop>

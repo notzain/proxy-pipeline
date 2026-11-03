@@ -12,6 +12,11 @@ function createApp() {
     saveFilename: 'custom_chain.toml',
     showSaveModal: false,
     showExportModal: false,
+    showChainViewerModal: false,
+    chainViewerTitle: 'Generated Pipeline Definition',
+    chainViewerError: '',
+    chainViewerToml: '',
+    chainViewerLines: [],
     backend: 'file',
     globalConfig: {
       'file.path': '/tmp/proxy_watch',
@@ -528,7 +533,7 @@ function createApp() {
 
     getAvailableTargetChannels(node) {
       const channels = new Set();
-      // 1. Outputs on current node
+      // Only include output channels from the current node and other nodes across the chain (excluding inputs)
       if (node && node.outputs) {
         for (const val of Object.values(node.outputs)) {
           if (Array.isArray(val)) {
@@ -538,7 +543,6 @@ function createApp() {
           }
         }
       }
-      // 2. All wires and nodes across the chain for rich cross-referencing
       for (const n of this.nodes) {
         if (n.outputs) {
           for (const val of Object.values(n.outputs)) {
@@ -1183,6 +1187,99 @@ function createApp() {
       return out;
     },
 
+    escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    },
+
+    highlightTomlLine(line) {
+      if (!line) return '&nbsp;';
+      const trimmed = line.trim();
+      if (!trimmed) return '&nbsp;';
+
+      // Comments
+      if (trimmed.startsWith('#')) {
+        return `<span class="toml-tok-comment">${this.escapeHtml(line)}</span>`;
+      }
+
+      // [[table.array]]
+      if (trimmed.startsWith('[[') && trimmed.endsWith(']]')) {
+        return `<span class="toml-tok-table-array">${this.escapeHtml(line)}</span>`;
+      }
+
+      // [table]
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        return `<span class="toml-tok-table">${this.escapeHtml(line)}</span>`;
+      }
+
+      // Key = Value
+      const eqIdx = line.indexOf('=');
+      if (eqIdx !== -1) {
+        const keyPart = line.substring(0, eqIdx);
+        const valPart = line.substring(eqIdx + 1);
+        const trimmedVal = valPart.trim();
+
+        let valHtml = '';
+        if (trimmedVal === 'true' || trimmedVal === 'false') {
+          valHtml = `<span class="toml-tok-bool">${this.escapeHtml(valPart)}</span>`;
+        } else if (!isNaN(Number(trimmedVal)) && trimmedVal !== '') {
+          valHtml = `<span class="toml-tok-num">${this.escapeHtml(valPart)}</span>`;
+        } else if (trimmedVal.startsWith('"') || trimmedVal.startsWith("'")) {
+          valHtml = `<span class="toml-tok-str">${this.escapeHtml(valPart)}</span>`;
+        } else {
+          valHtml = `<span class="toml-tok-val">${this.escapeHtml(valPart)}</span>`;
+        }
+
+        return `<span class="toml-tok-key">${this.escapeHtml(keyPart)}</span><span class="toml-tok-punct">=</span>${valHtml}`;
+      }
+
+      return this.escapeHtml(line);
+    },
+
+    openChainViewer(title, tomlStr, errorMsg = '') {
+      this.chainViewerTitle = title || 'Generated Pipeline Definition';
+      this.chainViewerError = errorMsg || '';
+      this.chainViewerToml = tomlStr || '';
+
+      // Parse error line number if present: e.g. "at line 22, column 85"
+      let errLineNum = null;
+      if (errorMsg) {
+        const m = errorMsg.match(/line\s+(\d+)/i);
+        if (m) {
+          errLineNum = parseInt(m[1], 10);
+        }
+      }
+
+      const rawLines = (tomlStr || '').split('\n');
+      this.chainViewerLines = rawLines.map((l, idx) => {
+        const lineNum = idx + 1;
+        return {
+          num: lineNum,
+          raw: l,
+          html: this.highlightTomlLine(l),
+          isErrorLine: errLineNum !== null && lineNum === errLineNum,
+        };
+      });
+
+      this.showChainViewerModal = true;
+    },
+
+    closeChainViewer() {
+      this.showChainViewerModal = false;
+    },
+
+    copyChainViewerText() {
+      if (this.chainViewerToml) {
+        navigator.clipboard.writeText(this.chainViewerToml);
+        this.flashStatus('Copied generated TOML to clipboard!');
+      }
+    },
+
     downloadFile(filename, text) {
       const el = document.createElement('a');
       el.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
@@ -1276,6 +1373,7 @@ function createApp() {
 
     async runSimulation() {
       const chainDef = this.exportChainDefinition();
+      const localToml = this.toTomlString(chainDef);
       try {
         const res = await fetch('/api/chain/run', {
           method: 'POST',
@@ -1289,10 +1387,12 @@ function createApp() {
             window.location.href = data.url;
           }
         } else {
-          alert('Run failed: ' + (data.message || 'Unknown error'));
+          const errText = data.message || 'Unknown error';
+          const tomlText = data.toml || localToml;
+          this.openChainViewer('Simulation Launch Failed', tomlText, errText);
         }
       } catch (err) {
-        alert('Run request failed: ' + err);
+        this.openChainViewer('Network / Request Failed', localToml, String(err));
       }
     },
 

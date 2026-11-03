@@ -314,7 +314,7 @@
         </div>
       </div>
 
-      <!-- Clickable Handler Node Inspector -->
+      <!-- Clickable Handler Node Inspector with Config & Logs Tabs -->
       <div class="node-inspector-pane" :class="{ active: !!state.selectedNode }">
         <div class="node-header">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -323,21 +323,55 @@
               {{ state.selectedNode.role.replace('external_', '') }}
             </span>
           </div>
-          <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">
-            {{ state.selectedNode ? state.selectedNode.type : 'No Node Selected' }}
-          </span>
-        </div>
-        <div class="node-content-grid" v-if="state.selectedNode">
-          <div class="meta-grid">
-            <span class="k">Instance Name:</span><span class="v">{{ state.selectedNode.name }}</span>
-            <span class="k">Handler Type:</span><span class="v">{{ state.selectedNode.type }}</span>
-            <span class="k">Input Channel:</span><span class="v">{{ state.selectedNode.inChs && state.selectedNode.inChs.length > 0 ? state.selectedNode.inChs.join(", ") : (state.selectedNode.inCh || "(none)") }}</span>
-            <span class="k">Output Channel:</span><span class="v">{{ state.selectedNode.outChs && state.selectedNode.outChs.length > 0 ? state.selectedNode.outChs.join(", ") : (state.selectedNode.outCh || "(none)") }}</span>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- Tabs: Config vs Logs -->
+            <div v-if="state.selectedNode" class="node-inspector-tabs">
+              <button class="node-tab-btn" :class="{ active: inspectorTab === 'config' }" @click="inspectorTab = 'config'">
+                ⚙ Config
+              </button>
+              <button class="node-tab-btn" :class="{ active: inspectorTab === 'logs' }" @click="inspectorTab = 'logs'">
+                📜 Logs ({{ getNodeLogs(state.selectedNode).length }})
+              </button>
+            </div>
+            <span style="font-family: monospace; color: var(--text-muted); font-size: 11px;">
+              {{ state.selectedNode ? state.selectedNode.type : 'No Node Selected' }}
+            </span>
           </div>
-          <div class="payload-box" style="max-height: 100px;">{{ JSON.stringify(state.selectedNode.config, null, 2) }}</div>
         </div>
+
+        <div class="node-content-body" v-if="state.selectedNode">
+          <!-- TAB 1: Config & Channel Bindings -->
+          <div v-if="inspectorTab === 'config'" class="node-content-grid">
+            <div class="meta-grid">
+              <span class="k">Instance Name:</span><span class="v">{{ state.selectedNode.name }}</span>
+              <span class="k">Handler Type:</span><span class="v">{{ state.selectedNode.type }}</span>
+              <span class="k">Input Channel:</span><span class="v">{{ state.selectedNode.inChs && state.selectedNode.inChs.length > 0 ? state.selectedNode.inChs.join(", ") : (state.selectedNode.inCh || "(none)") }}</span>
+              <span class="k">Output Channel:</span><span class="v">{{ state.selectedNode.outChs && state.selectedNode.outChs.length > 0 ? state.selectedNode.outChs.join(", ") : (state.selectedNode.outCh || "(none)") }}</span>
+            </div>
+            <div class="payload-box" style="max-height: 110px;">{{ JSON.stringify(state.selectedNode.config, null, 2) }}</div>
+          </div>
+
+          <!-- TAB 2: Isolated Handler Execution Logs -->
+          <div v-else-if="inspectorTab === 'logs'" class="node-logs-container">
+            <div v-if="getNodeLogs(state.selectedNode).length === 0" style="padding: 14px; text-align: center; color: var(--text-muted); font-size: 11px; font-style: italic;">
+              No log messages captured yet for handler <strong>{{ state.selectedNode.name }}</strong>.
+            </div>
+            <div v-else class="node-logs-scroll">
+              <div v-for="(l, lIdx) in getNodeLogs(state.selectedNode)" :key="'nl-' + lIdx" class="node-log-line">
+                <span class="node-log-gutter">{{ lIdx + 1 }}</span>
+                <span class="node-log-text" :class="{
+                  'log-warn': l.includes('[warn]') || l.includes('REJECTED') || l.includes('Warning'),
+                  'log-err': l.includes('[error]') || l.includes('[err]') || l.includes('Failed') || l.includes('Error'),
+                  'log-info': l.includes('[info]'),
+                  'log-dbg': l.includes('[debug]')
+                }">{{ l }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-else style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">
-          Click any handler node in the topology canvas above to inspect its channel bindings and configuration.
+          Click any handler node in the topology canvas above to inspect its channel bindings, configuration, or execution logs.
         </div>
       </div>
     </div>
@@ -475,6 +509,53 @@
       </div>
     </div>
   </main>
+
+  <!-- Dynamic Generator Payload Modal -->
+  <div v-if="showPayloadModal" class="modal-backdrop" @click="closeCustomPayloadModal()">
+    <div class="modal-dialog" @click.stop>
+      <div class="modal-header">
+        <span class="modal-title">
+          <span>⚡ Emit Custom Generator Payload</span>
+          <span style="font-size: 11px; font-weight: 500; color: #38bdf8; background: rgba(56,189,248,0.15); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.3);">
+            {{ payloadModalNode?.name }}
+          </span>
+        </span>
+        <button class="modal-close-btn" @click="closeCustomPayloadModal()" title="Close (Esc)">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
+          <span>Target Output Channel: <strong>{{ payloadModalNode?.output_channel || payloadModalNode?.config?.['dummy.channel'] || 'default' }}</strong></span>
+          <span>Shortcut: <kbd style="background: #1e293b; padding: 1px 4px; border-radius: 3px; font-size: 10px; border: 1px solid #334155;">Ctrl+Enter</kbd></span>
+        </div>
+
+        <textarea v-model="payloadModalText"
+                  @keydown.ctrl.enter="submitCustomPayload()"
+                  @keydown.meta.enter="submitCustomPayload()"
+                  @keydown.esc="closeCustomPayloadModal()"
+                  rows="7"
+                  placeholder="Enter custom dynamic payload (XML, JSON, raw text)..."
+                  style="width: 100%; box-sizing: border-box; background: #090d16; color: #f1f5f9; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; outline: none;"></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button @click="resetPayloadModalToDefault()"
+                title="Reset input to handler's configured default message"
+                style="margin-right: auto; background: transparent; border: 1px solid #334155; color: var(--text-muted); font-size: 11px; padding: 6px 10px; border-radius: 4px; cursor: pointer;">
+          ↺ Reset Default
+        </button>
+        <button @click="closeCustomPayloadModal()"
+                style="background: transparent; border: 1px solid #334155; color: var(--text); font-size: 11px; padding: 6px 12px; border-radius: 4px; cursor: pointer;">
+          Cancel
+        </button>
+        <button class="primary"
+                @click="submitCustomPayload()"
+                style="background: #0284c7; color: white; border: none; font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+          <span>⚡ Emit Custom</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ES6 App Module Bootstrapper -->
   <script>

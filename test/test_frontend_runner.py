@@ -128,6 +128,60 @@ class FrontendRunnerTests(unittest.TestCase):
             self.assertEqual(sim["mode"], "idle")
             self.assertEqual(sim["packetCount"], 0)
 
+    def test_simulation_trigger_generator_dynamic_payload(self):
+        # Attach a mock coordinator with a generator handler
+        chain_cfg = {
+            "backend": "sim",
+            "handlers": [
+                {
+                    "name": "sender_1",
+                    "type": "dummy_send",
+                    "output_channel": "out_test",
+                    "config": {"dummy.message": "Static Default Message"},
+                }
+            ],
+        }
+        from proxy_runner.coordinator import InteractiveSimulationCoordinator
+        coord = InteractiveSimulationCoordinator(chain_cfg, [])
+        self.manager.coordinator = coord
+
+        try:
+            # Test default payload trigger
+            req_default = Request(
+                f"{self.base_url}/api/simulation/trigger",
+                data=json.dumps({"node": "sender_1"}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req_default) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(data["status"], "ok")
+                self.assertIn("Static Default Message", data["packet"]["payloadFull"])
+
+            # Reset coordinator
+            coord.close()
+            coord = InteractiveSimulationCoordinator(chain_cfg, [])
+            self.manager.coordinator = coord
+
+            # Test custom dynamic payload trigger
+            custom_msg = "<order id='42'><symbol>GOOG</symbol></order>"
+            req_custom = Request(
+                f"{self.base_url}/api/simulation/trigger",
+                data=json.dumps({"node": "sender_1", "payload": custom_msg}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req_custom) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertEqual(data["status"], "ok")
+                self.assertEqual(data["packet"]["payloadFull"], custom_msg)
+                self.assertEqual(data["event"]["payloadFull"], custom_msg)
+        finally:
+            coord.close()
+            self.manager.coordinator = None
+
 
 if __name__ == "__main__":
     unittest.main()

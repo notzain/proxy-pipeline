@@ -248,6 +248,7 @@ class ChainRunnerTopologyRetryTests(unittest.TestCase):
     def test_retries_topology_publication_while_chain_is_running(self):
         class FakeProcess:
             pid = 12345
+            stdout = None
 
             def __init__(self):
                 self.poll_calls = 0
@@ -255,6 +256,9 @@ class ChainRunnerTopologyRetryTests(unittest.TestCase):
             def poll(self):
                 self.poll_calls += 1
                 return 0 if self.poll_calls > 6 else None
+
+            def wait(self, timeout=None):
+                return 0
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
