@@ -4,7 +4,7 @@
  *   1. "realtime": Live SimBackend execution where packets are loaded from PCAP and stepped forward into handlers.
  *   2. "trace": Standalone execution trace replay (export.trace.json) supporting forward and backward stepping without a running backend.
  */
-import { CanvasRenderer } from "./canvas.js?v=13";
+import { CanvasRenderer } from "./canvas.js?v=15";
 
 export function createSimulationApp() {
   return {
@@ -29,6 +29,8 @@ export function createSimulationApp() {
       selectedNode: null,
       selectedPacket: null,
       selectedTraceEventId: null,
+      selectedSubTraceId: null,
+      expandedTraceEventIds: {},
       stats: {
         delivered: 0,
         dropped: 0,
@@ -286,19 +288,52 @@ export function createSimulationApp() {
       }
     },
 
-    inspectTraceEvent(ev) {
+    toggleTraceExpanded(ev, e) {
+      if (e) e.stopPropagation();
+      const id = ev.eventId;
+      if (this.state.expandedTraceEventIds[id]) {
+        delete this.state.expandedTraceEventIds[id];
+      } else {
+        this.state.expandedTraceEventIds[id] = true;
+      }
+    },
+
+    isTraceExpanded(ev) {
+      return !!this.state.expandedTraceEventIds[ev.eventId];
+    },
+
+    inspectTraceEvent(ev, specificTrace = null) {
       if (!ev) return;
       this.state.selectedTraceEventId = ev.eventId;
-      this.state.lastEvent = ev;
+      this.state.selectedSubTraceId = specificTrace ? specificTrace.traceId : null;
+      if (specificTrace) {
+        this.state.lastEvent = {
+          ...ev,
+          ...specificTrace,
+          eventId: ev.eventId,
+          handler: ev.handler || ev.target,
+          handlerType: ev.handlerType || ev.targetType,
+          inputChannel: ev.inputChannel,
+          outputChannel: specificTrace.outputChannel || specificTrace.channel || ev.outputChannel,
+          result: specificTrace.result || ev.result,
+          status: specificTrace.status || ev.status,
+          payloadSummary: specificTrace.payloadSummary || ev.payloadSummary,
+          payloadFull: specificTrace.payloadFull || ev.payloadFull,
+          detail: specificTrace.detail || ev.detail,
+        };
+      } else {
+        this.state.lastEvent = ev;
+      }
       this.syncSelectedPacketForEvent(ev);
       if (this.canvasRenderer) {
-        this.canvasRenderer.triggerTransitionAnimation(ev);
+        this.canvasRenderer.triggerTransitionAnimation(ev, specificTrace);
       }
     },
 
     selectTraceItem(ev, idx) {
       if (this.isPlaying) this.togglePlay();
       this.state.selectedTraceEventId = ev.eventId;
+      this.state.selectedSubTraceId = null;
       this.state.lastEvent = ev;
 
       if (this.mode === "trace") {
@@ -307,7 +342,22 @@ export function createSimulationApp() {
         this.updateStats();
       }
 
-      this.inspectTraceEvent(ev);
+      this.inspectTraceEvent(ev, null);
+    },
+
+    selectSubTraceItem(ev, subTrace, idx, e) {
+      if (e) e.stopPropagation();
+      if (this.isPlaying) this.togglePlay();
+      this.state.selectedTraceEventId = ev.eventId;
+      this.state.selectedSubTraceId = subTrace.traceId;
+
+      if (this.mode === "trace") {
+        this.traceStepIdx = idx + 1;
+        this.state.events = this.traceAllEvents.slice(0, this.traceStepIdx);
+        this.updateStats();
+      }
+
+      this.inspectTraceEvent(ev, subTrace);
     },
 
     async loadNextPacket() {

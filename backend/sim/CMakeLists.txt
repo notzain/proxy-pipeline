@@ -10,6 +10,7 @@ if(NOT TARGET proxylog::proxylog AND NOT TARGET proxylog)
 endif()
 
 find_package(fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -33,6 +34,7 @@ target_link_libraries(backend-sim
         proxylog::proxylog
     PRIVATE
         fmt::fmt
+        nlohmann_json::nlohmann_json
 )
 
 target_compile_features(backend-sim PUBLIC cxx_std_${CMAKE_CXX_STANDARD})

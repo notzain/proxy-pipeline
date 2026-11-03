@@ -11,39 +11,42 @@
 #include <cstring>
 #include <fmt/core.h>
 #include <memory>
+#include <nlohmann/json.hpp>
+#include <sstream>
+#include <string>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <variant>
+#include <vector>
 
 namespace {
 
 /**
- * @brief Escapes non-printable and special JSON characters within an input string view.
- *
- * @param input Raw string view to escape.
- * @param maxLen Maximum number of characters to process from input.
- * @return std::string Escaped string suitable for embedding into JSON text.
+ * @brief Splits a string_view by a delimiter character and trims whitespace.
  */
-std::string escapeJsonString(std::string_view input, std::size_t maxLen)
+std::vector<std::string> splitChannelList(std::string_view str, char delimiter)
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream { std::string(str) };
+    while (std::getline(tokenStream, token, delimiter)) {
+        auto start = token.find_first_not_of(" \t\r\n");
+        if (start != std::string::npos) {
+            auto end = token.find_last_not_of(" \t\r\n");
+            tokens.push_back(token.substr(start, end - start + 1));
+        }
+    }
+    return tokens;
+}
+
+std::string sanitizePayload(std::string_view input, std::size_t maxLen)
 {
     std::size_t limit = std::min(input.size(), maxLen);
     std::string out;
     out.reserve(limit);
     for (std::size_t i = 0; i < limit; ++i) {
         char c = input[i];
-        if (c == '"' || c == '\\') {
-            out += '\\';
-            out += c;
-        } else if (c == '\n') {
-            out += "\\n";
-        } else if (c == '\r') {
-            out += "\\r";
-        } else if (c == '\t') {
-            out += "\\t";
-        } else {
-            out += (c >= 32 && c <= 126) ? c : '.';
-        }
+        out += (c >= 32 && c <= 126) ? c : '.';
     }
     return out;
 }
@@ -132,50 +135,71 @@ void SimBackend::onMessageResult(
     }
 
     std::string_view payloadView(reinterpret_cast<const char*>(appPayload.data()), appPayload.size());
-    std::string summary = escapeJsonString(payloadView, 64);
-    std::string fullText = escapeJsonString(payloadView, 2048);
-
-    std::string_view resultType = "Consumed";
-    std::string_view status = "consumed";
-    std::string_view outputChannel;
-    std::string_view reason;
-    int errorCode = 0;
-
-    result.match(
-        [&](const ::Backend::Forwarded& outcome) {
-            resultType = "Forwarded";
-            status = "forwarded";
-            outputChannel = outcome.channel;
-        },
-        [&](const ::Backend::Consumed&) {
-            resultType = "Consumed";
-            status = "consumed";
-        },
-        [&](const ::Backend::Dropped& outcome) {
-            resultType = "Dropped";
-            status = "dropped";
-            reason = outcome.reason;
-            errorCode = outcome.errorCode;
-        });
+    std::string summary = sanitizePayload(payloadView, 64);
+    std::string fullText = sanitizePayload(payloadView, 2048);
 
     auto nowNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch())
                      .count();
 
-    std::string json = fmt::format(
-        R"({{"timestampNs":{},"msgTimestampNs":{},"type":"message_result","handler":"{}","inputChannel":"{}","outputChannel":"{}","result":"{}","status":"{}","reason":"{}","errorCode":{},"bytes":{},"summary":"{}","payload":"{}"}})",
-        nowNs,
-        msgTimestampNs,
-        escapeJsonString(m_handlerName, 128),
-        escapeJsonString(inputChannel, 128),
-        escapeJsonString(outputChannel, 256),
-        resultType,
-        status,
-        escapeJsonString(reason, 512),
-        errorCode,
-        appPayload.size(),
-        summary,
-        fullText);
+    nlohmann::json root;
+    root["timestampNs"] = nowNs;
+    root["msgTimestampNs"] = msgTimestampNs;
+    root["type"] = "message_result";
+    root["handler"] = m_handlerName;
+    root["inputChannel"] = inputChannel;
+    root["bytes"] = appPayload.size();
+
+    nlohmann::json traces = nlohmann::json::array();
+
+    result.match(
+        [&](const ::Backend::Forwarded& outcome) {
+            auto outChannels = splitChannelList(outcome.channel, ',');
+            if (outChannels.empty()) {
+                nlohmann::json tr;
+                tr["traceId"] = 1;
+                tr["outputChannel"] = "";
+                tr["result"] = "Forwarded";
+                tr["status"] = "forwarded";
+                tr["summary"] = summary;
+                tr["payload"] = fullText;
+                traces.push_back(std::move(tr));
+            } else {
+                for (std::size_t i = 0; i < outChannels.size(); ++i) {
+                    nlohmann::json tr;
+                    tr["traceId"] = i + 1;
+                    tr["outputChannel"] = outChannels[i];
+                    tr["result"] = "Forwarded";
+                    tr["status"] = "forwarded";
+                    tr["summary"] = summary;
+                    tr["payload"] = fullText;
+                    traces.push_back(std::move(tr));
+                }
+            }
+        },
+        [&](const ::Backend::Consumed&) {
+            nlohmann::json tr;
+            tr["traceId"] = 1;
+            tr["result"] = "Consumed";
+            tr["status"] = "consumed";
+            tr["summary"] = summary;
+            tr["payload"] = fullText;
+            traces.push_back(std::move(tr));
+        },
+        [&](const ::Backend::Dropped& outcome) {
+            nlohmann::json tr;
+            tr["traceId"] = 1;
+            tr["result"] = "Dropped";
+            tr["status"] = "dropped";
+            tr["reason"] = std::string(outcome.reason);
+            tr["errorCode"] = outcome.errorCode;
+            tr["summary"] = summary;
+            tr["payload"] = fullText;
+            traces.push_back(std::move(tr));
+        });
+
+    root["traces"] = std::move(traces);
+    std::string json = root.dump();
 
     if (m_unixEventFd >= 0 && !m_eventSockPath.empty()) {
         sockaddr_un addr { };
@@ -196,9 +220,11 @@ void SimBackend::onMessageResult(
 void SimBackend::onHandlerStarted()
 {
     if (m_unixEventFd >= 0 && !m_eventSockPath.empty()) {
-        std::string json = fmt::format(
-            R"({{"type":"handler_ready","handler":"{}"}})",
-            escapeJsonString(m_handlerName, 128));
+        nlohmann::json readyObj;
+        readyObj["type"] = "handler_ready";
+        readyObj["handler"] = m_handlerName;
+        std::string json = readyObj.dump();
+
         sockaddr_un addr { };
         addr.sun_family = AF_UNIX;
         std::strncpy(addr.sun_path, m_eventSockPath.c_str(), sizeof(addr.sun_path) - 1);

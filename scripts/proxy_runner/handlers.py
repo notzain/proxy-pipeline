@@ -16,6 +16,7 @@ class HandlerRole(str, Enum):
     GENERATOR = "generator"
     EXTERNAL_INGRESS = "external_ingress"
     EXTERNAL_EGRESS = "external_egress"
+    SINK = "sink"
 
 
 class HandlerProtocol(str, Enum):
@@ -42,6 +43,10 @@ class HandlerDescriptor:
     @property
     def is_external_egress(self) -> bool:
         return self.role == HandlerRole.EXTERNAL_EGRESS
+
+    @property
+    def is_sink(self) -> bool:
+        return self.role == HandlerRole.SINK
 
 
 def load_handler_descriptor(

@@ -15,6 +15,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 1,
+          "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -32,6 +46,19 @@
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 1,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -39,7 +66,7 @@
       "batchIds": [
         1
       ],
-      "detail": "'xml_validator' forwarded Packet #1 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #1",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -49,6 +76,22 @@
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 1,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -56,7 +99,7 @@
       "batchIds": [
         1
       ],
-      "detail": "'network_egress' consumed Packet #1",
+      "detail": "network_egress consumed Packet #1",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -65,6 +108,21 @@
       "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 1,
+          "payloadFull": "<order><customer>Customer_1</customer><item>Widget-1</item><quantity>10</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_1</customer><item>Widget-1</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -82,6 +140,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 2,
+          "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -99,6 +171,19 @@
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 2,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -106,7 +191,7 @@
       "batchIds": [
         2
       ],
-      "detail": "'xml_validator' forwarded Packet #2 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #2",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -116,6 +201,22 @@
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 2,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -123,7 +224,7 @@
       "batchIds": [
         2
       ],
-      "detail": "'network_egress' consumed Packet #2",
+      "detail": "network_egress consumed Packet #2",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -132,6 +233,21 @@
       "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 2,
+          "payloadFull": "<order><customer>Customer_2</customer><item>Widget-2</item><quantity>20</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_2</customer><item>Widget-2</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -149,6 +265,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 3,
+          "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -166,6 +296,19 @@
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 3,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -173,7 +316,7 @@
       "batchIds": [
         3
       ],
-      "detail": "'xml_validator' forwarded Packet #3 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #3",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -183,6 +326,22 @@
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 3,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -190,7 +349,7 @@
       "batchIds": [
         3
       ],
-      "detail": "'network_egress' consumed Packet #3",
+      "detail": "network_egress consumed Packet #3",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -199,6 +358,21 @@
       "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 3,
+          "payloadFull": "<order><customer>Customer_3</customer><item>Widget-3</item><quantity>30</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_3</customer><item>Widget-3</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -216,6 +390,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 4,
+          "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -233,6 +421,19 @@
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 4,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -240,7 +441,7 @@
       "batchIds": [
         4
       ],
-      "detail": "'xml_validator' forwarded Packet #4 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #4",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -250,6 +451,22 @@
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 4,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -257,7 +474,7 @@
       "batchIds": [
         4
       ],
-      "detail": "'network_egress' consumed Packet #4",
+      "detail": "network_egress consumed Packet #4",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -266,6 +483,21 @@
       "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 4,
+          "payloadFull": "<order><customer>Customer_4</customer><item>Widget-4</item><quantity>40</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_4</customer><item>Widget-4</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -283,6 +515,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 5,
+          "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -300,6 +546,19 @@
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 5,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -307,17 +566,32 @@
       "batchIds": [
         5
       ],
-      "detail": "'xml_validator' dropped Packet #5: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #5",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 5,
       "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
+          "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 5,
+          "payloadFull": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_5</customer><item>Widget-5</item><bad_",
+          "reason": "Rejected: XSD schema validation failure",
+          "result": "Dropped",
+          "status": "dropped",
+          "traceId": 1
+        }
+      ],
       "type": "drop"
     },
     {
@@ -335,6 +609,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 6,
+          "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -352,6 +640,19 @@
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 6,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -359,7 +660,7 @@
       "batchIds": [
         6
       ],
-      "detail": "'xml_validator' forwarded Packet #6 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #6",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -369,6 +670,22 @@
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 6,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -376,7 +693,7 @@
       "batchIds": [
         6
       ],
-      "detail": "'network_egress' consumed Packet #6",
+      "detail": "network_egress consumed Packet #6",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -385,6 +702,21 @@
       "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 6,
+          "payloadFull": "<order><customer>Customer_6</customer><item>Widget-6</item><quantity>60</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_6</customer><item>Widget-6</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -402,6 +734,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 7,
+          "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -419,6 +765,19 @@
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 7,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -426,7 +785,7 @@
       "batchIds": [
         7
       ],
-      "detail": "'xml_validator' forwarded Packet #7 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #7",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -436,6 +795,22 @@
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 7,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -443,7 +818,7 @@
       "batchIds": [
         7
       ],
-      "detail": "'network_egress' consumed Packet #7",
+      "detail": "network_egress consumed Packet #7",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -452,6 +827,21 @@
       "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 7,
+          "payloadFull": "<order><customer>Customer_7</customer><item>Widget-7</item><quantity>70</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_7</customer><item>Widget-7</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -469,6 +859,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 8,
+          "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -486,6 +890,19 @@
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 8,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -493,7 +910,7 @@
       "batchIds": [
         8
       ],
-      "detail": "'xml_validator' forwarded Packet #8 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #8",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -503,6 +920,22 @@
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 8,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -510,7 +943,7 @@
       "batchIds": [
         8
       ],
-      "detail": "'network_egress' consumed Packet #8",
+      "detail": "network_egress consumed Packet #8",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -519,6 +952,21 @@
       "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 8,
+          "payloadFull": "<order><customer>Customer_8</customer><item>Widget-8</item><quantity>80</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_8</customer><item>Widget-8</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -536,6 +984,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 9,
+          "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -553,6 +1015,19 @@
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 9,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -560,7 +1035,7 @@
       "batchIds": [
         9
       ],
-      "detail": "'xml_validator' forwarded Packet #9 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #9",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -570,6 +1045,22 @@
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 9,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -577,7 +1068,7 @@
       "batchIds": [
         9
       ],
-      "detail": "'network_egress' consumed Packet #9",
+      "detail": "network_egress consumed Packet #9",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -586,6 +1077,21 @@
       "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 9,
+          "payloadFull": "<order><customer>Customer_9</customer><item>Widget-9</item><quantity>90</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_9</customer><item>Widget-9</item><quan",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -603,6 +1109,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 10,
+          "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -620,6 +1140,19 @@
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 10,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -627,17 +1160,32 @@
       "batchIds": [
         10
       ],
-      "detail": "'xml_validator' dropped Packet #10: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #10",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 10,
       "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
+          "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 10,
+          "payloadFull": "<order><customer>Customer_10</customer><item>Widget-10</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_10</customer><item>Widget-10</item><ba",
+          "reason": "Rejected: XSD schema validation failure",
+          "result": "Dropped",
+          "status": "dropped",
+          "traceId": 1
+        }
+      ],
       "type": "drop"
     },
     {
@@ -655,6 +1203,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 11,
+          "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -672,6 +1234,19 @@
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 11,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -679,7 +1254,7 @@
       "batchIds": [
         11
       ],
-      "detail": "'xml_validator' forwarded Packet #11 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #11",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -689,6 +1264,22 @@
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 11,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -696,7 +1287,7 @@
       "batchIds": [
         11
       ],
-      "detail": "'network_egress' consumed Packet #11",
+      "detail": "network_egress consumed Packet #11",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -705,6 +1296,21 @@
       "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 11,
+          "payloadFull": "<order><customer>Customer_11</customer><item>Widget-11</item><quantity>110</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_11</customer><item>Widget-11</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -722,6 +1328,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 12,
+          "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -739,6 +1359,19 @@
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 12,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -746,7 +1379,7 @@
       "batchIds": [
         12
       ],
-      "detail": "'xml_validator' forwarded Packet #12 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #12",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -756,6 +1389,22 @@
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 12,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -763,7 +1412,7 @@
       "batchIds": [
         12
       ],
-      "detail": "'network_egress' consumed Packet #12",
+      "detail": "network_egress consumed Packet #12",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -772,6 +1421,21 @@
       "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 12,
+          "payloadFull": "<order><customer>Customer_12</customer><item>Widget-12</item><quantity>120</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_12</customer><item>Widget-12</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -789,6 +1453,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 13,
+          "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -806,6 +1484,19 @@
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 13,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -813,7 +1504,7 @@
       "batchIds": [
         13
       ],
-      "detail": "'xml_validator' forwarded Packet #13 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #13",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -823,6 +1514,22 @@
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 13,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -830,7 +1537,7 @@
       "batchIds": [
         13
       ],
-      "detail": "'network_egress' consumed Packet #13",
+      "detail": "network_egress consumed Packet #13",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -839,6 +1546,21 @@
       "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 13,
+          "payloadFull": "<order><customer>Customer_13</customer><item>Widget-13</item><quantity>130</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_13</customer><item>Widget-13</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -856,6 +1578,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 14,
+          "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -873,6 +1609,19 @@
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 14,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -880,7 +1629,7 @@
       "batchIds": [
         14
       ],
-      "detail": "'xml_validator' forwarded Packet #14 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #14",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -890,6 +1639,22 @@
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 14,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -897,7 +1662,7 @@
       "batchIds": [
         14
       ],
-      "detail": "'network_egress' consumed Packet #14",
+      "detail": "network_egress consumed Packet #14",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -906,6 +1671,21 @@
       "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 14,
+          "payloadFull": "<order><customer>Customer_14</customer><item>Widget-14</item><quantity>140</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_14</customer><item>Widget-14</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -923,6 +1703,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 15,
+          "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -940,6 +1734,19 @@
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 15,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -947,17 +1754,32 @@
       "batchIds": [
         15
       ],
-      "detail": "'xml_validator' dropped Packet #15: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #15",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 15,
       "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
+          "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 15,
+          "payloadFull": "<order><customer>Customer_15</customer><item>Widget-15</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_15</customer><item>Widget-15</item><ba",
+          "reason": "Rejected: XSD schema validation failure",
+          "result": "Dropped",
+          "status": "dropped",
+          "traceId": 1
+        }
+      ],
       "type": "drop"
     },
     {
@@ -975,6 +1797,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 16,
+          "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -992,6 +1828,19 @@
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 16,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -999,7 +1848,7 @@
       "batchIds": [
         16
       ],
-      "detail": "'xml_validator' forwarded Packet #16 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #16",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1009,6 +1858,22 @@
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 16,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1016,7 +1881,7 @@
       "batchIds": [
         16
       ],
-      "detail": "'network_egress' consumed Packet #16",
+      "detail": "network_egress consumed Packet #16",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1025,6 +1890,21 @@
       "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 16,
+          "payloadFull": "<order><customer>Customer_16</customer><item>Widget-16</item><quantity>160</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_16</customer><item>Widget-16</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -1042,6 +1922,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 17,
+          "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -1059,6 +1953,19 @@
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 17,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1066,7 +1973,7 @@
       "batchIds": [
         17
       ],
-      "detail": "'xml_validator' forwarded Packet #17 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #17",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1076,6 +1983,22 @@
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 17,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1083,7 +2006,7 @@
       "batchIds": [
         17
       ],
-      "detail": "'network_egress' consumed Packet #17",
+      "detail": "network_egress consumed Packet #17",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1092,6 +2015,21 @@
       "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 17,
+          "payloadFull": "<order><customer>Customer_17</customer><item>Widget-17</item><quantity>170</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_17</customer><item>Widget-17</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -1109,6 +2047,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 18,
+          "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -1126,6 +2078,19 @@
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 18,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1133,7 +2098,7 @@
       "batchIds": [
         18
       ],
-      "detail": "'xml_validator' forwarded Packet #18 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #18",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1143,6 +2108,22 @@
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 18,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1150,7 +2131,7 @@
       "batchIds": [
         18
       ],
-      "detail": "'network_egress' consumed Packet #18",
+      "detail": "network_egress consumed Packet #18",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1159,6 +2140,21 @@
       "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 18,
+          "payloadFull": "<order><customer>Customer_18</customer><item>Widget-18</item><quantity>180</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_18</customer><item>Widget-18</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -1176,6 +2172,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 19,
+          "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -1193,6 +2203,19 @@
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 19,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1200,7 +2223,7 @@
       "batchIds": [
         19
       ],
-      "detail": "'xml_validator' forwarded Packet #19 to 'orders_verified'",
+      "detail": "xml_validator forwarded Packet #19",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
@@ -1210,6 +2233,22 @@
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "'xml_validator' forwarded to 'orders_verified'",
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 19,
+          "outputChannel": "orders_verified",
+          "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1217,7 +2256,7 @@
       "batchIds": [
         19
       ],
-      "detail": "'network_egress' consumed Packet #19",
+      "detail": "network_egress consumed Packet #19",
       "handler": "network_egress",
       "handlerType": "udp_egress_handler",
       "inputChannel": "orders_verified",
@@ -1226,6 +2265,21 @@
       "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
       "result": "Consumed",
       "status": "consumed",
+      "traces": [
+        {
+          "channel": "orders_verified",
+          "detail": "Consumed by 'network_egress'",
+          "handler": "network_egress",
+          "handlerType": "udp_egress_handler",
+          "inputChannel": "orders_verified",
+          "msgId": 19,
+          "payloadFull": "<order><customer>Customer_19</customer><item>Widget-19</item><quantity>190</quantity></order>",
+          "payloadSummary": "<order><customer>Customer_19</customer><item>Widget-19</item><qu",
+          "result": "Consumed",
+          "status": "consumed",
+          "traceId": 1
+        }
+      ],
       "type": "egress"
     },
     {
@@ -1243,6 +2297,20 @@
       "result": "Loaded",
       "source": "192.168.1.100:54321",
       "status": "loaded",
+      "traces": [
+        {
+          "channel": "udp_network",
+          "detail": "Staged at ingress queue 'udp_network'",
+          "inputChannel": "udp_network",
+          "msgId": 20,
+          "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item...",
+          "result": "Loaded",
+          "source": "192.168.1.100:54321",
+          "status": "loaded",
+          "traceId": 1
+        }
+      ],
       "type": "ingress"
     },
     {
@@ -1260,6 +2328,19 @@
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
       "result": "Forwarded",
       "status": "forwarded",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Forwarded to 'orders_raw'",
+          "msgId": 20,
+          "outputChannel": "orders_raw",
+          "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
+          "result": "Forwarded",
+          "status": "forwarded",
+          "traceId": 1
+        }
+      ],
       "type": "hop"
     },
     {
@@ -1267,17 +2348,32 @@
       "batchIds": [
         20
       ],
-      "detail": "'xml_validator' dropped Packet #20: Rejected: XSD schema validation failure (code 400)",
-      "errorCode": 400,
+      "detail": "xml_validator dropped Packet #20",
       "handler": "xml_validator",
       "handlerType": "xml_verification_handler",
       "inputChannel": "orders_raw",
       "msgId": 20,
       "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
       "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
-      "reason": "Rejected: XSD schema validation failure",
       "result": "Dropped",
       "status": "dropped",
+      "traces": [
+        {
+          "channel": "orders_raw",
+          "detail": "Dropped by 'xml_validator': Rejected: XSD schema validation failure (code 400)",
+          "errorCode": 400,
+          "handler": "xml_validator",
+          "handlerType": "xml_verification_handler",
+          "inputChannel": "orders_raw",
+          "msgId": 20,
+          "payloadFull": "<order><customer>Customer_20</customer><item>Widget-20</item><bad_element>invalid</bad_element></order>",
+          "payloadSummary": "<order><customer>Customer_20</customer><item>Widget-20</item><ba",
+          "reason": "Rejected: XSD schema validation failure",
+          "result": "Dropped",
+          "status": "dropped",
+          "traceId": 1
+        }
+      ],
       "type": "drop"
     }
   ],

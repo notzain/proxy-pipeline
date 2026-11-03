@@ -346,6 +346,28 @@ class InteractiveSimulationCoordinator:
                 "status": "loaded",
                 "latencyUs": 0.0,
                 "detail": f"Packet {seq_label} staged at ingress queue '{ingress_channel_label}'",
+                "traces": [
+                    {
+                        "traceId": 1,
+                        "msgId": pkt.seq_id,
+                        "channel": ingress_channel_label,
+                        "inputChannel": ingress_channel_label,
+                        "result": "Loaded",
+                        "status": "loaded",
+                        "source": f"{pkt.src_ip}:{pkt.src_port}",
+                        "payloadSummary": (
+                            f"Batch of {len(current_batch_pkts)} packets"
+                            if is_batch
+                            else (pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text)
+                        ),
+                        "payloadFull": (
+                            "\n---\n".join(p.payload_text for p in current_batch_pkts)
+                            if is_batch
+                            else pkt.payload_text
+                        ),
+                        "detail": f"Staged at ingress queue '{ingress_channel_label}'",
+                    }
+                ],
             }
             self.event_counter += 1
             self.events.append(ev_ingress)
@@ -449,13 +471,37 @@ class InteractiveSimulationCoordinator:
 
         pkt: PcapPacket = info["packet"]
         batch_pkts: list[PcapPacket] = info.get("batch") or [pkt]
-        ch: str = info["output_channel"]
-        held_data = info["held_data"]
         pending_branches: list[dict[str, Any]] = list(info.get("pending_branches") or [])
 
-        consumers = self.channel_to_consumers.get(ch, [])
-        if not consumers:
-            # Output channel is an external chain egress (no downstream handler consumes it)
+        # If there are pending fan-out branches created simultaneously from the same upstream node,
+        # advance all of them concurrently in this step!
+        all_parallel_branches: list[dict[str, Any]] = [info] + pending_branches
+        remaining_pending: list[dict[str, Any]] = []
+
+        # Separate branches into those with downstream consumers and those that are chain egress
+        branches_to_deliver: list[tuple[dict[str, Any], dict[str, Any], str]] = [] # (branch, consumer_handler, in_sock)
+        egress_traces: list[dict[str, Any]] = []
+
+        for b in all_parallel_branches:
+            b_ch = b["output_channel"]
+            consumers = self.channel_to_consumers.get(b_ch, [])
+            if consumers:
+                branches_to_deliver.append((b, consumers[0], f"/tmp/proxy_sim_{b_ch}.sock"))
+            else:
+                egress_traces.append({
+                    "traceId": len(egress_traces) + 1,
+                    "msgId": pkt.seq_id,
+                    "channel": b_ch,
+                    "outputChannel": b_ch,
+                    "result": "Forwarded",
+                    "status": "transmitted",
+                    "payloadSummary": pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text,
+                    "payloadFull": pkt.payload_text,
+                    "detail": f"Transmitted out of chain egress channel '{b_ch}'",
+                })
+
+        if not branches_to_deliver:
+            # All parallel branches were external egress channels
             ev_egress = {
                 "eventId": self.event_counter,
                 "msgId": pkt.seq_id,
@@ -467,45 +513,222 @@ class InteractiveSimulationCoordinator:
                 "handler": info["curr_node_name"],
                 "handlerType": info["curr_node_type"],
                 "inputChannel": info.get("input_channel"),
-                "outputChannel": ch,
+                "outputChannel": ", ".join(b["output_channel"] for b in all_parallel_branches),
                 "payloadSummary": pkt.payload_text[:60] + "..." if len(pkt.payload_text) > 60 else pkt.payload_text,
                 "payloadFull": pkt.payload_text,
                 "status": "transmitted",
                 "latencyUs": 10.0,
-                "detail": f"Packet #{pkt.seq_id} transmitted out of chain egress channel '{ch}'",
+                "detail": f"Packet #{pkt.seq_id} transmitted out of chain egress channel(s)",
+                "traces": egress_traces,
             }
             self.event_counter += 1
             self.events.append(ev_egress)
-            self._advance_or_clear_branches(pending_branches)
+            self._advance_or_clear_branches(remaining_pending)
             return {"status": "ok", "event": ev_egress, "finishedPacket": pkt.seq_id}
-
-        next_handler = consumers[0]
-        next_in_sock = f"/tmp/proxy_sim_{ch}.sock"
 
         self._drain_socket(self.events_sock)
         send_time_ns = time.time_ns()
 
-        # Deliver held envelope(s) into the next handler's input channel socket
+        # Deliver held envelope(s) to all downstream consumer sockets in parallel
         s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        try:
-            if isinstance(held_data, list):
-                for envelope in held_data:
-                    s.sendto(envelope, next_in_sock)
-            elif held_data:
-                s.sendto(held_data, next_in_sock)
-        except Exception as ex:
-            print(f"[Coordinator] Error delivering held envelope to {next_in_sock}: {ex}")
+        for b, _, next_in_sock in branches_to_deliver:
+            held_data = b["held_data"]
+            try:
+                if isinstance(held_data, list):
+                    for envelope in held_data:
+                        s.sendto(envelope, next_in_sock)
+                elif held_data:
+                    s.sendto(held_data, next_in_sock)
+            except Exception as ex:
+                print(f"[Coordinator] Error delivering held envelope to {next_in_sock}: {ex}")
         s.close()
 
-        return self._process_handler_execution(
-            handler_spec=next_handler,
-            source_name=info["curr_node_name"],
-            input_channel=ch,
-            pkt=pkt,
-            batch_pkts=batch_pkts,
-            send_time_ns=send_time_ns,
-            pending_branches=pending_branches,
+        # Wait for MessageResult from all target consumer handlers
+        expected_handler_names = {consumer["name"] for _, consumer, _ in branches_to_deliver}
+        results = self._wait_for_message_results(
+            expected_handler=expected_handler_names,
+            expected_count=len(branches_to_deliver) * len(batch_pkts),
+            timeout_sec=0.5,
         )
+        elapsed_us = round(max(1.0, (time.time_ns() - send_time_ns) / 1000.0), 2)
+
+        # Group results by consumer handler
+        results_by_handler: dict[str, list[dict[str, Any]]] = {}
+        for r in results:
+            h_name = r.get("handler", "")
+            results_by_handler.setdefault(h_name, []).append(r)
+
+        # Evaluate each branch outcome and collect traces
+        combined_traces: list[dict[str, Any]] = list(egress_traces)
+        next_held_branches: list[dict[str, Any]] = []
+        is_batch = len(batch_pkts) > 1
+        seq_label = f"Batch [{', '.join(str(p.seq_id) for p in batch_pkts)}]" if is_batch else f"#{pkt.seq_id}"
+
+        for b, consumer, _ in branches_to_deliver:
+            c_name = consumer["name"]
+            c_type = consumer.get("type", "unknown")
+            in_ch = b["output_channel"]
+            c_results = results_by_handler.get(c_name, [])
+
+            raw_traces: list[dict[str, Any]] = []
+            for r in c_results:
+                if "traces" in r and isinstance(r["traces"], list):
+                    raw_traces.extend(r["traces"])
+                elif "result" in r:
+                    raw_traces.append(r)
+
+            forwarded_trs = [t for t in raw_traces if t.get("result") == "Forwarded"]
+            consumed_trs = [t for t in raw_traces if t.get("result") == "Consumed"]
+            dropped_trs = [t for t in raw_traces if t.get("result") == "Dropped"]
+
+            if forwarded_trs:
+                out_channels: list[str] = []
+                for t in forwarded_trs:
+                    raw_oc = t.get("outputChannel") or ""
+                    for part in raw_oc.split(","):
+                        c = part.strip()
+                        if c and c not in out_channels:
+                            out_channels.append(c)
+
+                if not out_channels and consumer.get("output_channel"):
+                    out_channels = [c.strip() for c in str(consumer["output_channel"]).split(",") if c.strip()]
+                if not out_channels and consumer.get("output_channels"):
+                    ocs = consumer["output_channels"]
+                    out_channels = list(ocs) if isinstance(ocs, list) else [c.strip() for c in str(ocs).split(",") if c.strip()]
+
+                for oc in out_channels:
+                    self._ensure_hold_socket(oc)
+                    held = self._poll_held_output(oc, timeout_sec=0.15)
+                    if held:
+                        next_held_branches.append({
+                            "stage": "held",
+                            "packet": pkt,
+                            "batch": batch_pkts,
+                            "curr_node_name": c_name,
+                            "curr_node_type": c_type,
+                            "input_channel": in_ch,
+                            "output_channel": oc,
+                            "held_data": held,
+                        })
+                    matched_tr = next((t for t in forwarded_trs if t.get("outputChannel") == oc), forwarded_trs[0])
+                    combined_traces.append({
+                        "traceId": len(combined_traces) + 1,
+                        "msgId": pkt.seq_id,
+                        "handler": c_name,
+                        "handlerType": c_type,
+                        "inputChannel": in_ch,
+                        "outputChannel": oc,
+                        "channel": oc,
+                        "result": "Forwarded",
+                        "status": "forwarded",
+                        "payloadSummary": matched_tr.get("summary") or pkt.payload_text[:60],
+                        "payloadFull": matched_tr.get("payload") or pkt.payload_text,
+                        "detail": f"'{c_name}' forwarded to '{oc}'",
+                    })
+            elif consumed_trs:
+                primary_tr = consumed_trs[0]
+                summary = f"Batch of {len(batch_pkts)} messages" if is_batch else (primary_tr.get("summary") or pkt.payload_text[:60])
+                full = "\n---\n".join(p.payload_text for p in batch_pkts) if is_batch else (primary_tr.get("payload") or pkt.payload_text)
+                combined_traces.append({
+                    "traceId": len(combined_traces) + 1,
+                    "msgId": pkt.seq_id,
+                    "handler": c_name,
+                    "handlerType": c_type,
+                    "inputChannel": in_ch,
+                    "channel": in_ch,
+                    "result": "Consumed",
+                    "status": "consumed",
+                    "payloadSummary": summary,
+                    "payloadFull": full,
+                    "detail": f"Consumed by '{c_name}'",
+                })
+            else:
+                # Dropped or unacknowledged
+                primary_tr = dropped_trs[0] if dropped_trs else {}
+                reason = primary_tr.get("reason") or "Message rejected by handler"
+                error_code = int(primary_tr.get("errorCode") or 0)
+                code_suffix = f" (code {error_code})" if error_code else ""
+                summary = f"Batch of {len(batch_pkts)} messages" if is_batch else (primary_tr.get("summary") or pkt.payload_text[:60])
+                full = "\n---\n".join(p.payload_text for p in batch_pkts) if is_batch else (primary_tr.get("payload") or pkt.payload_text)
+                combined_traces.append({
+                    "traceId": len(combined_traces) + 1,
+                    "msgId": pkt.seq_id,
+                    "handler": c_name,
+                    "handlerType": c_type,
+                    "inputChannel": in_ch,
+                    "channel": in_ch,
+                    "result": "Dropped",
+                    "status": "dropped",
+                    "reason": reason,
+                    "errorCode": error_code,
+                    "payloadSummary": summary,
+                    "payloadFull": full,
+                    "detail": f"Dropped by '{c_name}': {reason}{code_suffix}",
+                })
+
+        # Re-number traceIds 1..N
+        for idx, tr in enumerate(combined_traces):
+            tr["traceId"] = idx + 1
+
+        all_handler_names = [consumer["name"] for _, consumer, _ in branches_to_deliver]
+        primary_handler = ", ".join(all_handler_names) if len(all_handler_names) > 1 else (all_handler_names[0] if all_handler_names else info["curr_node_name"])
+        primary_handler_type = branches_to_deliver[0][1].get("type", "unknown") if branches_to_deliver else info["curr_node_type"]
+
+        has_forwarded = any(t.get("result") == "Forwarded" for t in combined_traces)
+        has_dropped = any(t.get("result") == "Dropped" for t in combined_traces)
+        all_consumed = all(t.get("result") == "Consumed" for t in combined_traces)
+
+        if has_forwarded:
+            event_type = "hop"
+            overall_result = "Forwarded"
+            overall_status = "forwarded"
+        elif all_consumed:
+            event_type = "egress"
+            overall_result = "Consumed"
+            overall_status = "consumed"
+        elif has_dropped:
+            event_type = "drop"
+            overall_result = "Dropped"
+            overall_status = "dropped"
+        else:
+            event_type = "egress"
+            overall_result = "Consumed"
+            overall_status = "consumed"
+
+        ev_combined = {
+            "eventId": self.event_counter,
+            "msgId": pkt.seq_id,
+            "batchIds": [p.seq_id for p in batch_pkts],
+            "batchCount": len(batch_pkts),
+            "timestampNs": results[0].get("timestampNs", time.time_ns()) if results else time.time_ns(),
+            "type": event_type,
+            "result": overall_result,
+            "handler": primary_handler,
+            "handlerType": primary_handler_type,
+            "inputChannel": ", ".join(b["output_channel"] for b, _, _ in branches_to_deliver),
+            "outputChannel": (
+                ", ".join(b["output_channel"] for b in next_held_branches)
+                if next_held_branches
+                else None
+            ),
+            "payloadSummary": combined_traces[0].get("payloadSummary") if combined_traces else pkt.payload_text[:60],
+            "payloadFull": combined_traces[0].get("payloadFull") if combined_traces else pkt.payload_text,
+            "status": overall_status,
+            "latencyUs": elapsed_us,
+            "detail": f"{primary_handler} {overall_status.lower()} Packet {seq_label}",
+            "traces": combined_traces,
+        }
+        self.event_counter += 1
+        self.events.append(ev_combined)
+
+        if next_held_branches:
+            first_held = next_held_branches[0]
+            first_held["pending_branches"] = next_held_branches[1:] + remaining_pending
+            self.active_in_flight = first_held
+            return {"status": "ok", "event": ev_combined, "heldChannel": first_held["output_channel"]}
+        else:
+            self._advance_or_clear_branches(remaining_pending)
+            return {"status": "ok", "event": ev_combined, "finishedPacket": pkt.seq_id}
 
     def _process_handler_execution(
         self,
@@ -535,14 +758,30 @@ class InteractiveSimulationCoordinator:
         elapsed_us = round(max(1.0, (time.time_ns() - send_time_ns) / 1000.0), 2)
 
         # Determine primary outcome from MessageResult
-        forwarded_results = [r for r in results if r.get("result") == "Forwarded"]
-        consumed_results = [r for r in results if r.get("result") == "Consumed"]
-        dropped_results = [r for r in results if r.get("result") == "Dropped"]
+        # Each item in results can have a 'traces' list or flat result fields
+        raw_traces: list[dict[str, Any]] = []
+        for r in results:
+            if "traces" in r and isinstance(r["traces"], list):
+                raw_traces.extend(r["traces"])
+            elif "result" in r:
+                raw_traces.append(r)
 
-        if forwarded_results:
-            primary_res = forwarded_results[0]
-            raw_out_ch = primary_res.get("outputChannel") or handler_spec.get("output_channel") or ""
-            out_channels = [c.strip() for c in raw_out_ch.split(",") if c.strip()]
+        forwarded_traces = [t for t in raw_traces if t.get("result") == "Forwarded"]
+        consumed_traces = [t for t in raw_traces if t.get("result") == "Consumed"]
+        dropped_traces = [t for t in raw_traces if t.get("result") == "Dropped"]
+
+        if forwarded_traces:
+            # Extract target output channels across all forwarded traces
+            out_channels: list[str] = []
+            for t in forwarded_traces:
+                raw_oc = t.get("outputChannel") or ""
+                for part in raw_oc.split(","):
+                    c = part.strip()
+                    if c and c not in out_channels:
+                        out_channels.append(c)
+
+            if not out_channels and handler_spec.get("output_channel"):
+                out_channels = [c.strip() for c in str(handler_spec["output_channel"]).split(",") if c.strip()]
             if not out_channels and handler_spec.get("output_channels"):
                 ocs = handler_spec["output_channels"]
                 out_channels = list(ocs) if isinstance(ocs, list) else [c.strip() for c in str(ocs).split(",") if c.strip()]
@@ -591,12 +830,30 @@ class InteractiveSimulationCoordinator:
                 all_out_str = ", ".join(b["output_channel"] for b in collected_branches)
                 batch_note = f" (Batch of {out_batch_count} messages)" if out_batch_count > 1 else ""
 
+                # Construct discrete trace objects for each collected branch
+                event_traces: list[dict[str, Any]] = []
+                for idx, branch in enumerate(collected_branches):
+                    b_oc = branch["output_channel"]
+                    matched_tr = next((t for t in forwarded_traces if t.get("outputChannel") == b_oc), forwarded_traces[0])
+                    tr_obj = {
+                        "traceId": idx + 1,
+                        "msgId": pkt.seq_id,
+                        "channel": b_oc,
+                        "outputChannel": b_oc,
+                        "result": "Forwarded",
+                        "status": "forwarded",
+                        "payloadSummary": matched_tr.get("summary") or pkt.payload_text[:60],
+                        "payloadFull": matched_tr.get("payload") or pkt.payload_text,
+                        "detail": f"Forwarded to '{b_oc}'",
+                    }
+                    event_traces.append(tr_obj)
+
                 ev_hop = {
                     "eventId": self.event_counter,
                     "msgId": pkt.seq_id,
                     "batchIds": [p.seq_id for p in batch_pkts],
                     "batchCount": out_batch_count,
-                    "timestampNs": primary_res.get("timestampNs", time.time_ns()),
+                    "timestampNs": results[0].get("timestampNs", time.time_ns()) if results else time.time_ns(),
                     "type": "hop",
                     "result": "Forwarded",
                     "handler": handler_name,
@@ -606,47 +863,63 @@ class InteractiveSimulationCoordinator:
                     "payloadSummary": (
                         f"Batch of {out_batch_count} messages"
                         if out_batch_count > 1
-                        else (primary_res.get("summary") or pkt.payload_text[:60])
+                        else (event_traces[0].get("payloadSummary") or pkt.payload_text[:60])
                     ),
                     "payloadFull": (
                         "\n---\n".join(p.payload_text for p in batch_pkts)
                         if is_batch
-                        else (primary_res.get("payload") or pkt.payload_text)
+                        else (event_traces[0].get("payloadFull") or pkt.payload_text)
                     ),
                     "status": "forwarded",
                     "latencyUs": elapsed_us,
                     "detail": f"'{handler_name}' forwarded Packet {seq_label} to '{all_out_str}'{batch_note}",
+                    "traces": event_traces,
                 }
                 self.event_counter += 1
                 self.events.append(ev_hop)
                 return {"status": "ok", "event": ev_hop, "heldChannel": out_ch}
 
-        if consumed_results:
-            primary_res = consumed_results[0]
+        if consumed_traces:
+            primary_tr = consumed_traces[0]
+            consumed_summary = (
+                f"Batch of {len(batch_pkts)} messages"
+                if is_batch
+                else (primary_tr.get("summary") or pkt.payload_text[:60])
+            )
+            consumed_full = (
+                "\n---\n".join(p.payload_text for p in batch_pkts)
+                if is_batch
+                else (primary_tr.get("payload") or pkt.payload_text)
+            )
             ev_consumed = {
                 "eventId": self.event_counter,
                 "msgId": pkt.seq_id,
                 "batchIds": [p.seq_id for p in batch_pkts],
                 "batchCount": len(batch_pkts),
-                "timestampNs": primary_res.get("timestampNs", time.time_ns()),
+                "timestampNs": results[0].get("timestampNs", time.time_ns()) if results else time.time_ns(),
                 "type": "egress",
                 "result": "Consumed",
                 "handler": handler_name,
                 "handlerType": handler_type,
                 "inputChannel": input_channel,
-                "payloadSummary": (
-                    f"Batch of {len(batch_pkts)} messages"
-                    if is_batch
-                    else (primary_res.get("summary") or pkt.payload_text[:60])
-                ),
-                "payloadFull": (
-                    "\n---\n".join(p.payload_text for p in batch_pkts)
-                    if is_batch
-                    else (primary_res.get("payload") or pkt.payload_text)
-                ),
+                "payloadSummary": consumed_summary,
+                "payloadFull": consumed_full,
                 "status": "consumed",
                 "latencyUs": elapsed_us,
                 "detail": f"'{handler_name}' consumed Packet {seq_label}",
+                "traces": [
+                    {
+                        "traceId": 1,
+                        "msgId": pkt.seq_id,
+                        "channel": input_channel,
+                        "inputChannel": input_channel,
+                        "result": "Consumed",
+                        "status": "consumed",
+                        "payloadSummary": consumed_summary,
+                        "payloadFull": consumed_full,
+                        "detail": f"Consumed by '{handler_name}'",
+                    }
+                ],
             }
             self.event_counter += 1
             self.events.append(ev_consumed)
@@ -654,17 +927,27 @@ class InteractiveSimulationCoordinator:
             return {"status": "ok", "event": ev_consumed, "finishedPacket": pkt.seq_id}
 
         # Dropped (either explicit MessageResult::Dropped or handler discarded without forwarding)
-        primary_res = dropped_results[0] if dropped_results else {}
-        reason = primary_res.get("reason") or "Message rejected by handler"
-        error_code = int(primary_res.get("errorCode") or 0)
+        primary_tr = dropped_traces[0] if dropped_traces else {}
+        reason = primary_tr.get("reason") or "Message rejected by handler"
+        error_code = int(primary_tr.get("errorCode") or 0)
         code_suffix = f" (code {error_code})" if error_code else ""
+        drop_summary = (
+            f"Batch of {len(batch_pkts)} messages"
+            if is_batch
+            else (primary_tr.get("summary") or pkt.payload_text[:60])
+        )
+        drop_full = (
+            "\n---\n".join(p.payload_text for p in batch_pkts)
+            if is_batch
+            else (primary_tr.get("payload") or pkt.payload_text)
+        )
 
         ev_drop = {
             "eventId": self.event_counter,
             "msgId": pkt.seq_id,
             "batchIds": [p.seq_id for p in batch_pkts],
             "batchCount": len(batch_pkts),
-            "timestampNs": primary_res.get("timestampNs", time.time_ns()),
+            "timestampNs": results[0].get("timestampNs", time.time_ns()) if results else time.time_ns(),
             "type": "drop",
             "result": "Dropped",
             "reason": reason,
@@ -672,19 +955,26 @@ class InteractiveSimulationCoordinator:
             "handler": handler_name,
             "handlerType": handler_type,
             "inputChannel": input_channel,
-            "payloadSummary": (
-                f"Batch of {len(batch_pkts)} messages"
-                if is_batch
-                else (primary_res.get("summary") or pkt.payload_text[:60])
-            ),
-            "payloadFull": (
-                "\n---\n".join(p.payload_text for p in batch_pkts)
-                if is_batch
-                else (primary_res.get("payload") or pkt.payload_text)
-            ),
+            "payloadSummary": drop_summary,
+            "payloadFull": drop_full,
             "status": "dropped",
             "latencyUs": elapsed_us,
             "detail": f"'{handler_name}' dropped Packet {seq_label}: {reason}{code_suffix}",
+            "traces": [
+                {
+                    "traceId": 1,
+                    "msgId": pkt.seq_id,
+                    "channel": input_channel,
+                    "inputChannel": input_channel,
+                    "result": "Dropped",
+                    "status": "dropped",
+                    "reason": reason,
+                    "errorCode": error_code,
+                    "payloadSummary": drop_summary,
+                    "payloadFull": drop_full,
+                    "detail": f"Dropped by '{handler_name}': {reason}{code_suffix}",
+                }
+            ],
         }
         self.event_counter += 1
         self.events.append(ev_drop)
@@ -698,15 +988,22 @@ class InteractiveSimulationCoordinator:
 
     def _wait_for_message_results(
         self,
-        expected_handler: str,
+        expected_handler: str | set[str] | list[str],
         expected_count: int = 1,
         timeout_sec: float = 0.5,
     ) -> list[dict[str, Any]]:
         """
         Polls /tmp/proxy_sim_events.sock for MessageResult JSON payloads emitted by SimBackend::onMessageResult.
+        Can accept a single handler name or a collection/set of expected handler names.
         """
         if not self.events_sock:
             return []
+
+        expected_handlers: set[str] = (
+            set(expected_handler)
+            if isinstance(expected_handler, (set, list))
+            else {expected_handler}
+        )
 
         matched: list[dict[str, Any]] = []
         deadline = time.time() + timeout_sec
@@ -716,7 +1013,7 @@ class InteractiveSimulationCoordinator:
                 raw, _ = self.events_sock.recvfrom(65535)
                 if raw:
                     ev = json.loads(raw.decode("utf-8", errors="replace"))
-                    if ev.get("type") == "message_result" and ev.get("handler") == expected_handler:
+                    if ev.get("type") == "message_result" and ev.get("handler") in expected_handlers:
                         matched.append(ev)
                         # Extend deadline slightly to drain remaining batch items if any
                         deadline = min(deadline, time.time() + 0.05)
@@ -908,6 +1205,19 @@ class InteractiveSimulationCoordinator:
                     "status": "forwarded",
                     "latencyUs": 5.0,
                     "detail": f"Generator '{gen_handler['name']}' triggered -> queued at output channel '{out_ch}'",
+                    "traces": [
+                        {
+                            "traceId": 1,
+                            "msgId": synthetic_pkt.seq_id,
+                            "channel": out_ch,
+                            "outputChannel": out_ch,
+                            "result": "Forwarded",
+                            "status": "forwarded",
+                            "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
+                            "payloadFull": msg_text,
+                            "detail": f"Triggered to '{out_ch}'",
+                        }
+                    ],
                 }
             else:
                 self.active_in_flight = {
@@ -938,6 +1248,19 @@ class InteractiveSimulationCoordinator:
                     "status": "forwarded",
                     "latencyUs": 5.0,
                     "detail": f"Generator '{gen_handler['name']}' triggered -> held at output channel '{out_ch}'",
+                    "traces": [
+                        {
+                            "traceId": 1,
+                            "msgId": synthetic_pkt.seq_id,
+                            "channel": out_ch,
+                            "outputChannel": out_ch,
+                            "result": "Forwarded",
+                            "status": "forwarded",
+                            "payloadSummary": msg_text[:60] + "..." if len(msg_text) > 60 else msg_text,
+                            "payloadFull": msg_text,
+                            "detail": f"Triggered to '{out_ch}'",
+                        }
+                    ],
                 }
 
             self.event_counter += 1

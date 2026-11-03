@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "print_handler",
   "displayName": "Print Sink",
-  "role": "processor",
+  "role": "sink",
   "protocol": "none",
   "category": "Sinks",
   "description": "Terminal sink printing received message payloads to stdout and log sink.",

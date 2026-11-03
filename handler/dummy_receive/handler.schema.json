@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "name": "dummy_receive",
   "displayName": "Dummy Receiver",
-  "role": "processor",
+  "role": "sink",
   "protocol": "none",
   "category": "Sinks",
   "description": "Consumes and tallies messages received from an input channel.",

@@ -30,6 +30,7 @@ class BackendSimConan(ConanFile):
     def requirements(self):
         self.requires("backend-interface/0.1.0", transitive_headers=True)
         self.requires("proxylog/0.1.0")
+        self.requires("nlohmann_json/3.11.3")
 
     def generate(self):
         deps = CMakeDeps(self)

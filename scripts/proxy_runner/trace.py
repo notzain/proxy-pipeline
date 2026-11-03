@@ -110,6 +110,24 @@ class TraceManager:
         "detail",
     )
 
+    TRACE_COMPARED_FIELDS = (
+        "traceId",
+        "msgId",
+        "handler",
+        "handlerType",
+        "channel",
+        "inputChannel",
+        "outputChannel",
+        "result",
+        "status",
+        "source",
+        "reason",
+        "errorCode",
+        "payloadSummary",
+        "payloadFull",
+        "detail",
+    )
+
     # ANSI terminal color constants
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -118,6 +136,19 @@ class TraceManager:
     YELLOW = "\033[33m"
     CYAN = "\033[36m"
     GRAY = "\033[90m"
+
+    @classmethod
+    def normalize_single_trace(cls, tr: dict[str, Any]) -> dict[str, Any]:
+        """Filters a single trace dict down to semantic fields only."""
+        normalized = {}
+        for field in cls.TRACE_COMPARED_FIELDS:
+            if field in tr and tr[field] is not None:
+                if field == "reason" and tr[field] == "":
+                    continue
+                if field == "errorCode" and tr[field] == 0:
+                    continue
+                normalized[field] = tr[field]
+        return normalized
 
     @classmethod
     def normalize_event(cls, ev: dict[str, Any]) -> dict[str, Any]:
@@ -132,6 +163,8 @@ class TraceManager:
                 normalized[field] = ev[field]
         if "batchIds" in ev and ev["batchIds"]:
             normalized["batchIds"] = sorted(list(ev["batchIds"]))
+        if "traces" in ev and isinstance(ev["traces"], list):
+            normalized["traces"] = [cls.normalize_single_trace(t) for t in ev["traces"]]
         return normalized
 
     @classmethod

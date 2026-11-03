@@ -95,6 +95,8 @@ export class CanvasRenderer {
         return { bg: "#14532d", text: "#86efac", label: "INGRESS" };
       case "external_egress":
         return { bg: "#1e3a8a", text: "#93c5fd", label: "EGRESS" };
+      case "sink":
+        return { bg: "#064e3b", text: "#6ee7b7", label: "SINK" };
       case "processor":
       default:
         return { bg: "#312e81", text: "#c4b5fd", label: "PROCESSOR" };
@@ -122,6 +124,12 @@ export class CanvasRenderer {
     return { x, y };
   }
 
+  _normalizeChannelList(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.map(s => String(s).trim()).filter(Boolean);
+    return String(val).split(",").map(s => s.trim()).filter(Boolean);
+  }
+
   layoutPipeline() {
     const chain = this.store.state.chain;
     if (!chain || !chain.handlers) return;
@@ -146,10 +154,10 @@ export class CanvasRenderer {
     });
 
     handlers.forEach((handler) => {
-      const outList = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      const outList = this._normalizeChannelList(handler.output_channels || handler.output_channel);
       outList.forEach((outCh) => {
         handlers.forEach((consumer) => {
-          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+          const inList = this._normalizeChannelList(consumer.input_channels || consumer.input_channel);
           if (inList.includes(outCh)) {
             outgoing.get(handler.name).push(consumer.name);
             inDegrees.set(consumer.name, (inDegrees.get(consumer.name) || 0) + 1);
@@ -189,18 +197,65 @@ export class CanvasRenderer {
       columns.get(r).push(handler);
     });
 
-    // Use stable, generous fixed-world spacing so nodes do not get squashed when page / canvas is resized
+    // 1. Barycenter Heuristic crossing minimization: sort nodes in rank r by average row of predecessor/successor nodes
+    const sortedRanks = Array.from(columns.keys()).sort((a, b) => a - b);
+    for (let pass = 0; pass < 3; pass++) {
+      // Forward pass: position according to incoming predecessors
+      for (let i = 1; i < sortedRanks.length; i++) {
+        const r = sortedRanks[i];
+        const prevRank = sortedRanks[i - 1];
+        const prevHandlers = columns.get(prevRank);
+        const prevRowMap = new Map();
+        prevHandlers.forEach((h, idx) => prevRowMap.set(h.name, idx));
+
+        const curHandlers = columns.get(r);
+        curHandlers.sort((a, b) => {
+          const aIn = this._normalizeChannelList(a.input_channels || a.input_channel);
+          const bIn = this._normalizeChannelList(b.input_channels || b.input_channel);
+
+          let aSum = 0, aCount = 0;
+          let bSum = 0, bCount = 0;
+
+          handlers.forEach((src) => {
+            if (prevRowMap.has(src.name)) {
+              const srcOut = this._normalizeChannelList(src.output_channels || src.output_channel);
+              if (srcOut.some(ch => aIn.includes(ch))) {
+                aSum += prevRowMap.get(src.name);
+                aCount++;
+              }
+              if (srcOut.some(ch => bIn.includes(ch))) {
+                bSum += prevRowMap.get(src.name);
+                bCount++;
+              }
+            }
+          });
+
+          const aAvg = aCount > 0 ? aSum / aCount : 999;
+          const bAvg = bCount > 0 ? bSum / bCount : 999;
+          return aAvg - bAvg;
+        });
+      }
+    }
+
+    // Use stable, generous fixed-world spacing with rank-based centering so nodes do not overlap
     const nodeWidth = 220;
     const worldStartX = 180;
     const worldStartY = 60;
-    const worldColSpacing = 320; // 320px between handler columns in world space
-    const worldRowSpacing = 160; // 160px vertical separation
+    const worldColSpacing = 340; // generous spacing between columns
+    const worldRowSpacing = 160; // generous vertical separation
+
+    // Find the max height of any column to vertically center smaller columns nicely
+    let maxColCount = 1;
+    columns.forEach((colHandlers) => {
+      if (colHandlers.length > maxColCount) maxColCount = colHandlers.length;
+    });
 
     columns.forEach((colHandlers, r) => {
       const colX = worldStartX + r * worldColSpacing;
+      const colOffset = ((maxColCount - colHandlers.length) * worldRowSpacing) / 2;
 
       colHandlers.forEach((handler, rowIdx) => {
-        const defaultNodeY = worldStartY + rowIdx * worldRowSpacing;
+        const defaultNodeY = worldStartY + colOffset + rowIdx * worldRowSpacing;
         const savedPos = existingPositions.get(handler.name);
         const posX = savedPos ? savedPos.x : colX;
         const posY = savedPos ? savedPos.y : defaultNodeY;
@@ -213,8 +268,8 @@ export class CanvasRenderer {
         const isIngress = role === "external_ingress";
         const protocol = handler.protocol || (handler.type === "udp_ingress_handler" ? "udp" : "none");
 
-        const inChs = handler.input_channels || (handler.input_channel ? String(handler.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
-        const outChs = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+        const inChs = this._normalizeChannelList(handler.input_channels || handler.input_channel);
+        const outChs = this._normalizeChannelList(handler.output_channels || handler.output_channel);
 
         const maxPortRows = Math.max(inChs.length, outChs.length, 1);
         const baseHeight = isGenerator ? 116 : 80;
@@ -281,10 +336,10 @@ export class CanvasRenderer {
       const fromNode = this.handlersLayout.find(item => item.name === handler.name);
       if (!fromNode) return;
 
-      const outList = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      const outList = this._normalizeChannelList(handler.output_channels || handler.output_channel);
       outList.forEach((outCh, outIdx) => {
         handlers.forEach((consumer) => {
-          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+          const inList = this._normalizeChannelList(consumer.input_channels || consumer.input_channel);
           const inIdx = inList.indexOf(outCh);
           if (inIdx !== -1) {
             const toNode = this.handlersLayout.find(item => item.name === consumer.name);
@@ -389,13 +444,77 @@ export class CanvasRenderer {
     return null;
   }
 
-  findOutgoingChannelEdge(event) {
-    if (!event) return null;
-    const handlerName = event.handler || event.source;
-    const outCh = event.outputChannel || event.channel;
-    if (!handlerName || !outCh) return null;
+  findIncomingChannelEdges(event) {
+    if (!event || event.type === "ingress") return [];
+    const edges = [];
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
 
+    if (traces) {
+      for (const tr of traces) {
+        // If event has mixed outcomes, only consider edges for Consumed or Dropped traces
+        if (event.result === "Forwarded" && tr.result === "Forwarded") {
+          continue;
+        }
+        const hName = tr.handler || event.handler || event.target;
+        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
+        if (hName && inCh) {
+          const edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh);
+          if (edge && !edges.includes(edge)) {
+            edges.push(edge);
+          }
+        }
+      }
+    }
+
+    if (edges.length === 0) {
+      const single = this.findIncomingChannelEdge(event);
+      if (single) edges.push(single);
+    }
+    return edges;
+  }
+
+  findOutgoingChannelEdgeForChannel(handlerName, outCh) {
+    if (!handlerName || !outCh) return null;
     return this.channelsLayout.find(c => c.from.name === handlerName && c.name === outCh) || null;
+  }
+
+  findOutgoingChannelEdges(event) {
+    if (!event) return [];
+    const edges = [];
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+
+    if (traces) {
+      for (const tr of traces) {
+        // If trace is Consumed or Dropped, its active wire is incoming, not outgoing
+        if (tr.result === "Consumed" || tr.result === "Dropped") {
+          continue;
+        }
+        const hName = tr.handler || event.handler || event.source || event.target;
+        const oc = tr.outputChannel || tr.channel;
+        if (hName && oc) {
+          const edge = this.findOutgoingChannelEdgeForChannel(hName, oc);
+          if (edge && !edges.includes(edge)) {
+            edges.push(edge);
+          }
+        }
+      }
+    }
+
+    if (edges.length === 0) {
+      const handlerName = event.handler || event.source || event.target;
+      if (handlerName) {
+        const outCh = event.outputChannel || event.channel;
+        if (outCh) {
+          for (const part of String(outCh).split(",")) {
+            const edge = this.findOutgoingChannelEdgeForChannel(handlerName, part.trim());
+            if (edge && !edges.includes(edge)) {
+              edges.push(edge);
+            }
+          }
+        }
+      }
+    }
+    return edges;
   }
 
   getEventPacketIds(event) {
@@ -405,93 +524,96 @@ export class CanvasRenderer {
     return event?.msgId !== undefined && event?.msgId !== null ? [String(event.msgId)] : [];
   }
 
-  triggerTransitionAnimation(event) {
+  triggerTransitionAnimation(event, specificTrace = null) {
     if (!event) return;
+    const isIngress = event.type === "ingress";
+    const isForwarded = event.result === "Forwarded" || (specificTrace && specificTrace.result === "Forwarded");
+    const isConsumed = (event.result === "Consumed" || (specificTrace && specificTrace.result === "Consumed"))
+      || (event.type === "egress" && !isForwarded);
+    const isDropped = event.type === "drop" || event.result === "Dropped" || (specificTrace && specificTrace.result === "Dropped");
+
+    // If a specific sub-trace was requested, animate only that trace
+    if (specificTrace) {
+      const traceHandlerName = specificTrace.handler || event.handler || event.target;
+      const traceHandlerNode = this.handlersLayout.find(h => h.name === traceHandlerName);
+      if (!traceHandlerNode) return;
+
+      const traceOutCh = specificTrace.outputChannel || specificTrace.channel;
+      const traceInCh = specificTrace.inputChannel || specificTrace.channel || event.inputChannel;
+      const traceIsForwarded = specificTrace.result === "Forwarded";
+      const traceIsConsumed = specificTrace.result === "Consumed";
+      const traceIsDropped = specificTrace.result === "Dropped";
+
+      const edge = traceIsForwarded
+        ? this.findOutgoingChannelEdgeForChannel(traceHandlerName, traceOutCh)
+        : (this.channelsLayout.find(c => c.to.name === traceHandlerName && c.name === traceInCh) || this.findIncomingChannelEdge(event));
+
+      this._createAndSetParticles(event, traceHandlerNode, [edge], [traceOutCh || traceInCh], isIngress, traceIsForwarded, traceIsConsumed, traceIsDropped, [traceHandlerNode], [{
+        isForwarded: traceIsForwarded,
+        isConsumed: traceIsConsumed,
+        isDropped: traceIsDropped,
+      }]);
+      return;
+    }
+
+    const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+
+    // Multi-trace concurrent handling (handles mixed Forwarded + Consumed + Dropped)
+    if (traces && traces.length > 1) {
+      const edges = [];
+      const outChannels = [];
+      const sourceNodes = [];
+      const traceOutcomes = [];
+
+      for (const tr of traces) {
+        const hName = tr.handler || event.handler || event.target;
+        const oc = tr.outputChannel || tr.channel;
+        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
+        const node = this.handlersLayout.find(h => h.name === hName) || this.handlersLayout[0];
+
+        const trIsForwarded = tr.result === "Forwarded";
+        const trIsConsumed = tr.result === "Consumed";
+        const trIsDropped = tr.result === "Dropped";
+
+        let edge = null;
+        if (trIsForwarded) {
+          edge = this.findOutgoingChannelEdgeForChannel(hName, oc);
+          outChannels.push(oc);
+        } else {
+          edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh) || this.findIncomingChannelEdge(event);
+          outChannels.push(inCh);
+        }
+
+        edges.push(edge);
+        sourceNodes.push(node);
+        traceOutcomes.push({
+          isForwarded: trIsForwarded,
+          isConsumed: trIsConsumed,
+          isDropped: trIsDropped,
+        });
+      }
+
+      this._createAndSetParticles(event, sourceNodes[0] || this.handlersLayout[0], edges, outChannels, isIngress, isForwarded, isConsumed, isDropped, sourceNodes, traceOutcomes);
+      return;
+    }
+
+    // Single flow fallback
     const handlerName = event.handler || event.target;
     if (!handlerName) return;
     const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
     if (!handlerNode) return;
 
-    const isIngress = event.type === "ingress";
-    const isForwarded = event.result === "Forwarded" && !!(event.outputChannel || event.channel);
-    const isConsumed = event.result === "Consumed"
-      || (event.type === "egress" && event.result !== "Forwarded");
-    const isDropped = event.type === "drop" || event.result === "Dropped";
+    const defaultOutCh = event.outputChannel || event.channel || (traces && traces[0] ? (traces[0].outputChannel || traces[0].channel) : null);
     const edge = isForwarded
-      ? this.findOutgoingChannelEdge(event)
+      ? this.findOutgoingChannelEdgeForChannel(handlerName, defaultOutCh)
       : this.findIncomingChannelEdge(event);
+    this._createAndSetParticles(event, handlerNode, [edge], [defaultOutCh], isIngress, isForwarded, isConsumed, isDropped);
+  }
 
+  _createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, isForwarded, isConsumed, isDropped, sourceNodes = null, traceOutcomes = null) {
+    const handlerName = handlerNode.name;
     const cloudW = 58;
     const cloudCenter = handlerNode.x - handlerNode.width / 2 - 16 - cloudW / 2;
-    let startX;
-    let startY;
-    let endX;
-    let endY;
-    let bezier = null;
-
-    if (isIngress) {
-      startX = cloudCenter - 24;
-      startY = handlerNode.y;
-      endX = cloudCenter;
-      endY = handlerNode.y;
-    } else if (isForwarded) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        const outSocket = handlerNode.outputSockets[0] || { x: handlerNode.x + handlerNode.width / 2, y: handlerNode.y };
-        startX = outSocket.x;
-        startY = outSocket.y;
-        endX = startX + 80;
-        endY = startY;
-      }
-    } else if (isConsumed) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        startX = cloudCenter;
-        startY = handlerNode.y;
-        endX = handlerNode.x;
-        endY = handlerNode.y;
-      }
-    } else if (isDropped) {
-      if (edge) {
-        startX = edge.fromSocket.x;
-        startY = edge.fromSocket.y;
-        endX = edge.toSocket.x;
-        endY = edge.toSocket.y;
-        bezier = edge.bezier;
-      } else {
-        startX = cloudCenter;
-        startY = handlerNode.y;
-        endX = handlerNode.x;
-        endY = handlerNode.y;
-      }
-    } else if (edge) {
-      startX = edge.fromSocket.x;
-      startY = edge.fromSocket.y;
-      endX = edge.toSocket.x;
-      endY = edge.toSocket.y;
-      bezier = edge.bezier;
-    } else if (!handlerNode.isGenerator) {
-      const inSocket = handlerNode.inputSockets[0] || { x: handlerNode.x - handlerNode.width / 2, y: handlerNode.y };
-      startX = cloudCenter;
-      startY = handlerNode.y;
-      endX = inSocket.x;
-      endY = inSocket.y;
-    } else {
-      startX = handlerNode.x;
-      startY = handlerNode.y;
-      endX = handlerNode.x + handlerNode.width / 2 + 80;
-      endY = handlerNode.y;
-    }
 
     const previousEvent = this.lastAnimationEvent;
     const previousParticle = this.activeParticles[0];
@@ -506,55 +628,137 @@ export class CanvasRenderer {
       && previousParticle
     );
 
-    if (followsPreviousEvent) {
-      const elapsed = performance.now() - previousParticle.startTime;
-      const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
-      const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
-      if (previousParticle.bezier) {
-        const b = previousParticle.bezier;
-        const pt = this.getBezierPoint(previousParticle.startX, previousParticle.startY, b.cx1, b.cy1, b.cx2, b.cy2, previousParticle.endX, previousParticle.endY, easedProgress);
-        startX = pt.x;
-        startY = pt.y;
+    const newParticles = [];
+
+    for (let i = 0; i < edges.length; i++) {
+      const edge = edges[i];
+      const currentSourceNode = (sourceNodes && sourceNodes[i]) ? sourceNodes[i] : handlerNode;
+      const currentSourceName = currentSourceNode.name;
+      const outcome = traceOutcomes && traceOutcomes[i] ? traceOutcomes[i] : null;
+      const itemIsForwarded = outcome ? outcome.isForwarded : isForwarded;
+      const itemIsConsumed = outcome ? outcome.isConsumed : isConsumed;
+      const itemIsDropped = outcome ? outcome.isDropped : isDropped;
+
+      let startX;
+      let startY;
+      let endX;
+      let endY;
+      let bezier = null;
+
+      if (isIngress) {
+        startX = cloudCenter - 24;
+        startY = handlerNode.y;
+        endX = cloudCenter;
+        endY = handlerNode.y;
+      } else if (itemIsForwarded) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          const outSocket = currentSourceNode.outputSockets[i] || currentSourceNode.outputSockets[0] || { x: currentSourceNode.x + currentSourceNode.width / 2, y: currentSourceNode.y };
+          startX = outSocket.x;
+          startY = outSocket.y;
+          endX = startX + 80;
+          endY = startY;
+        }
+      } else if (itemIsConsumed) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          startX = cloudCenter;
+          startY = currentSourceNode.y;
+          endX = currentSourceNode.x;
+          endY = currentSourceNode.y;
+        }
+      } else if (itemIsDropped) {
+        if (edge) {
+          startX = edge.fromSocket.x;
+          startY = edge.fromSocket.y;
+          endX = edge.toSocket.x;
+          endY = edge.toSocket.y;
+          bezier = edge.bezier;
+        } else {
+          startX = cloudCenter;
+          startY = currentSourceNode.y;
+          endX = currentSourceNode.x;
+          endY = currentSourceNode.y;
+        }
+      } else if (edge) {
+        startX = edge.fromSocket.x;
+        startY = edge.fromSocket.y;
+        endX = edge.toSocket.x;
+        endY = edge.toSocket.y;
+        bezier = edge.bezier;
+      } else if (!currentSourceNode.isGenerator) {
+        const inSocket = currentSourceNode.inputSockets[0] || { x: currentSourceNode.x - currentSourceNode.width / 2, y: currentSourceNode.y };
+        startX = cloudCenter;
+        startY = currentSourceNode.y;
+        endX = inSocket.x;
+        endY = inSocket.y;
       } else {
-        startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
-        startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+        startX = currentSourceNode.x;
+        startY = currentSourceNode.y;
+        endX = currentSourceNode.x + currentSourceNode.width / 2 + 80;
+        endY = currentSourceNode.y;
       }
-      // If the new trajectory follows a Bézier curve, re-calculate the control points so the particle
-      // smoothly tracks along the curve from its current position to the destination socket
-      if (bezier) {
-        bezier = this.calculateBezier(startX, startY, endX, endY);
+
+      if (followsPreviousEvent && i === 0 && !itemIsForwarded) {
+        const elapsed = performance.now() - previousParticle.startTime;
+        const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
+        const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
+        if (previousParticle.bezier) {
+          const b = previousParticle.bezier;
+          const pt = this.getBezierPoint(previousParticle.startX, previousParticle.startY, b.cx1, b.cy1, b.cx2, b.cy2, previousParticle.endX, previousParticle.endY, easedProgress);
+          startX = pt.x;
+          startY = pt.y;
+        } else {
+          startX = previousParticle.startX + (previousParticle.endX - previousParticle.startX) * easedProgress;
+          startY = previousParticle.startY + (previousParticle.endY - previousParticle.startY) * easedProgress;
+        }
+        if (bezier) {
+          bezier = this.calculateBezier(startX, startY, endX, endY);
+        }
       }
+
+      const transitColor = isIngress
+        ? "#38bdf8"
+        : (itemIsForwarded || itemIsDropped ? "#c084fc" : "#38bdf8");
+      const arrivalColor = isIngress
+        ? "#38bdf8"
+        : (itemIsDropped ? "#f87171" : (itemIsConsumed ? "#34d399" : "#c084fc"));
+
+      const distance = Math.hypot(endX - startX, endY - startY);
+      const durationMs = Math.min(750, Math.max(380, distance / 0.65));
+
+      newParticles.push({
+        startX,
+        startY,
+        endX,
+        endY,
+        bezier,
+        targetEdge: edge,
+        targetNodeName: edge ? edge.to.name : currentSourceName,
+        sourceNodeName: edge ? edge.from.name : currentSourceName,
+        progress: 0.0,
+        startTime: performance.now(),
+        durationMs,
+        color: transitColor,
+        arrivalColor: arrivalColor,
+        dropColor: "#f87171",
+        isIngress: isIngress,
+        isConsumed: itemIsConsumed,
+        isDrop: itemIsDropped,
+      });
     }
 
-    const transitColor = isIngress
-      ? "#38bdf8"
-      : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
-    const arrivalColor = isIngress
-      ? "#38bdf8"
-      : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
-
-    const distance = Math.hypot(endX - startX, endY - startY);
-    const durationMs = Math.min(750, Math.max(380, distance / 0.65));
-
-    this.activeParticles = [{
-      startX,
-      startY,
-      endX,
-      endY,
-      bezier,
-      targetEdge: edge,
-      targetNodeName: handlerName,
-      sourceNodeName: edge ? edge.from.name : handlerName,
-      progress: 0.0,
-      startTime: performance.now(),
-      durationMs,
-      color: transitColor,
-      arrivalColor: arrivalColor,
-      dropColor: "#f87171",
-      isIngress: isIngress,
-      isConsumed: isConsumed,
-      isDrop: event.type === "drop",
-    }];
+    this.activeParticles = newParticles;
     this.lastAnimationEvent = event;
   }
 
@@ -706,16 +910,19 @@ export class CanvasRenderer {
     const lastEvent = this.store.state.lastEvent;
     const selectedNodeName = this.store.state.selectedNode ? this.store.state.selectedNode.name : null;
     const lastEventHandler = lastEvent ? (lastEvent.handler || lastEvent.target) : null;
-    const activeIncomingEdge = this.findIncomingChannelEdge(lastEvent);
-    const activeOutgoingEdge = this.findOutgoingChannelEdge(lastEvent);
-    const activeEventEdge = lastEvent?.result === "Forwarded" ? activeOutgoingEdge : activeIncomingEdge;
+    const targetHandlerNames = lastEvent?.traces && Array.isArray(lastEvent.traces)
+      ? lastEvent.traces.map(t => t.handler).filter(Boolean)
+      : (lastEventHandler ? [lastEventHandler] : []);
+    const activeIncomingEdges = this.findIncomingChannelEdges(lastEvent);
+    const activeOutgoingEdges = this.findOutgoingChannelEdges(lastEvent);
+    const activeEventEdges = [...activeOutgoingEdges, ...activeIncomingEdges];
 
     // 1. Draw Channel Connections (Cubic Bézier Wires & Pill Badges aligned with Chain Builder)
     this.channelsLayout.forEach((ch) => {
       const p1 = ch.fromSocket;
       const p2 = ch.toSocket;
       const b = ch.bezier;
-      const isActiveEdge = activeEventEdge === ch;
+      const isActiveEdge = activeEventEdges.includes(ch);
 
       // Draw wire curve
       ctx.save();
@@ -773,7 +980,7 @@ export class CanvasRenderer {
     this.handlersLayout.forEach((h) => {
       const x = h.x - h.width / 2;
       const y = h.y - h.height / 2;
-      const isTarget = lastEvent && lastEvent.type !== "ingress" && lastEventHandler === h.name;
+      const isTarget = lastEvent && lastEvent.type !== "ingress" && (targetHandlerNames.includes(h.name) || lastEventHandler === h.name);
       const isSelected = selectedNodeName === h.name;
 
       // Ingress Queue Cloud Box (if UDP Ingress)
@@ -830,11 +1037,18 @@ export class CanvasRenderer {
       }
 
       // Card Background & Shadow
-      const activeParticle = this.activeParticles[0];
+      const activeParticle = this.activeParticles.find(p => p.targetNodeName === h.name || p.sourceNodeName === h.name) || this.activeParticles[0];
       const reachedNode = !activeParticle || activeParticle.progress >= 0.85;
       const dropReachedNode = lastEvent && lastEvent.type === "drop" && reachedNode;
-      const isForwardedTarget = isTarget && lastEvent.type === "hop";
-      const isConsumedTarget = isTarget && lastEvent.type === "egress";
+
+      const matchingTrace = lastEvent?.traces && Array.isArray(lastEvent.traces)
+        ? lastEvent.traces.find(t => t.handler === h.name)
+        : null;
+      const isTraceConsumed = matchingTrace ? matchingTrace.result === "Consumed" : (lastEvent?.type === "egress" || lastEvent?.result === "Consumed");
+      const isTraceForwarded = matchingTrace ? matchingTrace.result === "Forwarded" : (lastEvent?.type === "hop" || lastEvent?.result === "Forwarded");
+
+      const isForwardedTarget = isTarget && isTraceForwarded;
+      const isConsumedTarget = isTarget && isTraceConsumed;
 
       ctx.save();
       if (isSelected) {
@@ -988,7 +1202,7 @@ export class CanvasRenderer {
     });
 
     // 3. Fallback unlinked output forward stub (if Forwarded without consumer edge)
-    if (lastEvent?.result === "Forwarded" && lastEvent.outputChannel && !activeOutgoingEdge) {
+    if (lastEvent?.result === "Forwarded" && lastEvent.outputChannel && activeOutgoingEdges.length === 0) {
       const sourceNode = this.handlersLayout.find(h => h.name === lastEventHandler);
       if (sourceNode) {
         const startSocket = sourceNode.outputSockets[0] || { x: sourceNode.x + sourceNode.width / 2, y: sourceNode.y };

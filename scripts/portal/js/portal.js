@@ -6,7 +6,7 @@ PetiteVue.createApp({
   chains: [],
   pcaps: [],
   selectedChain: "",
-  selectedBackend: "",
+  selectedBackend: "sim",
   selectedPcap: "",
   
   status: {
@@ -62,8 +62,9 @@ PetiteVue.createApp({
       const resp = await fetch("/api/runner/pcaps");
       if (resp.ok) {
         this.pcaps = await resp.json();
-        if (this.pcaps.length > 0 && !this.selectedPcap) {
-          this.selectedPcap = this.pcaps[0];
+        // Default selectedPcap to "" (None / Autonomous generators)
+        if (!this.selectedPcap) {
+          this.selectedPcap = "";
         }
       }
     } catch (e) {
@@ -75,6 +76,8 @@ PetiteVue.createApp({
     const found = this.chains.find((c) => c.path === this.selectedChain);
     if (found && found.backend) {
       this.selectedBackend = found.backend;
+    } else if (!this.selectedBackend) {
+      this.selectedBackend = "sim";
     }
   },
 
