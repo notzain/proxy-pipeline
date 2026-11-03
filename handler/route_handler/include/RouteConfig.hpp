@@ -1,9 +1,18 @@
 #pragma once
 
+#include "CompositeConditions.hpp"
+#include "ConditionExpressionParser.hpp"
+#include "LuaCondition.hpp"
+#include "PortCondition.hpp"
+#include "ProtocolCondition.hpp"
+#include "RouteAction.hpp"
+#include "RouteRule.hpp"
+#include "TextCondition.hpp"
 #include "core/config/ConfigItem.hpp"
 #include "core/config/ConfigSection.hpp"
 #include "core/config/Configuration.hpp"
 #include <fmt/format.h>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,12 +27,24 @@ struct RouteRuleConfig {
     std::string type { "contains" };
     std::string pattern;
     std::string target;
+    std::string actionType { "forward" };
+    std::string rejectReason;
+    std::string expr;
+    std::string script;
+    int rejectErrorCode { 400 };
     int numericValue { 0 };
+    int times { 1 };
 
     static constexpr std::string_view KeySuffixType { "type" };
     static constexpr std::string_view KeySuffixPattern { "pattern" };
     static constexpr std::string_view KeySuffixTarget { "target" };
     static constexpr std::string_view KeySuffixValue { "value" };
+    static constexpr std::string_view KeySuffixTimes { "times" };
+    static constexpr std::string_view KeySuffixAction { "action" };
+    static constexpr std::string_view KeySuffixRejectReason { "reason" };
+    static constexpr std::string_view KeySuffixRejectErrorCode { "error_code" };
+    static constexpr std::string_view KeySuffixExpr { "expr" };
+    static constexpr std::string_view KeySuffixScript { "script" };
 
     /**
      * @brief Constructs a RouteRuleConfig from the given prefix and configuration store.
@@ -34,11 +55,59 @@ struct RouteRuleConfig {
     {
         RouteRuleConfig rule;
         rule.name = std::string(ruleName);
+        rule.expr = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixExpr), "");
+        rule.script = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixScript), "");
         rule.type = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixType), "contains");
         rule.pattern = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixPattern), "");
         rule.target = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixTarget), "");
+        rule.actionType = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixAction), "forward");
+        rule.rejectReason = config.getOr<std::string>(fmt::format("{}{}", prefix, KeySuffixRejectReason), "Message rejected by route rule");
+        rule.rejectErrorCode = config.getOr<int>(fmt::format("{}{}", prefix, KeySuffixRejectErrorCode), 400);
         rule.numericValue = config.getOr<int>(fmt::format("{}{}", prefix, KeySuffixValue), 0);
+        rule.times = config.getOr<int>(fmt::format("{}{}", prefix, KeySuffixTimes), 1);
         return rule;
+    }
+
+    /**
+     * @brief Builds a RouteRule from this parsed configuration.
+     */
+    [[nodiscard]] RouteRule toRouteRule() const
+    {
+        std::unique_ptr<IRouteCondition> condition;
+
+        // If an inline expression string (expr) is present, parse it
+        if (!expr.empty()) {
+            condition = ConditionExpressionParser::parse(expr);
+        }
+
+        // If a Lua script snippet is specified, create LuaCondition
+        if (!script.empty() || type == "lua") {
+            condition = std::make_unique<LuaCondition>(script.empty() ? pattern : script);
+        }
+
+        // Fallback to legacy/individual fields if expr was omitted or failed
+        if (!condition) {
+            if (type == "prefix") {
+                condition = std::make_unique<TextCondition>(pattern, TextMatchMode::Prefix, 1);
+            } else if (type == "exact") {
+                condition = std::make_unique<TextCondition>(pattern, TextMatchMode::Exact, 1);
+            } else if (type == "client_port" || type == "port") {
+                condition = std::make_unique<PortCondition>(static_cast<std::uint16_t>(numericValue));
+            } else if (type == "protocol") {
+                condition = std::make_unique<ProtocolCondition>(Backend::ProtocolId { static_cast<std::uint8_t>(numericValue) });
+            } else if (type == "default" || type == "fallback") {
+                condition = std::make_unique<TextCondition>("", TextMatchMode::Contains, 0);
+            } else {
+                // default contains (with optional times)
+                condition = std::make_unique<TextCondition>(pattern, TextMatchMode::Contains, times > 0 ? static_cast<std::size_t>(times) : 1);
+            }
+        }
+
+        RouteAction action = (actionType == "reject")
+            ? RouteAction::reject(rejectReason, rejectErrorCode)
+            : RouteAction::forward(target);
+
+        return RouteRule(std::move(condition), std::move(action));
     }
 };
 

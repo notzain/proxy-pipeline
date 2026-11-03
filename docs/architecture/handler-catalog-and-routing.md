@@ -72,21 +72,30 @@ graph TD
   ```
 
 ### 3. `RouteHandler` (`handler/route_handler`)
-- **Role**: Performs dynamic content-based message routing by evaluating a sequence of rules against incoming messages. Matches can be based on protocol IDs or payload byte patterns.
+- **Role**: Performs dynamic content-based message routing and policy filtering by evaluating composable rules against incoming messages. Matches can be evaluated using composable C++ conditions (`and`, `or`, `not`, substring counts, prefix, client port, protocol ID), inline expressions (`expr = "..."`), or dynamic embedded Lua scripts (`type = "lua"`, `script = "..."`). Supports both forwarding to downstream channels and early rejection (`action = "reject"`) with custom error messages and codes returning `Backend::Dropped`.
 - **Configuration Keys**:
   ```ini
   [handlers.config]
   route.input_channel = route_in
   route.default_output = fallback_out
-  route.rules = rule_vip,rule_json
+  route.rules = dos_guard,rule_admin,rule_lua
 
-  route.rule.rule_vip.type = payload_contains
-  route.rule.rule_vip.pattern = VIP_ACCOUNT
-  route.rule.rule_vip.target = vip_processing
+  # Rule 1: Inline boolean expression with reject action
+  route.rule.dos_guard.action = reject
+  route.rule.dos_guard.reason = Exceeded newline limit
+  route.rule.dos_guard.error_code = 429
+  route.rule.dos_guard.expr = contains("\n", 5) or (prefix("BLOCK:") and not port == 9999)
 
-  route.rule.rule_json.type = protocol_match
-  route.rule.rule_json.protocol = json
-  route.rule.rule_json.target = json_cluster
+  # Rule 2: Composable expression forwarding to target channel
+  route.rule.rule_admin.action = forward
+  route.rule.rule_admin.target = admin_cluster
+  route.rule.rule_admin.expr = prefix("HDR:") and (port == 5000 or port == 8080) and not contains("BAD")
+
+  # Rule 3: Dynamic Lua script predicate (when PROXY_ENABLE_LUA is ON)
+  route.rule.rule_lua.type = lua
+  route.rule.rule_lua.action = forward
+  route.rule.rule_lua.target = lua_processed
+  route.rule.rule_lua.script = return msg.port == 7777 and string.find(msg.payload, "VIP") ~= nil
   ```
 
 ### 4. `SplitHandler` & `MergeHandler`

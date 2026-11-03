@@ -1,98 +1,109 @@
 #include "RouteRule.hpp"
-#include "common/compat/StringView.hpp"
-#include "core/net/UdpMetadata.hpp"
-#include <arpa/inet.h>
-#include <cstring>
-#include <string_view>
+#include "CompositeConditions.hpp"
+#include "PortCondition.hpp"
+#include "ProtocolCondition.hpp"
+#include "RouteRuleBuilder.hpp"
+#include "TextCondition.hpp"
 
 namespace Proxy::Handler {
 
 namespace {
 
     /**
-     * @brief Matcher visitor providing pattern matching semantics analogous to Rust's `match`.
+     * @brief Converts legacy pattern to equivalent IRouteCondition.
      */
-    struct PatternMatcher {
-        const Backend::MessageView& message;
-
-        bool operator()(const MatchCriteria::Protocol& c) const noexcept
+    struct LegacyPatternConverter {
+        std::unique_ptr<IRouteCondition> operator()(const MatchCriteria::Protocol& c) const
         {
-            return message.protocol() == c.expected;
+            return std::make_unique<ProtocolCondition>(c.expected);
         }
 
-        bool operator()(const MatchCriteria::PayloadContains& c) const noexcept
+        std::unique_ptr<IRouteCondition> operator()(const MatchCriteria::PayloadContains& c) const
         {
-            if (c.pattern.empty()) {
-                return true;
-            }
-            auto payload = message.payload();
-            if (payload.size() < c.pattern.size()) {
-                return false;
-            }
-            std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
-            return payloadStr.find(c.pattern) != std::string_view::npos;
+            return std::make_unique<TextCondition>(c.pattern, TextMatchMode::Contains, 1);
         }
 
-        bool operator()(const MatchCriteria::PayloadPrefix& c) const noexcept
+        std::unique_ptr<IRouteCondition> operator()(const MatchCriteria::PayloadPrefix& c) const
         {
-            if (c.prefix.empty()) {
-                return true;
-            }
-            auto payload = message.payload();
-            if (payload.size() < c.prefix.size()) {
-                return false;
-            }
-            std::string_view payloadStr(reinterpret_cast<const char*>(payload.data()), payload.size());
-            return Common::Compat::starts_with(payloadStr, c.prefix);
+            return std::make_unique<TextCondition>(c.prefix, TextMatchMode::Prefix, 1);
         }
 
-        bool operator()(const MatchCriteria::ClientPort& c) const noexcept
+        std::unique_ptr<IRouteCondition> operator()(const MatchCriteria::ClientPort& c) const
         {
-            const auto udpMeta = message.getMetadata<Core::Net::UdpMetadata>();
-            if (!udpMeta) {
-                return false;
-            }
-            std::uint16_t clientPort = ntohs(udpMeta->srcPort);
-            return clientPort == c.port;
+            return std::make_unique<PortCondition>(c.port);
         }
 
-        bool operator()(const MatchCriteria::Fallback&) const noexcept
+        std::unique_ptr<IRouteCondition> operator()(const MatchCriteria::Fallback&) const
         {
-            return true;
+            return std::make_unique<TextCondition>("", TextMatchMode::Contains, 0);
         }
     };
 
 } // namespace
 
 RouteRule::RouteRule(RoutePattern pattern, std::string targetChannelName)
-    : m_pattern(std::move(pattern))
-    , m_targetChannelName(std::move(targetChannelName))
+    : m_condition(pattern.match(LegacyPatternConverter { }))
+    , m_action(RouteAction::forward(std::move(targetChannelName)))
+    , m_legacyPattern(std::make_unique<RoutePattern>(std::move(pattern)))
 {
+}
+
+RouteRule::RouteRule(std::unique_ptr<IRouteCondition> condition, RouteAction action)
+    : m_condition(std::move(condition))
+    , m_action(std::move(action))
+{
+}
+
+RouteRuleBuilder RouteRule::when(const IRouteCondition& condition)
+{
+    return RouteRuleBuilder(condition.clone());
 }
 
 bool RouteRule::matches(const Backend::MessageView& message) const noexcept
 {
-    return m_pattern.match(PatternMatcher { message });
+    return m_condition ? m_condition->matches(message) : false;
 }
 
 const std::string& RouteRule::targetChannelName() const noexcept
 {
-    return m_targetChannelName;
+    static const std::string emptyString;
+    if (const auto* fwd = m_action.asForward()) {
+        return fwd->targetChannelName;
+    }
+    return emptyString;
 }
 
 Common::Memory::ObserverPtr<::Backend::IOutputChannel> RouteRule::targetChannel() const noexcept
 {
-    return m_targetChannel;
+    if (const auto* fwd = m_action.asForward()) {
+        return fwd->targetChannel;
+    }
+    return nullptr;
 }
 
 void RouteRule::bindTargetChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept
 {
-    m_targetChannel = channel;
+    m_action.bindTargetChannel(channel);
 }
 
-const RoutePattern& RouteRule::pattern() const noexcept
+const RouteAction& RouteRule::action() const noexcept
 {
-    return m_pattern;
+    return m_action;
+}
+
+RouteAction& RouteRule::action() noexcept
+{
+    return m_action;
+}
+
+const RoutePattern* RouteRule::legacyPattern() const noexcept
+{
+    return m_legacyPattern.get();
+}
+
+const IRouteCondition* RouteRule::condition() const noexcept
+{
+    return m_condition.get();
 }
 
 } // namespace Proxy::Handler

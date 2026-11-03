@@ -1,10 +1,8 @@
 #include "RouteHandler.hpp"
 #include "RouteConfig.hpp"
 #include "backend/IBackend.hpp"
-#include "backend/message/ProtocolId.hpp"
 #include "core/config/Configuration.hpp"
 #include "log/Log.hpp"
-#include <charconv>
 #include <unordered_map>
 
 namespace Proxy::Handler {
@@ -40,48 +38,33 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
     if (!cfg.rules.empty()) {
         std::unordered_map<std::string, Common::Memory::ObserverPtr<::Backend::IOutputChannel>> createdChannels;
 
-        for (auto& ruleCfg : cfg.rules) {
-            const auto& name = ruleCfg.name;
-            const auto& typeStr = ruleCfg.type;
-            const auto& target = ruleCfg.target;
-            auto pattern = std::move(ruleCfg.pattern);
-            int numVal = ruleCfg.numericValue;
+        for (const auto& ruleCfg : cfg.rules) {
+            auto rule = ruleCfg.toRouteRule();
 
-            if (target.empty()) {
-                Proxy::Log::warn("[RouteHandler] Rule '{}' has no target channel specified, skipping", name);
-                continue;
-            }
-
-            RoutePattern patternVariant;
-            if (typeStr == "prefix") {
-                patternVariant = MatchCriteria::PayloadPrefix { std::move(pattern) };
-            } else if (typeStr == "client_port" || typeStr == "port") {
-                patternVariant = MatchCriteria::ClientPort { static_cast<std::uint16_t>(numVal) };
-            } else if (typeStr == "protocol") {
-                patternVariant = MatchCriteria::Protocol { Backend::ProtocolId { static_cast<std::uint8_t>(numVal) } };
-            } else if (typeStr == "default" || typeStr == "fallback") {
-                patternVariant = MatchCriteria::Fallback { };
-            } else {
-                patternVariant = MatchCriteria::PayloadContains { std::move(pattern) };
-            }
-
-            // Create target channel if not yet created
-            auto it = createdChannels.find(target);
-            Common::Memory::ObserverPtr<::Backend::IOutputChannel> outPtr;
-            if (it == createdChannels.end()) {
-                auto outChan = backend().createOutputChannel(target, config);
-                if (outChan) {
-                    outPtr = registerOutputChannel(std::move(outChan));
-                    createdChannels[target] = outPtr;
-                } else {
-                    Proxy::Log::error("[RouteHandler] Failed to create target output channel '{}' for rule '{}'", target, name);
+            if (rule.action().isForward()) {
+                const auto& target = rule.targetChannelName();
+                if (target.empty()) {
+                    Proxy::Log::warn("[RouteHandler] Forward rule '{}' has no target channel specified, skipping", ruleCfg.name);
+                    continue;
                 }
-            } else {
-                outPtr = it->second;
+
+                auto it = createdChannels.find(target);
+                Common::Memory::ObserverPtr<::Backend::IOutputChannel> outPtr;
+                if (it == createdChannels.end()) {
+                    auto outChan = backend().createOutputChannel(target, config);
+                    if (outChan) {
+                        outPtr = registerOutputChannel(std::move(outChan));
+                        createdChannels[target] = outPtr;
+                    } else {
+                        Proxy::Log::error("[RouteHandler] Failed to create target output channel '{}' for rule '{}'", target, ruleCfg.name);
+                    }
+                } else {
+                    outPtr = it->second;
+                }
+
+                rule.bindTargetChannel(outPtr);
             }
 
-            RouteRule rule(std::move(patternVariant), target);
-            rule.bindTargetChannel(outPtr);
             m_rules.push_back(std::move(rule));
         }
     }
@@ -106,13 +89,22 @@ const std::vector<RouteRule>& RouteHandler::rules() const noexcept
 
 Backend::MessageResult RouteHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
-    for (const auto& rule : m_rules) {
-        if (rule.matches(message)) {
-            auto target = rule.targetChannel();
-            if (target) {
-                target->send(message);
-                return Backend::Forwarded { .channel = rule.targetChannelName() };
-            }
+    for (auto& rule : m_rules) {
+        if (!rule.matches(message)) {
+            continue;
+        }
+
+        if (const auto* rej = rule.action().asReject()) {
+            Proxy::Log::debug("[RouteHandler] Message from '{}' explicitly rejected: {}", channelName, rej->reason);
+            return Backend::Dropped {
+                .reason = rej->reason,
+                .errorCode = rej->errorCode
+            };
+        }
+
+        if (auto target = rule.targetChannel()) {
+            target->send(message);
+            return Backend::Forwarded { .channel = rule.targetChannelName() };
         }
     }
 
@@ -133,38 +125,47 @@ void RouteHandler::onBatchReceived(
     Common::Compat::span<const Backend::MessageView> messages,
     Common::Compat::span<Backend::MessageResult> outResults)
 {
-    if (messages.empty())
+    if (messages.empty()) {
         return;
+    }
 
-    // Fast path: if there is only 1 rule or all match default, optimize.
-    // Otherwise bucket messages by target channel.
     std::unordered_map<Common::Memory::ObserverPtr<::Backend::IOutputChannel>, std::vector<Backend::MessageView>> buckets;
     const auto count = std::min(messages.size(), outResults.size());
 
     for (std::size_t i = 0; i < count; ++i) {
         const auto& msg = messages[i];
-        Common::Memory::ObserverPtr<::Backend::IOutputChannel> destination;
-        std::string_view destinationName;
-        for (const auto& rule : m_rules) {
-            if (rule.matches(msg)) {
-                destination = rule.targetChannel();
-                if (destination) {
-                    destinationName = rule.targetChannelName();
-                }
+        bool handled = false;
+
+        for (auto& rule : m_rules) {
+            if (!rule.matches(msg)) {
+                continue;
+            }
+
+            if (const auto* rej = rule.action().asReject()) {
+                outResults[i] = Backend::Dropped {
+                    .reason = rej->reason,
+                    .errorCode = rej->errorCode
+                };
+                handled = true;
+                break;
+            }
+
+            auto target = rule.targetChannel();
+            if (target) {
+                buckets[target].push_back(msg);
+                outResults[i] = Backend::Forwarded { .channel = rule.targetChannelName() };
+                handled = true;
                 break;
             }
         }
 
-        if (!destination) {
-            destination = m_defaultOutputChannel;
-            if (destination) {
-                destinationName = destination->name();
-            }
+        if (handled) {
+            continue;
         }
 
-        if (destination) {
-            buckets[destination].push_back(msg);
-            outResults[i] = Backend::Forwarded { .channel = destinationName };
+        if (m_defaultOutputChannel) {
+            buckets[m_defaultOutputChannel].push_back(msg);
+            outResults[i] = Backend::Forwarded { .channel = m_defaultOutputChannel->name() };
         } else {
             Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
             outResults[i] = Backend::Dropped {

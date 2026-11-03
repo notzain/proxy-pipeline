@@ -23,6 +23,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(PROXY_ENABLE_PUGIXML "Enable pugixml XML library support" ON)
 option(PROXY_ENABLE_LIBXML2 "Enable libxml2 XML library support" ON)
 option(PROXY_ENABLE_XERCES  "Enable Xerces-C XML library support" ON)
+option(PROXY_ENABLE_LUA     "Enable Lua scripting and sol2 support" ON)
 
 if(PROXY_ENABLE_PUGIXML)
     add_compile_definitions(PROXY_HAS_PUGIXML=1)
@@ -32,6 +33,9 @@ if(PROXY_ENABLE_LIBXML2)
 endif()
 if(PROXY_ENABLE_XERCES)
     add_compile_definitions(PROXY_HAS_XERCES=1)
+endif()
+if(PROXY_ENABLE_LUA)
+    add_compile_definitions(PROXY_HAS_LUA=1)
 endif()
 
 # Ensure all executable binaries end up in a root bin folder
