@@ -71,6 +71,103 @@ def _try_load_schema(file_path: Path, out_dict: dict[str, dict[str, Any]]) -> No
         pass
 
 
+def _validate_value(
+    val: Any,
+    param_meta: dict[str, Any],
+    h_name: str,
+    path_name: str,
+    errors: list[str],
+) -> None:
+    if val is None or val == "":
+        if param_meta.get("required", False):
+            errors.append(
+                f"Handler '{h_name}' missing required parameter: '{path_name}'"
+            )
+        return
+
+    param_type = param_meta.get("type", "string")
+
+    if param_type in ("integer", "int"):
+        try:
+            int_val = int(val)
+            min_v = param_meta.get("min")
+            max_v = param_meta.get("max")
+            if min_v is not None and int_val < min_v:
+                errors.append(
+                    f"Handler '{h_name}' parameter '{path_name}' value {int_val} < min ({min_v})"
+                )
+            if max_v is not None and int_val > max_v:
+                errors.append(
+                    f"Handler '{h_name}' parameter '{path_name}' value {int_val} > max ({max_v})"
+                )
+        except (ValueError, TypeError):
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' must be an integer, got: {val}"
+            )
+
+    elif param_type in ("number", "float"):
+        try:
+            float(val)
+        except (ValueError, TypeError):
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' must be a number, got: {val}"
+            )
+
+    elif param_type in ("boolean", "bool"):
+        if not isinstance(val, bool) and str(val).lower() not in (
+            "true",
+            "false",
+            "1",
+            "0",
+        ):
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' must be boolean, got: {val}"
+            )
+
+    elif param_type == "array":
+        if not isinstance(val, list):
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' must be a list/array, got: {type(val).__name__}"
+            )
+        else:
+            item_schema = param_meta.get("items")
+            if item_schema:
+                for idx, item in enumerate(val):
+                    _validate_value(
+                        item, item_schema, h_name, f"{path_name}[{idx}]", errors
+                    )
+
+    elif param_type == "object":
+        if not isinstance(val, dict):
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' must be an object/dict, got: {type(val).__name__}"
+            )
+        else:
+            props = param_meta.get("properties", {})
+            for p_key, p_meta in props.items():
+                p_val = val.get(p_key)
+                # Check ui:visible_if condition if defined
+                visible_if = p_meta.get("ui:visible_if")
+                if visible_if and isinstance(visible_if, dict):
+                    condition_met = all(
+                        str(val.get(k)) == str(v) for k, v in visible_if.items()
+                    )
+                    if not condition_met:
+                        # Field is conditionally disabled/hidden; skip validation if not present
+                        if p_val is None or p_val == "":
+                            continue
+
+                sub_path = f"{path_name}.{p_key}" if path_name else p_key
+                _validate_value(p_val, p_meta, h_name, sub_path, errors)
+
+    if "enum" in param_meta:
+        allowed = param_meta["enum"]
+        if str(val) not in [str(a) for a in allowed]:
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' value '{val}' not in allowed: {allowed}"
+            )
+
+
 def validate_handler_instance(
     handler_spec: dict[str, Any], schema: dict[str, Any]
 ) -> list[str]:
@@ -105,42 +202,8 @@ def validate_handler_instance(
     instance_config = handler_spec.get("config", {})
 
     for param_key, param_meta in params_schema.items():
-        is_required = param_meta.get("required", False)
         val = instance_config.get(param_key)
-
-        if val is None or val == "":
-            if is_required:
-                errors.append(f"Handler '{h_name}' missing required parameter: '{param_key}'")
-            continue
-
-        param_type = param_meta.get("type", "string")
-
-        if param_type in ("integer", "int"):
-            try:
-                int_val = int(val)
-                min_v = param_meta.get("min")
-                max_v = param_meta.get("max")
-                if min_v is not None and int_val < min_v:
-                    errors.append(f"Handler '{h_name}' parameter '{param_key}' value {int_val} < min ({min_v})")
-                if max_v is not None and int_val > max_v:
-                    errors.append(f"Handler '{h_name}' parameter '{param_key}' value {int_val} > max ({max_v})")
-            except (ValueError, TypeError):
-                errors.append(f"Handler '{h_name}' parameter '{param_key}' must be an integer, got: {val}")
-
-        elif param_type in ("number", "float"):
-            try:
-                float(val)
-            except (ValueError, TypeError):
-                errors.append(f"Handler '{h_name}' parameter '{param_key}' must be a number, got: {val}")
-
-        elif param_type in ("boolean", "bool"):
-            if not isinstance(val, bool) and str(val).lower() not in ("true", "false", "1", "0"):
-                errors.append(f"Handler '{h_name}' parameter '{param_key}' must be boolean, got: {val}")
-
-        if "enum" in param_meta:
-            allowed = param_meta["enum"]
-            if str(val) not in [str(a) for a in allowed]:
-                errors.append(f"Handler '{h_name}' parameter '{param_key}' value '{val}' not in allowed: {allowed}")
+        _validate_value(val, param_meta, h_name, param_key, errors)
 
     return errors
 

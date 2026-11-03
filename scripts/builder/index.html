@@ -247,8 +247,18 @@
                     </span>
                   </div>
 
+                  <!-- Complex Array or Object: Render Tier 1 Status Pill -->
+                  <div v-if="pDef.type === 'array' || pDef.type === 'object'">
+                    <button class="node-param-pill-btn" @click.stop="openParamDrawer(node, pKey, pDef)">
+                      <span>⚙ {{ pDef.label || pKey }}</span>
+                      <span style="font-weight: 700; opacity: 0.9;">
+                        {{ Array.isArray(node.config[pKey]) ? '(' + node.config[pKey].length + ')' : (node.config[pKey] ? '1 item' : '(0)') }}
+                      </span>
+                    </button>
+                  </div>
+
                   <!-- Enum dropdown -->
-                  <select v-if="pDef.enum" v-model="node.config[pKey]" @change="validateChain()" class="node-param-input">
+                  <select v-else-if="pDef.enum" v-model="node.config[pKey]" @change="validateChain()" class="node-param-input">
                     <option v-for="opt in pDef.enum" :key="opt" :value="opt">{{ opt }}</option>
                   </select>
 
@@ -378,6 +388,132 @@
       </div>
       <div class="modal-footer">
         <button @click="closeExportModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-Out Complex Parameter Configuration Drawer -->
+  <div v-if="drawerNode && drawerParamKey" class="param-drawer-backdrop" @click="closeParamDrawer()">
+    <div class="param-drawer" @click.stop>
+      <div class="param-drawer-header">
+        <div>
+          <div class="param-drawer-title">
+            <span>⚙</span>
+            <span>{{ drawerParamDef.label || drawerParamKey }}</span>
+            <span style="font-size: 11px; color: var(--accent); font-weight: normal;">[{{ drawerNode.name }}]</span>
+          </div>
+          <div class="param-drawer-subtitle">{{ drawerParamDef.description }}</div>
+        </div>
+        <button class="modal-close-btn" @click="closeParamDrawer()">✕</button>
+      </div>
+
+      <div class="param-drawer-body">
+        <!-- Repeating Array View (e.g. rules list) -->
+        <div v-if="drawerParamDef.type === 'array'" style="display: flex; flex-direction: column; gap: 14px;">
+          <div v-if="!drawerNode.config[drawerParamKey] || drawerNode.config[drawerParamKey].length === 0"
+               style="text-align: center; padding: 30px; color: var(--text-muted); font-size: 12px; border: 1px dashed var(--border); border-radius: 8px;">
+            No items defined yet. Click "Add Item" to add the first configuration element.
+          </div>
+
+          <div v-for="(item, itemIdx) in (drawerNode.config[drawerParamKey] || [])" :key="'item-' + itemIdx" class="rule-card">
+            <div class="rule-card-header">
+              <div class="rule-card-title">
+                <span>#{{ itemIdx + 1 }}</span>
+                <span>{{ item.name || (drawerParamDef.label ? drawerParamDef.label.replace(/s$/, '') : 'Item') + ' ' + (itemIdx + 1) }}</span>
+              </div>
+              <div class="rule-card-actions">
+                <button v-if="itemIdx > 0" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, -1)" title="Move Up">↑</button>
+                <button v-if="itemIdx < drawerNode.config[drawerParamKey].length - 1" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, 1)" title="Move Down">↓</button>
+                <button class="rule-btn-mini rule-btn-danger" @click="removeArrayItem(drawerNode.config[drawerParamKey], itemIdx)" title="Delete Item">✕</button>
+              </div>
+            </div>
+
+            <!-- Render Properties of Item -->
+            <div v-if="drawerParamDef.items && drawerParamDef.items.properties" class="rule-field-grid">
+              <div v-for="prop in getSchemaProperties(drawerParamDef.items)" :key="prop.key"
+                   v-show="isFieldVisible(prop.def, item)"
+                   :class="(prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor' || prop.def.type === 'string' && (prop.key === 'expression' || prop.key === 'script' || prop.key === 'pattern' || prop.def.multiline)) ? 'rule-field-full' : 'rule-field-item'">
+                
+                <label class="rule-field-label">
+                  {{ prop.def.label || prop.key }}
+                  <span v-if="prop.def.required" style="color: var(--accent-rose);">*</span>
+                </label>
+
+                <!-- Widget: Channel Select -->
+                <select v-if="prop.def['ui:widget'] === 'channel-select'"
+                        v-model="item[prop.key]" @change="validateChain()" class="rule-field-input">
+                  <option value="">-- Select Channel --</option>
+                  <option v-for="ch in getAvailableTargetChannels(drawerNode)" :key="ch" :value="ch">{{ ch }}</option>
+                </select>
+
+                <!-- Enum dropdown -->
+                <select v-else-if="prop.def.enum" v-model="item[prop.key]" @change="validateChain()" class="rule-field-input">
+                  <option v-for="opt in prop.def.enum" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+
+                <!-- Code / Monospace Editor -->
+                <textarea v-else-if="prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor'"
+                          v-model="item[prop.key]" @input="validateChain()"
+                          :placeholder="prop.def['ui:placeholder'] || prop.def.description || ''"
+                          class="rule-field-input rule-field-code" spellcheck="false" rows="2"></textarea>
+
+                <!-- Number input -->
+                <input v-else-if="prop.def.type === 'integer' || prop.def.type === 'int' || prop.def.type === 'number'"
+                       type="number" :min="prop.def.min" :max="prop.def.max"
+                       v-model.number="item[prop.key]" @input="validateChain()" class="rule-field-input">
+
+                <!-- Default string / text input -->
+                <input v-else type="text" v-model="item[prop.key]" @input="validateChain()"
+                       :placeholder="prop.def['ui:placeholder'] || (prop.def.default !== undefined ? String(prop.def.default) : '')"
+                       class="rule-field-input">
+
+                <!-- In-Line Documentation / Usage Hint -->
+                <div v-if="prop.def['ui:help']" class="rule-field-help">{{ prop.def['ui:help'] }}</div>
+              </div>
+            </div>
+          </div>
+
+          <button class="primary" style="align-self: flex-start; padding: 6px 12px; font-size: 11px;"
+                  @click="addArrayItem(drawerNode, drawerParamKey, drawerParamDef)">
+            + Add {{ drawerParamDef.label ? drawerParamDef.label.replace(/s$/, '') : 'Item' }}
+          </button>
+        </div>
+
+        <!-- Single Nested Object View -->
+        <div v-else-if="drawerParamDef.type === 'object' && drawerParamDef.properties" class="rule-field-grid">
+          <div v-for="prop in getSchemaProperties(drawerParamDef)" :key="prop.key"
+               v-show="isFieldVisible(prop.def, drawerNode.config[drawerParamKey])"
+               :class="(prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor') ? 'rule-field-full' : 'rule-field-item'">
+            <label class="rule-field-label">{{ prop.def.label || prop.key }}</label>
+
+            <select v-if="prop.def['ui:widget'] === 'channel-select'"
+                    v-model="drawerNode.config[drawerParamKey][prop.key]" @change="validateChain()" class="rule-field-input">
+              <option value="">-- Select Channel --</option>
+              <option v-for="ch in getAvailableTargetChannels(drawerNode)" :key="ch" :value="ch">{{ ch }}</option>
+            </select>
+
+            <select v-else-if="prop.def.enum" v-model="drawerNode.config[drawerParamKey][prop.key]" @change="validateChain()" class="rule-field-input">
+              <option v-for="opt in prop.def.enum" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+
+            <textarea v-else-if="prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor'"
+                      v-model="drawerNode.config[drawerParamKey][prop.key]" @input="validateChain()"
+                      :placeholder="prop.def['ui:placeholder'] || ''"
+                      class="rule-field-input rule-field-code" spellcheck="false" rows="2"></textarea>
+
+            <input v-else type="text" v-model="drawerNode.config[drawerParamKey][prop.key]" @input="validateChain()" class="rule-field-input">
+
+            <!-- In-Line Documentation / Usage Hint -->
+            <div v-if="prop.def['ui:help']" class="rule-field-help">{{ prop.def['ui:help'] }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="param-drawer-footer">
+        <span style="font-size: 11px; color: var(--text-muted);">
+          Changes are bound automatically to pipeline node state.
+        </span>
+        <button class="primary" @click="closeParamDrawer()">Done</button>
       </div>
     </div>
   </div>
