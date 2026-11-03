@@ -411,6 +411,7 @@ button.danger:hover {
 .role-generator { background: #7c2d12; color: #fdba74; }
 .role-external_ingress { background: #14532d; color: #86efac; }
 .role-external_egress { background: #1e3a8a; color: #93c5fd; }
+.role-sink { background: #064e3b; color: #6ee7b7; }
 .role-processor { background: #312e81; color: #c4b5fd; }
 
 .palette-card-desc {

@@ -305,6 +305,39 @@ function createApp() {
       }, 30);
     },
 
+    generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex) {
+      const existingChannels = new Set();
+      for (const w of this.wires) {
+        if (w.channel) existingChannels.add(w.channel);
+      }
+      for (const n of this.nodes) {
+        for (const dir of ['inputs', 'outputs']) {
+          for (const val of Object.values(n[dir] || {})) {
+            if (Array.isArray(val)) {
+              val.forEach((c) => { if (c) existingChannels.add(c); });
+            } else if (val) {
+              existingChannels.add(val);
+            }
+          }
+        }
+      }
+
+      const isMulti = Array.isArray(fromNode.outputs[fromPort]);
+      const basePrefix = isMulti
+        ? `${fromNode.name}_b${fromIndex + 1}_to_${toNode.name}`
+        : `${fromNode.name}_to_${toNode.name}`;
+
+      if (!existingChannels.has(basePrefix)) {
+        return basePrefix;
+      }
+
+      let counter = 2;
+      while (existingChannels.has(`${basePrefix}_${counter}`)) {
+        counter++;
+      }
+      return `${basePrefix}_${counter}`;
+    },
+
     addWire(fromNodeId, fromPort, fromIndex, toNodeId, toPort, toIndex) {
       const fromNode = this.nodes.find((n) => n.id === fromNodeId);
       const toNode = this.nodes.find((n) => n.id === toNodeId);
@@ -325,18 +358,18 @@ function createApp() {
       );
       if (exists) return;
 
-      // Determine or assign channel name
+      // Determine or assign unique channel name
       let channelName = '';
       if (Array.isArray(fromNode.outputs[fromPort])) {
         channelName = fromNode.outputs[fromPort][fromIndex];
         if (!channelName || channelName.includes('out_channel')) {
-          channelName = `${fromNode.name}_b${fromIndex + 1}_to_${toNode.name}`;
+          channelName = this.generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex);
           fromNode.outputs[fromPort][fromIndex] = channelName;
         }
       } else {
         channelName = fromNode.outputs[fromPort];
         if (!channelName || channelName === 'out_channel') {
-          channelName = `${fromNode.name}_to_${toNode.name}`;
+          channelName = this.generateUniqueChannelName(fromNode, toNode, fromPort, fromIndex);
           fromNode.outputs[fromPort] = channelName;
         }
       }
@@ -494,39 +527,140 @@ function createApp() {
       this.globalConfig = { ...(chainDef.config || {}) };
 
       const handlers = chainDef.handlers || [];
-      const colWidth = 320;
+
+      // Rank & crossing-minimized DAG layout (left-to-right, force-directed rank centering)
+      const inDegrees = new Map();
+      const outgoing = new Map();
+      const normalizeChs = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
+        return String(val).split(',').map((s) => s.trim()).filter(Boolean);
+      };
+
+      handlers.forEach((h) => {
+        inDegrees.set(h.name, 0);
+        outgoing.set(h.name, []);
+      });
+
+      handlers.forEach((h) => {
+        const outList = normalizeChs(h.output_channels || h.output_channel);
+        outList.forEach((outCh) => {
+          handlers.forEach((consumer) => {
+            const inList = normalizeChs(consumer.input_channels || consumer.input_channel);
+            if (inList.includes(outCh)) {
+              outgoing.get(h.name).push(consumer.name);
+              inDegrees.set(consumer.name, (inDegrees.get(consumer.name) || 0) + 1);
+            }
+          });
+        });
+      });
+
+      const ranks = new Map();
+      const queue = [];
+      handlers.forEach((h) => {
+        if ((inDegrees.get(h.name) || 0) === 0) {
+          ranks.set(h.name, 0);
+          queue.push(h.name);
+        }
+      });
+      if (queue.length === 0 && handlers.length > 0) {
+        ranks.set(handlers[0].name, 0);
+        queue.push(handlers[0].name);
+      }
+      while (queue.length > 0) {
+        const u = queue.shift();
+        const r = ranks.get(u) || 0;
+        for (const v of outgoing.get(u) || []) {
+          const nextR = Math.max(ranks.get(v) || 0, r + 1);
+          ranks.set(v, nextR);
+          queue.push(v);
+        }
+      }
+
+      const columns = new Map();
+      handlers.forEach((h) => {
+        const r = ranks.get(h.name) || 0;
+        if (!columns.has(r)) columns.set(r, []);
+        columns.get(r).push(h);
+      });
+
+      // Barycenter crossing minimization
+      const sortedRanks = Array.from(columns.keys()).sort((a, b) => a - b);
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 1; i < sortedRanks.length; i++) {
+          const r = sortedRanks[i];
+          const prevRank = sortedRanks[i - 1];
+          const prevHandlers = columns.get(prevRank);
+          const prevRowMap = new Map();
+          prevHandlers.forEach((h, idx) => prevRowMap.set(h.name, idx));
+
+          const curHandlers = columns.get(r);
+          curHandlers.sort((a, b) => {
+            const aIn = normalizeChs(a.input_channels || a.input_channel);
+            const bIn = normalizeChs(b.input_channels || b.input_channel);
+            let aSum = 0, aCount = 0, bSum = 0, bCount = 0;
+            handlers.forEach((src) => {
+              if (prevRowMap.has(src.name)) {
+                const srcOut = normalizeChs(src.output_channels || src.output_channel);
+                if (srcOut.some((ch) => aIn.includes(ch))) {
+                  aSum += prevRowMap.get(src.name);
+                  aCount++;
+                }
+                if (srcOut.some((ch) => bIn.includes(ch))) {
+                  bSum += prevRowMap.get(src.name);
+                  bCount++;
+                }
+              }
+            });
+            const aAvg = aCount > 0 ? aSum / aCount : 999;
+            const bAvg = bCount > 0 ? bSum / bCount : 999;
+            return aAvg - bAvg;
+          });
+        }
+      }
+
+      const colWidth = 340;
       const rowHeight = 160;
-      const cols = Math.ceil(Math.sqrt(handlers.length)) || 1;
+      const startX = 100;
+      const startY = 80;
 
-      handlers.forEach((h, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
+      let maxColCount = 1;
+      columns.forEach((colHandlers) => {
+        if (colHandlers.length > maxColCount) maxColCount = colHandlers.length;
+      });
 
-        const node = {
-          id: 'node_' + Math.random().toString(36).substr(2, 9),
-          name: h.name,
-          type: h.type,
-          x: 100 + col * colWidth,
-          y: 80 + row * rowHeight,
-          config: { ...(h.config || {}) },
-          inputs: {},
-          outputs: {},
-        };
+      columns.forEach((colHandlers, r) => {
+        const colX = startX + r * colWidth;
+        const colOffset = ((maxColCount - colHandlers.length) * rowHeight) / 2;
 
-        if (h.input_channel) node.inputs['input_channel'] = h.input_channel;
-        if (h.input_channels) {
-          node.inputs['input_channels'] = Array.isArray(h.input_channels)
-            ? h.input_channels
-            : String(h.input_channels).split(',').map((s) => s.trim()).filter(Boolean);
-        }
-        if (h.output_channel) node.outputs['output_channel'] = h.output_channel;
-        if (h.output_channels) {
-          node.outputs['output_channels'] = Array.isArray(h.output_channels)
-            ? h.output_channels
-            : String(h.output_channels).split(',').map((s) => s.trim()).filter(Boolean);
-        }
+        colHandlers.forEach((h, rowIdx) => {
+          const nodeY = startY + colOffset + rowIdx * rowHeight;
+          const node = {
+            id: 'node_' + Math.random().toString(36).substr(2, 9),
+            name: h.name,
+            type: h.type,
+            x: colX,
+            y: nodeY,
+            config: { ...(h.config || {}) },
+            inputs: {},
+            outputs: {},
+          };
 
-        this.nodes.push(node);
+          if (h.input_channel) node.inputs['input_channel'] = h.input_channel;
+          if (h.input_channels) {
+            node.inputs['input_channels'] = Array.isArray(h.input_channels)
+              ? h.input_channels
+              : String(h.input_channels).split(',').map((s) => s.trim()).filter(Boolean);
+          }
+          if (h.output_channel) node.outputs['output_channel'] = h.output_channel;
+          if (h.output_channels) {
+            node.outputs['output_channels'] = Array.isArray(h.output_channels)
+              ? h.output_channels
+              : String(h.output_channels).split(',').map((s) => s.trim()).filter(Boolean);
+          }
+
+          this.nodes.push(node);
+        });
       });
 
       // Synthesize wires based on matching channel names

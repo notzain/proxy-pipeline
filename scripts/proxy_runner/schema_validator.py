@@ -21,6 +21,11 @@ def discover_handler_schemas(
     default_paths: list[Path] = []
     root_dir = Path(__file__).resolve().parent.parent.parent
 
+    # Look into handler source tree first so authoritative source schemas take precedence over stale build artifacts
+    handler_root = root_dir / "handler"
+    if handler_root.is_dir():
+        default_paths.append(handler_root)
+
     # Look into known build bin directories
     for sub in [
         "build/bin",
@@ -33,11 +38,6 @@ def discover_handler_schemas(
         b_dir = root_dir / sub
         if b_dir.is_dir():
             default_paths.append(b_dir)
-
-    # Look into handler source tree
-    handler_root = root_dir / "handler"
-    if handler_root.is_dir():
-        default_paths.append(handler_root)
 
     paths_to_scan = [Path(p) for p in (search_paths or [])] + default_paths
 

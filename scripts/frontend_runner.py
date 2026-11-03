@@ -458,16 +458,21 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
                 info = coord.active_in_flight
                 in_flight_stage = info.get("stage", "held")
                 batch_pkts = info.get("batch") or ([info["packet"]] if info.get("packet") else [])
-                pending_count = len(info.get("pending_branches") or [])
+                pending_branches_list = info.get("pending_branches") or []
+                all_held_branches = [info] + list(pending_branches_list)
+                held_channels = [b.get("output_channel") for b in all_held_branches if b.get("output_channel")]
+                held_nodes = [b.get("curr_node_name") for b in all_held_branches if b.get("curr_node_name")]
                 in_flight_summary = {
                     "stage": in_flight_stage,
-                    "node": info.get("curr_node_name"),
+                    "node": ", ".join(dict.fromkeys(held_nodes)),
                     "inputChannel": info.get("input_channel"),
-                    "channel": info.get("output_channel"),
+                    "channel": ", ".join(dict.fromkeys(held_channels)),
+                    "channels": held_channels,
+                    "nodes": held_nodes,
                     "batchCount": len(batch_pkts),
                     "batchIds": [p.seq_id for p in batch_pkts],
                     "msgId": coord.active_in_flight["packet"].seq_id if coord.active_in_flight.get("packet") else None,
-                    "pendingBranchesCount": pending_count,
+                    "pendingBranchesCount": len(pending_branches_list),
                 }
 
             handlers_meta = []

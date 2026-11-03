@@ -95,6 +95,8 @@ export class CanvasRenderer {
         return { bg: "#14532d", text: "#86efac", label: "INGRESS" };
       case "external_egress":
         return { bg: "#1e3a8a", text: "#93c5fd", label: "EGRESS" };
+      case "sink":
+        return { bg: "#064e3b", text: "#6ee7b7", label: "SINK" };
       case "processor":
       default:
         return { bg: "#312e81", text: "#c4b5fd", label: "PROCESSOR" };
@@ -195,18 +197,65 @@ export class CanvasRenderer {
       columns.get(r).push(handler);
     });
 
-    // Use stable, generous fixed-world spacing so nodes do not get squashed when page / canvas is resized
+    // 1. Barycenter Heuristic crossing minimization: sort nodes in rank r by average row of predecessor/successor nodes
+    const sortedRanks = Array.from(columns.keys()).sort((a, b) => a - b);
+    for (let pass = 0; pass < 3; pass++) {
+      // Forward pass: position according to incoming predecessors
+      for (let i = 1; i < sortedRanks.length; i++) {
+        const r = sortedRanks[i];
+        const prevRank = sortedRanks[i - 1];
+        const prevHandlers = columns.get(prevRank);
+        const prevRowMap = new Map();
+        prevHandlers.forEach((h, idx) => prevRowMap.set(h.name, idx));
+
+        const curHandlers = columns.get(r);
+        curHandlers.sort((a, b) => {
+          const aIn = this._normalizeChannelList(a.input_channels || a.input_channel);
+          const bIn = this._normalizeChannelList(b.input_channels || b.input_channel);
+
+          let aSum = 0, aCount = 0;
+          let bSum = 0, bCount = 0;
+
+          handlers.forEach((src) => {
+            if (prevRowMap.has(src.name)) {
+              const srcOut = this._normalizeChannelList(src.output_channels || src.output_channel);
+              if (srcOut.some(ch => aIn.includes(ch))) {
+                aSum += prevRowMap.get(src.name);
+                aCount++;
+              }
+              if (srcOut.some(ch => bIn.includes(ch))) {
+                bSum += prevRowMap.get(src.name);
+                bCount++;
+              }
+            }
+          });
+
+          const aAvg = aCount > 0 ? aSum / aCount : 999;
+          const bAvg = bCount > 0 ? bSum / bCount : 999;
+          return aAvg - bAvg;
+        });
+      }
+    }
+
+    // Use stable, generous fixed-world spacing with rank-based centering so nodes do not overlap
     const nodeWidth = 220;
     const worldStartX = 180;
     const worldStartY = 60;
-    const worldColSpacing = 320; // 320px between handler columns in world space
-    const worldRowSpacing = 160; // 160px vertical separation
+    const worldColSpacing = 340; // generous spacing between columns
+    const worldRowSpacing = 160; // generous vertical separation
+
+    // Find the max height of any column to vertically center smaller columns nicely
+    let maxColCount = 1;
+    columns.forEach((colHandlers) => {
+      if (colHandlers.length > maxColCount) maxColCount = colHandlers.length;
+    });
 
     columns.forEach((colHandlers, r) => {
       const colX = worldStartX + r * worldColSpacing;
+      const colOffset = ((maxColCount - colHandlers.length) * worldRowSpacing) / 2;
 
       colHandlers.forEach((handler, rowIdx) => {
-        const defaultNodeY = worldStartY + rowIdx * worldRowSpacing;
+        const defaultNodeY = worldStartY + colOffset + rowIdx * worldRowSpacing;
         const savedPos = existingPositions.get(handler.name);
         const posX = savedPos ? savedPos.x : colX;
         const posY = savedPos ? savedPos.y : defaultNodeY;
