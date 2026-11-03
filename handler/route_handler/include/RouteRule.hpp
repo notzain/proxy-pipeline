@@ -1,14 +1,19 @@
 #pragma once
 
+#include "IRouteCondition.hpp"
+#include "RouteAction.hpp"
 #include "backend/channel/IOutputChannel.hpp"
 #include "backend/message/MessageView.hpp"
 #include "backend/message/ProtocolId.hpp"
 #include "common/memory/ObserverPtr.hpp"
 #include "common/types/Variant.hpp"
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace Proxy::Handler {
+
+class RouteRuleBuilder;
 
 namespace MatchCriteria {
 
@@ -48,8 +53,7 @@ namespace MatchCriteria {
 } // namespace MatchCriteria
 
 /**
- * @brief Type-safe sum type (tagged union) representing pattern matching criteria,
- * modeling Rust-style pattern matching via Common::Types::Variant and match().
+ * @brief Legacy pattern sum type retained for simple declarative rules.
  */
 using RoutePattern = Common::Types::Variant<
     MatchCriteria::Protocol,
@@ -59,23 +63,40 @@ using RoutePattern = Common::Types::Variant<
     MatchCriteria::Fallback>;
 
 /**
- * @brief Declarative routing rule binding a pattern variant to a destination output channel.
+ * @brief Declarative routing rule binding a condition to a routing action.
  */
 class RouteRule {
 public:
+    /**
+     * @brief Construct rule with legacy RoutePattern and target channel.
+     */
     RouteRule(RoutePattern pattern, std::string targetChannelName);
+
+    /**
+     * @brief Construct rule with composable condition and RouteAction.
+     */
+    RouteRule(std::unique_ptr<IRouteCondition> condition, RouteAction action);
+
+    /**
+     * @brief Fluent builder entry point.
+     */
+    static RouteRuleBuilder when(const IRouteCondition& condition);
 
     [[nodiscard]] bool matches(const Backend::MessageView& message) const noexcept;
     [[nodiscard]] const std::string& targetChannelName() const noexcept;
     [[nodiscard]] Common::Memory::ObserverPtr<::Backend::IOutputChannel> targetChannel() const noexcept;
     void bindTargetChannel(Common::Memory::ObserverPtr<::Backend::IOutputChannel> channel) noexcept;
 
-    [[nodiscard]] const RoutePattern& pattern() const noexcept;
+    [[nodiscard]] const RouteAction& action() const noexcept;
+    [[nodiscard]] RouteAction& action() noexcept;
+
+    [[nodiscard]] const RoutePattern* legacyPattern() const noexcept;
+    [[nodiscard]] const IRouteCondition* condition() const noexcept;
 
 private:
-    RoutePattern m_pattern;
-    std::string m_targetChannelName;
-    Common::Memory::ObserverPtr<::Backend::IOutputChannel> m_targetChannel;
+    std::unique_ptr<IRouteCondition> m_condition;
+    RouteAction m_action;
+    std::unique_ptr<RoutePattern> m_legacyPattern;
 };
 
 } // namespace Proxy::Handler
