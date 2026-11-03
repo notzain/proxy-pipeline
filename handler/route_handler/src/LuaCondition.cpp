@@ -1,5 +1,5 @@
 #include "LuaCondition.hpp"
-#include "core/net/UdpMetadata.hpp"
+#include "core/metadata/MetadataCatalog.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <string_view>
@@ -9,6 +9,54 @@
 #include <sol/sol.hpp>
 
 namespace Proxy::Handler {
+
+namespace {
+
+    /**
+     * @brief Recursively converts an intermediate representation Value into a Lua object.
+     */
+    sol::object irToLua(lua_State* L, const Core::Serialization::Ir::Value& val)
+    {
+        if (val.isNull()) {
+            return sol::make_object(L, sol::lua_nil);
+        }
+        if (val.isBool()) {
+            return sol::make_object(L, val.asBool().value_or(false));
+        }
+        if (val.isInt()) {
+            return sol::make_object(L, val.asInt().value_or(0));
+        }
+        if (val.isUInt()) {
+            return sol::make_object(L, val.asUInt().value_or(0));
+        }
+        if (val.isDouble()) {
+            return sol::make_object(L, val.asDouble().value_or(0.0));
+        }
+        if (val.isString()) {
+            auto sv = val.asStringView().value_or("");
+            return sol::make_object(L, sv);
+        }
+        if (val.isArray()) {
+            sol::state_view lua(L);
+            sol::table tbl = lua.create_table();
+            std::size_t idx = 1;
+            for (const auto& elem : *val.asArray()) {
+                tbl[idx++] = irToLua(L, elem);
+            }
+            return tbl;
+        }
+        if (val.isObject()) {
+            sol::state_view lua(L);
+            sol::table tbl = lua.create_table();
+            for (const auto& [k, v] : *val.asObject()) {
+                tbl[k] = irToLua(L, v);
+            }
+            return tbl;
+        }
+        return sol::make_object(L, sol::lua_nil);
+    }
+
+} // namespace
 
 struct LuaCondition::Impl {
     std::string script;
@@ -48,7 +96,6 @@ struct LuaCondition::Impl {
             func = execResult.get<sol::function>();
             valid = true;
         } else {
-            // Check if global `route` or `matches` exists
             if (lua["route"].valid() && lua["route"].get_type() == sol::type::function) {
                 func = lua["route"];
                 valid = true;
@@ -95,14 +142,60 @@ bool LuaCondition::matches(const Backend::MessageView& message) const noexcept
         msg["payload"] = payloadStr;
         msg["protocol"] = static_cast<int>(message.protocol().value());
 
-        const auto udpMeta = message.getMetadata<Core::Net::UdpMetadata>();
-        if (udpMeta) {
-            msg["port"] = ntohs(udpMeta->srcPort);
-            msg["dst_port"] = ntohs(udpMeta->dstPort);
-        } else {
-            msg["port"] = sol::lua_nil;
-            msg["dst_port"] = sol::lua_nil;
-        }
+        // Attach lazy metadata metatable on msg.meta and msg fallback
+        // Resolves fields on demand via MetadataCatalog without coupling to concrete structs
+        sol::table metaTable = m_impl->lua.create_table();
+        sol::table metaMetatable = m_impl->lua.create_table();
+
+        bool populated = false;
+        auto populateFields = [&message, &metaTable, &populated, this]() {
+            if (populated) {
+                return;
+            }
+            populated = true;
+            auto optIr = Core::Metadata::MetadataCatalog::toIr(message.protocol(), message.metadata());
+            if (optIr && optIr->isObject()) {
+                lua_State* L = m_impl->lua.lua_state();
+                for (const auto& [k, v] : *optIr->asObject()) {
+                    metaTable.raw_set(k, irToLua(L, v));
+                }
+            }
+        };
+
+        metaMetatable[sol::meta_function::index] = [populateFields, &metaTable](sol::table, const std::string& key) -> sol::object {
+            populateFields();
+            return metaTable.raw_get<sol::object>(key);
+        };
+
+        metaTable[sol::metatable_key] = metaMetatable;
+        msg["meta"] = metaTable;
+
+        // Also allow top-level fallback into meta fields (e.g. msg.src_port or msg.port)
+        sol::table msgMetatable = m_impl->lua.create_table();
+        msgMetatable[sol::meta_function::index] = [populateFields, &metaTable](sol::table self, const std::string& key) -> sol::object {
+            populateFields();
+            auto rawVal = metaTable.raw_get<sol::object>(key);
+            if (rawVal.valid() && rawVal.get_type() != sol::type::lua_nil) {
+                return rawVal;
+            }
+            // Convenience aliases for network ports in network byte order:
+            if (key == "port" || key == "srcPort") {
+                auto portVal = metaTable.raw_get<sol::object>("src_port");
+                if (portVal.valid() && portVal.get_type() == sol::type::number) {
+                    auto rawPort = portVal.as<std::uint16_t>();
+                    return sol::make_object(self.lua_state(), ntohs(rawPort));
+                }
+            }
+            if (key == "dst_port" || key == "dstPort") {
+                auto portVal = metaTable.raw_get<sol::object>("dst_port");
+                if (portVal.valid() && portVal.get_type() == sol::type::number) {
+                    auto rawPort = portVal.as<std::uint16_t>();
+                    return sol::make_object(self.lua_state(), ntohs(rawPort));
+                }
+            }
+            return sol::make_object(self.lua_state(), sol::lua_nil);
+        };
+        msg[sol::metatable_key] = msgMetatable;
 
         sol::protected_function_result result = m_impl->func(msg);
         if (!result.valid()) {
@@ -115,7 +208,6 @@ bool LuaCondition::matches(const Backend::MessageView& message) const noexcept
             return result.get<bool>();
         }
         if (result.get_type() == sol::type::string) {
-            // Non-empty string counts as truthy
             std::string str = result.get<std::string>();
             return !str.empty();
         }
@@ -189,4 +281,3 @@ const std::string& LuaCondition::scriptCode() const noexcept
 } // namespace Proxy::Handler
 
 #endif
-

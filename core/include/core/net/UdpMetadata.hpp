@@ -1,8 +1,10 @@
 #pragma once
 
 #include "backend/message/MetadataTraits.hpp"
+#include "core/serialization/TypeTraits.hpp"
 #include <cstdint>
 #include <netinet/in.h>
+#include <tuple>
 
 namespace Core::Net {
 
@@ -25,6 +27,24 @@ struct alignas(4) UdpMetadata {
 static_assert(sizeof(UdpMetadata) == 48, "UdpMetadata must be exactly 48 bytes");
 
 } // namespace Core::Net
+
+namespace Core::Serialization {
+
+template <>
+struct TypeTraits<Core::Net::UdpMetadata> {
+    static constexpr bool isReflected = true;
+    static constexpr auto fields()
+    {
+        return std::make_tuple(
+            Core::Serialization::field("src_ip", &Core::Net::UdpMetadata::srcIp),
+            Core::Serialization::field("src_port", &Core::Net::UdpMetadata::srcPort),
+            Core::Serialization::field("dst_port", &Core::Net::UdpMetadata::dstPort),
+            Core::Serialization::field("dst_ip", &Core::Net::UdpMetadata::dstIp),
+            Core::Serialization::field("address_family", &Core::Net::UdpMetadata::addressFamily));
+    }
+};
+
+} // namespace Core::Serialization
 
 namespace Backend {
 
