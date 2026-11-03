@@ -27,6 +27,11 @@ function createApp() {
     selectedWireId: null,
     showDiagnosticsDrawer: false,
 
+    // Slide-out complex parameter drawer state
+    drawerNode: null,
+    drawerParamKey: null,
+    drawerParamDef: null,
+
     validation: {
       valid: true,
       errors: [],
@@ -148,7 +153,11 @@ function createApp() {
       if (schema.parameters) {
         for (const [k, p] of Object.entries(schema.parameters)) {
           if (p.default !== undefined) {
-            config[k] = p.default;
+            config[k] = JSON.parse(JSON.stringify(p.default));
+          } else if (p.type === 'array') {
+            config[k] = [];
+          } else if (p.type === 'object') {
+            config[k] = {};
           }
         }
       }
@@ -476,6 +485,109 @@ function createApp() {
         }
       }
       return items;
+    },
+
+    openParamDrawer(node, paramKey, paramDef) {
+      this.drawerNode = node;
+      this.drawerParamKey = paramKey;
+      this.drawerParamDef = paramDef;
+      if (paramDef.type === 'array' && !Array.isArray(node.config[paramKey])) {
+        node.config[paramKey] = [];
+      } else if (paramDef.type === 'object' && (!node.config[paramKey] || typeof node.config[paramKey] !== 'object')) {
+        node.config[paramKey] = {};
+      }
+    },
+
+    closeParamDrawer() {
+      this.drawerNode = null;
+      this.drawerParamKey = null;
+      this.drawerParamDef = null;
+      this.validateChain();
+    },
+
+    isFieldVisible(propDef, itemScope) {
+      if (!propDef || !propDef['ui:visible_if']) return true;
+      const cond = propDef['ui:visible_if'];
+      if (typeof cond !== 'object') return true;
+      if (!itemScope) return true;
+      for (const [k, expectedVal] of Object.entries(cond)) {
+        if (String(itemScope[k]) !== String(expectedVal)) {
+          return false;
+        }
+      }
+      return true;
+    },
+
+    getSchemaProperties(schemaObj) {
+      if (!schemaObj || !schemaObj.properties) return [];
+      return Object.entries(schemaObj.properties).map(([key, def]) => ({
+        key,
+        def,
+      }));
+    },
+
+    getAvailableTargetChannels(node) {
+      const channels = new Set();
+      // 1. Outputs on current node
+      if (node && node.outputs) {
+        for (const val of Object.values(node.outputs)) {
+          if (Array.isArray(val)) {
+            val.forEach((c) => { if (c && String(c).trim()) channels.add(String(c).trim()); });
+          } else if (val && String(val).trim()) {
+            String(val).split(',').forEach((c) => { if (c && c.trim()) channels.add(c.trim()); });
+          }
+        }
+      }
+      // 2. All wires and nodes across the chain for rich cross-referencing
+      for (const n of this.nodes) {
+        if (n.outputs) {
+          for (const val of Object.values(n.outputs)) {
+            if (Array.isArray(val)) {
+              val.forEach((c) => { if (c && String(c).trim()) channels.add(String(c).trim()); });
+            } else if (val && String(val).trim()) {
+              String(val).split(',').forEach((c) => { if (c && c.trim()) channels.add(c.trim()); });
+            }
+          }
+        }
+      }
+      return Array.from(channels).sort();
+    },
+
+    addArrayItem(node, paramKey, paramDef) {
+      if (!node || !node.config) return;
+      if (!Array.isArray(node.config[paramKey])) {
+        node.config[paramKey] = [];
+      }
+      const newItem = {};
+      if (paramDef.items && paramDef.items.properties) {
+        for (const [k, p] of Object.entries(paramDef.items.properties)) {
+          if (p.default !== undefined) {
+            newItem[k] = JSON.parse(JSON.stringify(p.default));
+          } else if (p.type === 'integer' || p.type === 'int' || p.type === 'number') {
+            newItem[k] = 0;
+          } else {
+            newItem[k] = '';
+          }
+        }
+      }
+      node.config[paramKey].push(newItem);
+      this.validateChain();
+    },
+
+    removeArrayItem(arr, index) {
+      if (!Array.isArray(arr)) return;
+      arr.splice(index, 1);
+      this.validateChain();
+    },
+
+    moveArrayItem(arr, index, delta) {
+      if (!Array.isArray(arr)) return;
+      const targetIdx = index + delta;
+      if (targetIdx < 0 || targetIdx >= arr.length) return;
+      const temp = arr[index];
+      arr[index] = arr[targetIdx];
+      arr[targetIdx] = temp;
+      this.validateChain();
     },
 
     addChannelItem(node, direction, portName) {
@@ -1023,13 +1135,47 @@ function createApp() {
 
         if (h.config && Object.keys(h.config).length > 0) {
           out += `[handlers.config]\n`;
+          const complexArrays = [];
           for (const [ck, cv] of Object.entries(h.config)) {
-            if (typeof cv === 'boolean') {
+            if (Array.isArray(cv)) {
+              complexArrays.push([ck, cv]);
+            } else if (cv !== null && typeof cv === 'object') {
+              // inline table
+              out += `"${ck}" = ${JSON.stringify(cv)}\n`;
+            } else if (typeof cv === 'boolean') {
               out += `"${ck}" = ${cv}\n`;
             } else if (typeof cv === 'number') {
               out += `"${ck}" = ${cv}\n`;
             } else {
-              out += `"${ck}" = "${cv}"\n`;
+              // multiline string or standard string
+              const sVal = String(cv);
+              if (sVal.includes('\n')) {
+                out += `"${ck}" = """\n${sVal}\n"""\n`;
+              } else {
+                out += `"${ck}" = "${sVal.replace(/"/g, '\\"')}"\n`;
+              }
+            }
+          }
+
+          // Nested arrays of tables (e.g. [[handlers.config.rules]])
+          for (const [arrKey, arrItems] of complexArrays) {
+            for (const item of arrItems) {
+              out += `\n[[handlers.config.${arrKey}]]\n`;
+              for (const [itemKey, itemVal] of Object.entries(item)) {
+                if (itemVal === undefined || itemVal === null) continue;
+                if (typeof itemVal === 'boolean') {
+                  out += `${itemKey} = ${itemVal}\n`;
+                } else if (typeof itemVal === 'number') {
+                  out += `${itemKey} = ${itemVal}\n`;
+                } else {
+                  const sVal = String(itemVal);
+                  if (sVal.includes('\n')) {
+                    out += `${itemKey} = """\n${sVal}\n"""\n`;
+                  } else {
+                    out += `${itemKey} = "${sVal.replace(/"/g, '\\"')}"\n`;
+                  }
+                }
+              }
             }
           }
         }

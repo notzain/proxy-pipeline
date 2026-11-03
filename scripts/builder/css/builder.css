@@ -1384,4 +1384,229 @@ button.danger-outline:hover {
   transform: translateY(-2px);
 }
 
+/* Parameter Configuration Trigger Pill */
+.node-param-pill-btn {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 8px;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.node-param-pill-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Complex Parameter Configuration Drawer */
+.param-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 1200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.param-drawer {
+  width: 540px;
+  max-width: 90vw;
+  height: 100vh;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  animation: slideDrawer 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes slideDrawer {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.param-drawer-header {
+  padding: 16px 20px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.param-drawer-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-drawer-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.param-drawer-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: text;
+}
+
+.param-drawer-footer {
+  padding: 12px 20px;
+  background: var(--bg-panel-header);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Rule Card Container in Drawer */
+.rule-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: border-color 0.15s ease;
+}
+
+.rule-card:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.rule-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+
+.rule-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-btn-mini {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.rule-btn-mini:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rule-btn-danger:hover {
+  color: #ff4d6d;
+  border-color: #ff4d6d;
+  background: rgba(255, 77, 109, 0.1);
+}
+
+.rule-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.rule-field-full {
+  grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.rule-field-input {
+  background: #090d16;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-main);
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  font-family: inherit;
+}
+
+.rule-field-input:focus {
+  border-color: var(--accent);
+}
+
+.rule-field-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  font-size: 11.5px !important;
+  line-height: 1.4 !important;
+  tab-size: 2 !important;
+  min-height: 54px;
+  resize: vertical;
+}
+
+.rule-field-help {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--accent);
+  padding: 4px 8px;
+  border-radius: 0 4px 4px 0;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+
 

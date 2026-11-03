@@ -100,6 +100,53 @@ class TestHandlerSchemas(unittest.TestCase):
         self.assertFalse(res["valid"])
         self.assertTrue(any("uniquely named" in err for err in res["errors"]))
 
+    def test_structured_rules_schema_validation(self):
+        schema = self.schemas.get("route_handler")
+        self.assertIsNotNone(schema)
+
+        # Valid spec with structured rules
+        valid_spec = {
+            "name": "router",
+            "type": "route_handler",
+            "input_channel": "in",
+            "output_channels": "out1,out2",
+            "config": {
+                "default_action": "drop",
+                "rules": [
+                    {
+                        "name": "rule1",
+                        "type": "expression",
+                        "expression": "metadata.price > 100",
+                        "action": "forward",
+                        "target": "out1",
+                    },
+                    {
+                        "name": "rule2",
+                        "type": "lua",
+                        "script": "return message.len > 0",
+                        "action": "reject",
+                    },
+                ],
+            },
+        }
+        errors = validate_handler_instance(valid_spec, schema)
+        self.assertEqual(errors, [])
+
+        # Invalid spec with bad enum and bad type in array item
+        invalid_spec = {
+            "name": "router",
+            "type": "route_handler",
+            "input_channel": "in",
+            "output_channels": "out1",
+            "config": {
+                "default_action": "invalid_action",  # not in enum
+                "rules": "not-a-list",  # must be array
+            },
+        }
+        errors = validate_handler_instance(invalid_spec, schema)
+        self.assertTrue(any("default_action" in e for e in errors))
+        self.assertTrue(any("must be a list/array" in e for e in errors))
+
     def test_out_of_tree_discovery(self):
         # Verify discovery works dynamically on an arbitrary external directory
         import tempfile

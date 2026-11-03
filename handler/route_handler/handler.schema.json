@@ -27,25 +27,73 @@
     ]
   },
   "parameters": {
-    "route.rule.0.type": {
+    "default_action": {
       "type": "string",
-      "label": "Rule 0 Match Type",
-      "enum": ["contains", "equals", "prefix", "suffix", "numeric_gt", "numeric_lt"],
-      "default": "contains",
-      "description": "Matching algorithm used for first evaluation rule."
+      "label": "Default Action",
+      "enum": ["drop", "forward", "reject"],
+      "default": "drop",
+      "description": "Action taken when no rules match."
     },
-    "route.rule.0.pattern": {
-      "type": "string",
-      "label": "Rule 0 Match Pattern",
-      "default": "",
-      "description": "Substring, prefix, or token pattern to match."
-    },
-    "route.rule.0.target": {
-      "type": "string",
-      "label": "Rule 0 Target Channel",
-      "default": "",
-      "description": "Output channel to divert to if Rule 0 matches."
+    "rules": {
+      "type": "array",
+      "label": "Routing Rules",
+      "description": "Sequential rules evaluated against message payload and metadata.",
+      "ui:widget": "rule-list",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "label": "Rule Name"
+          },
+          "type": {
+            "type": "string",
+            "label": "Condition Engine",
+            "enum": ["expression", "pattern", "lua"],
+            "default": "expression",
+            "description": "Engine used to evaluate match criteria: 'expression' (boolean logic & metadata comparisons), 'pattern' (substring text search), or 'lua' (arbitrary script code)."
+          },
+          "pattern": {
+            "type": "string",
+            "label": "Match Pattern",
+            "description": "Substring pattern to search for inside raw message payload.",
+            "ui:placeholder": "e.g. ORDER_CANCEL or VIP",
+            "ui:help": "Matches if the message payload contains this exact substring.",
+            "ui:visible_if": { "type": "pattern" }
+          },
+          "expression": {
+            "type": "string",
+            "label": "Boolean Expression",
+            "description": "Composite expression with boolean operators, predicates, and metadata comparisons.",
+            "ui:widget": "code",
+            "ui:placeholder": "metadata.price > 100 and (contains(\"VIP\") or port == 8080)",
+            "ui:help": "Supported syntax:\n• contains(\"txt\" [, count]), prefix(\"hdr\"), exact(\"full\")\n• metadata.<field> [==, !=, <, <=, >, >=] <value>\n• port == <num> or port(<num>), protocol == <id>\n• Operators: and / &&, or / ||, not / !, parentheses ( )",
+            "ui:visible_if": { "type": "expression" }
+          },
+          "script": {
+            "type": "string",
+            "label": "Lua Script",
+            "description": "Custom Lua script block evaluated against incoming message.",
+            "ui:widget": "code-editor",
+            "ui:language": "lua",
+            "ui:placeholder": "return function(msg)\n  return msg.payload:find(\"CRITICAL\") ~= nil or msg.meta.priority == 1\nend",
+            "ui:help": "Provide a script returning function(msg) -> bool (or function route(msg)).\n• msg.payload: raw ASCII string of payload\n• msg.protocol: numeric protocol ID\n• msg.meta.<field>: parsed metadata fields from catalog",
+            "ui:visible_if": { "type": "lua" }
+          },
+          "action": {
+            "type": "string",
+            "label": "Action",
+            "enum": ["forward", "reject", "drop"],
+            "default": "forward"
+          },
+          "target": {
+            "type": "string",
+            "label": "Target Channel",
+            "ui:widget": "channel-select",
+            "ui:visible_if": { "action": "forward" }
+          }
+        }
+      }
     }
   }
 }
-
