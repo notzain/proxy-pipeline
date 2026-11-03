@@ -461,7 +461,7 @@
                  @click="selectSubTraceItem(ev, tr, idx, $event)">
               <div class="subtrace-header">
                 <span class="subtrace-branch-icon">↳</span>
-                <span class="subtrace-channel">Branch #{{ tr.traceId }}: <strong>{{ tr.outputChannel || tr.channel }}</strong></span>
+                <span class="subtrace-channel">Branch #{{ tr.traceId }}: <strong>{{ tr.outputChannel || tr.inputChannel || tr.channel }}</strong></span>
                 <span class="subtrace-status" :class="'status-' + (tr.result || 'Forwarded').toLowerCase()">
                   {{ tr.result || 'Forwarded' }}
                 </span>

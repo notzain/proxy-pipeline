@@ -122,6 +122,12 @@ export class CanvasRenderer {
     return { x, y };
   }
 
+  _normalizeChannelList(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.map(s => String(s).trim()).filter(Boolean);
+    return String(val).split(",").map(s => s.trim()).filter(Boolean);
+  }
+
   layoutPipeline() {
     const chain = this.store.state.chain;
     if (!chain || !chain.handlers) return;
@@ -146,10 +152,10 @@ export class CanvasRenderer {
     });
 
     handlers.forEach((handler) => {
-      const outList = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      const outList = this._normalizeChannelList(handler.output_channels || handler.output_channel);
       outList.forEach((outCh) => {
         handlers.forEach((consumer) => {
-          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+          const inList = this._normalizeChannelList(consumer.input_channels || consumer.input_channel);
           if (inList.includes(outCh)) {
             outgoing.get(handler.name).push(consumer.name);
             inDegrees.set(consumer.name, (inDegrees.get(consumer.name) || 0) + 1);
@@ -213,8 +219,8 @@ export class CanvasRenderer {
         const isIngress = role === "external_ingress";
         const protocol = handler.protocol || (handler.type === "udp_ingress_handler" ? "udp" : "none");
 
-        const inChs = handler.input_channels || (handler.input_channel ? String(handler.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
-        const outChs = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+        const inChs = this._normalizeChannelList(handler.input_channels || handler.input_channel);
+        const outChs = this._normalizeChannelList(handler.output_channels || handler.output_channel);
 
         const maxPortRows = Math.max(inChs.length, outChs.length, 1);
         const baseHeight = isGenerator ? 116 : 80;
@@ -281,10 +287,10 @@ export class CanvasRenderer {
       const fromNode = this.handlersLayout.find(item => item.name === handler.name);
       if (!fromNode) return;
 
-      const outList = handler.output_channels || (handler.output_channel ? String(handler.output_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+      const outList = this._normalizeChannelList(handler.output_channels || handler.output_channel);
       outList.forEach((outCh, outIdx) => {
         handlers.forEach((consumer) => {
-          const inList = consumer.input_channels || (consumer.input_channel ? String(consumer.input_channel).split(",").map(s => s.trim()).filter(Boolean) : []);
+          const inList = this._normalizeChannelList(consumer.input_channels || consumer.input_channel);
           const inIdx = inList.indexOf(outCh);
           if (inIdx !== -1) {
             const toNode = this.handlersLayout.find(item => item.name === consumer.name);
@@ -396,6 +402,10 @@ export class CanvasRenderer {
 
     if (traces) {
       for (const tr of traces) {
+        // If event has mixed outcomes, only consider edges for Consumed or Dropped traces
+        if (event.result === "Forwarded" && tr.result === "Forwarded") {
+          continue;
+        }
         const hName = tr.handler || event.handler || event.target;
         const inCh = tr.inputChannel || tr.channel || event.inputChannel;
         if (hName && inCh) {
@@ -421,28 +431,36 @@ export class CanvasRenderer {
 
   findOutgoingChannelEdges(event) {
     if (!event) return [];
-    const handlerName = event.handler || event.source || event.target;
-    if (!handlerName) return [];
-
     const edges = [];
     const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
+
     if (traces) {
       for (const tr of traces) {
+        // If trace is Consumed or Dropped, its active wire is incoming, not outgoing
+        if (tr.result === "Consumed" || tr.result === "Dropped") {
+          continue;
+        }
+        const hName = tr.handler || event.handler || event.source || event.target;
         const oc = tr.outputChannel || tr.channel;
-        const edge = this.findOutgoingChannelEdgeForChannel(handlerName, oc);
-        if (edge && !edges.includes(edge)) {
-          edges.push(edge);
+        if (hName && oc) {
+          const edge = this.findOutgoingChannelEdgeForChannel(hName, oc);
+          if (edge && !edges.includes(edge)) {
+            edges.push(edge);
+          }
         }
       }
     }
 
     if (edges.length === 0) {
-      const outCh = event.outputChannel || event.channel;
-      if (outCh) {
-        for (const part of String(outCh).split(",")) {
-          const edge = this.findOutgoingChannelEdgeForChannel(handlerName, part.trim());
-          if (edge && !edges.includes(edge)) {
-            edges.push(edge);
+      const handlerName = event.handler || event.source || event.target;
+      if (handlerName) {
+        const outCh = event.outputChannel || event.channel;
+        if (outCh) {
+          for (const part of String(outCh).split(",")) {
+            const edge = this.findOutgoingChannelEdgeForChannel(handlerName, part.trim());
+            if (edge && !edges.includes(edge)) {
+              edges.push(edge);
+            }
           }
         }
       }
@@ -472,47 +490,61 @@ export class CanvasRenderer {
       if (!traceHandlerNode) return;
 
       const traceOutCh = specificTrace.outputChannel || specificTrace.channel;
-      const edge = isForwarded
+      const traceInCh = specificTrace.inputChannel || specificTrace.channel || event.inputChannel;
+      const traceIsForwarded = specificTrace.result === "Forwarded";
+      const traceIsConsumed = specificTrace.result === "Consumed";
+      const traceIsDropped = specificTrace.result === "Dropped";
+
+      const edge = traceIsForwarded
         ? this.findOutgoingChannelEdgeForChannel(traceHandlerName, traceOutCh)
-        : this.findIncomingChannelEdge(event);
-      this._createAndSetParticles(event, traceHandlerNode, [edge], [traceOutCh], isIngress, isForwarded, isConsumed, isDropped);
+        : (this.channelsLayout.find(c => c.to.name === traceHandlerName && c.name === traceInCh) || this.findIncomingChannelEdge(event));
+
+      this._createAndSetParticles(event, traceHandlerNode, [edge], [traceOutCh || traceInCh], isIngress, traceIsForwarded, traceIsConsumed, traceIsDropped, [traceHandlerNode], [{
+        isForwarded: traceIsForwarded,
+        isConsumed: traceIsConsumed,
+        isDropped: traceIsDropped,
+      }]);
       return;
     }
 
     const traces = Array.isArray(event.traces) && event.traces.length > 0 ? event.traces : null;
 
-    // Multi-trace concurrent egress/consumed
-    if (traces && !isForwarded && traces.length > 1) {
+    // Multi-trace concurrent handling (handles mixed Forwarded + Consumed + Dropped)
+    if (traces && traces.length > 1) {
       const edges = [];
       const outChannels = [];
-      const primaryHandlerName = traces[0].handler || event.handler || event.target;
-      const primaryNode = this.handlersLayout.find(h => h.name === primaryHandlerName) || this.handlersLayout[0];
+      const sourceNodes = [];
+      const traceOutcomes = [];
 
       for (const tr of traces) {
         const hName = tr.handler || event.handler || event.target;
-        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
-        const edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh) || this.findIncomingChannelEdge(event);
-        edges.push(edge);
-        outChannels.push(inCh);
-      }
-      this._createAndSetParticles(event, primaryNode, edges, outChannels, isIngress, false, isConsumed, isDropped);
-      return;
-    }
-
-    // Multi-trace concurrent forwarded
-    if (traces && isForwarded && traces.length > 1) {
-      const handlerName = event.handler || event.target;
-      const handlerNode = this.handlersLayout.find(h => h.name === handlerName);
-      if (!handlerNode) return;
-
-      const edges = [];
-      const outChannels = [];
-      for (const tr of traces) {
         const oc = tr.outputChannel || tr.channel;
-        outChannels.push(oc);
-        edges.push(this.findOutgoingChannelEdgeForChannel(handlerName, oc));
+        const inCh = tr.inputChannel || tr.channel || event.inputChannel;
+        const node = this.handlersLayout.find(h => h.name === hName) || this.handlersLayout[0];
+
+        const trIsForwarded = tr.result === "Forwarded";
+        const trIsConsumed = tr.result === "Consumed";
+        const trIsDropped = tr.result === "Dropped";
+
+        let edge = null;
+        if (trIsForwarded) {
+          edge = this.findOutgoingChannelEdgeForChannel(hName, oc);
+          outChannels.push(oc);
+        } else {
+          edge = this.channelsLayout.find(c => c.to.name === hName && c.name === inCh) || this.findIncomingChannelEdge(event);
+          outChannels.push(inCh);
+        }
+
+        edges.push(edge);
+        sourceNodes.push(node);
+        traceOutcomes.push({
+          isForwarded: trIsForwarded,
+          isConsumed: trIsConsumed,
+          isDropped: trIsDropped,
+        });
       }
-      this._createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, true, false, false);
+
+      this._createAndSetParticles(event, sourceNodes[0] || this.handlersLayout[0], edges, outChannels, isIngress, isForwarded, isConsumed, isDropped, sourceNodes, traceOutcomes);
       return;
     }
 
@@ -529,7 +561,7 @@ export class CanvasRenderer {
     this._createAndSetParticles(event, handlerNode, [edge], [defaultOutCh], isIngress, isForwarded, isConsumed, isDropped);
   }
 
-  _createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, isForwarded, isConsumed, isDropped) {
+  _createAndSetParticles(event, handlerNode, edges, outChannels, isIngress, isForwarded, isConsumed, isDropped, sourceNodes = null, traceOutcomes = null) {
     const handlerName = handlerNode.name;
     const cloudW = 58;
     const cloudCenter = handlerNode.x - handlerNode.width / 2 - 16 - cloudW / 2;
@@ -551,6 +583,13 @@ export class CanvasRenderer {
 
     for (let i = 0; i < edges.length; i++) {
       const edge = edges[i];
+      const currentSourceNode = (sourceNodes && sourceNodes[i]) ? sourceNodes[i] : handlerNode;
+      const currentSourceName = currentSourceNode.name;
+      const outcome = traceOutcomes && traceOutcomes[i] ? traceOutcomes[i] : null;
+      const itemIsForwarded = outcome ? outcome.isForwarded : isForwarded;
+      const itemIsConsumed = outcome ? outcome.isConsumed : isConsumed;
+      const itemIsDropped = outcome ? outcome.isDropped : isDropped;
+
       let startX;
       let startY;
       let endX;
@@ -562,7 +601,7 @@ export class CanvasRenderer {
         startY = handlerNode.y;
         endX = cloudCenter;
         endY = handlerNode.y;
-      } else if (isForwarded) {
+      } else if (itemIsForwarded) {
         if (edge) {
           startX = edge.fromSocket.x;
           startY = edge.fromSocket.y;
@@ -570,13 +609,13 @@ export class CanvasRenderer {
           endY = edge.toSocket.y;
           bezier = edge.bezier;
         } else {
-          const outSocket = handlerNode.outputSockets[i] || handlerNode.outputSockets[0] || { x: handlerNode.x + handlerNode.width / 2, y: handlerNode.y };
+          const outSocket = currentSourceNode.outputSockets[i] || currentSourceNode.outputSockets[0] || { x: currentSourceNode.x + currentSourceNode.width / 2, y: currentSourceNode.y };
           startX = outSocket.x;
           startY = outSocket.y;
           endX = startX + 80;
           endY = startY;
         }
-      } else if (isConsumed) {
+      } else if (itemIsConsumed) {
         if (edge) {
           startX = edge.fromSocket.x;
           startY = edge.fromSocket.y;
@@ -585,11 +624,11 @@ export class CanvasRenderer {
           bezier = edge.bezier;
         } else {
           startX = cloudCenter;
-          startY = handlerNode.y;
-          endX = handlerNode.x;
-          endY = handlerNode.y;
+          startY = currentSourceNode.y;
+          endX = currentSourceNode.x;
+          endY = currentSourceNode.y;
         }
-      } else if (isDropped) {
+      } else if (itemIsDropped) {
         if (edge) {
           startX = edge.fromSocket.x;
           startY = edge.fromSocket.y;
@@ -598,9 +637,9 @@ export class CanvasRenderer {
           bezier = edge.bezier;
         } else {
           startX = cloudCenter;
-          startY = handlerNode.y;
-          endX = handlerNode.x;
-          endY = handlerNode.y;
+          startY = currentSourceNode.y;
+          endX = currentSourceNode.x;
+          endY = currentSourceNode.y;
         }
       } else if (edge) {
         startX = edge.fromSocket.x;
@@ -608,20 +647,20 @@ export class CanvasRenderer {
         endX = edge.toSocket.x;
         endY = edge.toSocket.y;
         bezier = edge.bezier;
-      } else if (!handlerNode.isGenerator) {
-        const inSocket = handlerNode.inputSockets[0] || { x: handlerNode.x - handlerNode.width / 2, y: handlerNode.y };
+      } else if (!currentSourceNode.isGenerator) {
+        const inSocket = currentSourceNode.inputSockets[0] || { x: currentSourceNode.x - currentSourceNode.width / 2, y: currentSourceNode.y };
         startX = cloudCenter;
-        startY = handlerNode.y;
+        startY = currentSourceNode.y;
         endX = inSocket.x;
         endY = inSocket.y;
       } else {
-        startX = handlerNode.x;
-        startY = handlerNode.y;
-        endX = handlerNode.x + handlerNode.width / 2 + 80;
-        endY = handlerNode.y;
+        startX = currentSourceNode.x;
+        startY = currentSourceNode.y;
+        endX = currentSourceNode.x + currentSourceNode.width / 2 + 80;
+        endY = currentSourceNode.y;
       }
 
-      if (followsPreviousEvent && i === 0 && !isForwarded) {
+      if (followsPreviousEvent && i === 0 && !itemIsForwarded) {
         const elapsed = performance.now() - previousParticle.startTime;
         const linearProgress = Math.min(elapsed / previousParticle.durationMs, 1);
         const easedProgress = linearProgress * linearProgress * (3 - 2 * linearProgress);
@@ -641,10 +680,10 @@ export class CanvasRenderer {
 
       const transitColor = isIngress
         ? "#38bdf8"
-        : (isForwarded || isDropped ? "#c084fc" : "#38bdf8");
+        : (itemIsForwarded || itemIsDropped ? "#c084fc" : "#38bdf8");
       const arrivalColor = isIngress
         ? "#38bdf8"
-        : (event.type === "drop" ? "#f87171" : (event.type === "egress" ? "#34d399" : "#c084fc"));
+        : (itemIsDropped ? "#f87171" : (itemIsConsumed ? "#34d399" : "#c084fc"));
 
       const distance = Math.hypot(endX - startX, endY - startY);
       const durationMs = Math.min(750, Math.max(380, distance / 0.65));
@@ -656,8 +695,8 @@ export class CanvasRenderer {
         endY,
         bezier,
         targetEdge: edge,
-        targetNodeName: edge ? edge.to.name : handlerName,
-        sourceNodeName: edge ? edge.from.name : handlerName,
+        targetNodeName: edge ? edge.to.name : currentSourceName,
+        sourceNodeName: edge ? edge.from.name : currentSourceName,
         progress: 0.0,
         startTime: performance.now(),
         durationMs,
@@ -665,8 +704,8 @@ export class CanvasRenderer {
         arrivalColor: arrivalColor,
         dropColor: "#f87171",
         isIngress: isIngress,
-        isConsumed: isConsumed,
-        isDrop: event.type === "drop",
+        isConsumed: itemIsConsumed,
+        isDrop: itemIsDropped,
       });
     }
 
@@ -827,7 +866,7 @@ export class CanvasRenderer {
       : (lastEventHandler ? [lastEventHandler] : []);
     const activeIncomingEdges = this.findIncomingChannelEdges(lastEvent);
     const activeOutgoingEdges = this.findOutgoingChannelEdges(lastEvent);
-    const activeEventEdges = lastEvent?.result === "Forwarded" ? activeOutgoingEdges : activeIncomingEdges;
+    const activeEventEdges = [...activeOutgoingEdges, ...activeIncomingEdges];
 
     // 1. Draw Channel Connections (Cubic Bézier Wires & Pill Badges aligned with Chain Builder)
     this.channelsLayout.forEach((ch) => {
@@ -949,11 +988,18 @@ export class CanvasRenderer {
       }
 
       // Card Background & Shadow
-      const activeParticle = this.activeParticles[0];
+      const activeParticle = this.activeParticles.find(p => p.targetNodeName === h.name || p.sourceNodeName === h.name) || this.activeParticles[0];
       const reachedNode = !activeParticle || activeParticle.progress >= 0.85;
       const dropReachedNode = lastEvent && lastEvent.type === "drop" && reachedNode;
-      const isForwardedTarget = isTarget && lastEvent.type === "hop";
-      const isConsumedTarget = isTarget && lastEvent.type === "egress";
+
+      const matchingTrace = lastEvent?.traces && Array.isArray(lastEvent.traces)
+        ? lastEvent.traces.find(t => t.handler === h.name)
+        : null;
+      const isTraceConsumed = matchingTrace ? matchingTrace.result === "Consumed" : (lastEvent?.type === "egress" || lastEvent?.result === "Consumed");
+      const isTraceForwarded = matchingTrace ? matchingTrace.result === "Forwarded" : (lastEvent?.type === "hop" || lastEvent?.result === "Forwarded");
+
+      const isForwardedTarget = isTarget && isTraceForwarded;
+      const isConsumedTarget = isTarget && isTraceConsumed;
 
       ctx.save();
       if (isSelected) {

@@ -475,14 +475,8 @@ class InteractiveSimulationCoordinator:
 
         # If there are pending fan-out branches created simultaneously from the same upstream node,
         # advance all of them concurrently in this step!
-        all_parallel_branches: list[dict[str, Any]] = [info]
+        all_parallel_branches: list[dict[str, Any]] = [info] + pending_branches
         remaining_pending: list[dict[str, Any]] = []
-
-        for b in pending_branches:
-            if b.get("curr_node_name") == info.get("curr_node_name"):
-                all_parallel_branches.append(b)
-            else:
-                remaining_pending.append(b)
 
         # Separate branches into those with downstream consumers and those that are chain egress
         branches_to_deliver: list[tuple[dict[str, Any], dict[str, Any], str]] = [] # (branch, consumer_handler, in_sock)
