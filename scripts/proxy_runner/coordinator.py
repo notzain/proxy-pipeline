@@ -117,6 +117,10 @@ class InteractiveSimulationCoordinator:
                 for k, v in h_cfg.items():
                     if k.startswith("route.rule.") and k.endswith(".target") and isinstance(v, str) and v.strip():
                         channels.add(v.strip())
+                if "rules" in h_cfg and isinstance(h_cfg["rules"], list):
+                    for r in h_cfg["rules"]:
+                        if isinstance(r, dict) and r.get("target") and str(r["target"]).strip():
+                            channels.add(str(r["target"]).strip())
         return channels
 
     def _init_hold_sockets(self):
@@ -1066,9 +1070,10 @@ class InteractiveSimulationCoordinator:
 
         return batch
 
-    def trigger_generator(self, node_name: str) -> dict[str, Any]:
+    def trigger_generator(self, node_name: str, custom_payload: Optional[str] = None) -> dict[str, Any]:
         """
         Triggers a generator node on demand and holds the generated envelope at its output channel.
+        If custom_payload is provided, it is used instead of the handler's statically configured dummy.message.
         """
         with self.lock:
             gen_handler = next((h for h in self.handlers if h.get("name") == node_name), None)
@@ -1097,7 +1102,10 @@ class InteractiveSimulationCoordinator:
                 self._drain_socket(self.hold_sockets[out_ch])
 
             h_config = gen_handler.get("config", {})
-            msg_text = h_config.get("dummy.message", f"Message from {node_name}")
+            if custom_payload is not None:
+                msg_text = str(custom_payload)
+            else:
+                msg_text = h_config.get("dummy.message", f"Message from {node_name}")
             payload_bytes = msg_text.encode("utf-8")
 
             header = struct.pack(

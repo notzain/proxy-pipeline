@@ -11,7 +11,7 @@ Provides modular components for:
 from .handlers import HandlerDescriptor, HandlerProtocol, HandlerRole, load_handler_descriptor
 from .injectors import BasePacketInjector, UdpPacketInjector, UnixSocketPacketInjector, get_injector_for_handler
 from .pcap import PcapPacket, PcapReader
-from .config import load_chain_config, find_bin_dir, generate_handler_config
+from .config import load_chain_config, find_bin_dir, generate_handler_config, serialize_chain_to_toml
 from .coordinator import InteractiveSimulationCoordinator
 from .trace import TraceManager, TraceDiffError
 from .server import start_dashboard_server
@@ -31,6 +31,7 @@ __all__ = [
     "load_chain_config",
     "find_bin_dir",
     "generate_handler_config",
+    "serialize_chain_to_toml",
     "InteractiveSimulationCoordinator",
     "TraceManager",
     "TraceDiffError",

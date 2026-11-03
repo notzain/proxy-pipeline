@@ -21,24 +21,31 @@ The simulation architecture allows developers to step real compiled C++ binaries
 sequenceDiagram
     autonumber
     actor Dev as Developer (Browser Web UI)
-    participant Server as proxy_runner.server (WebSocket)
+    participant Server as proxy_runner.server (HTTP/REST)
     participant Coord as InteractiveSimulationCoordinator
     participant SimIn as /tmp/proxy_sim_<channel>.sock
     participant CppHandler as Native C++ Handler (backend-sim)
     participant HoldSock as /tmp/proxy_sim_hold_<channel>.sock
     participant EventSock as /tmp/proxy_sim_events.sock
 
-    Dev->>Server: Click "Step Forward" (or press Space)
-    Server->>Coord: step()
-    Coord->>SimIn: Transmits current staged PCAP packet
-    SimIn->>CppHandler: SimInputChannel receives packet
-    Note over CppHandler: Executes actual C++ logic<br/>(e.g. OrderValidationHandler)
-    CppHandler->>EventSock: Emits MessageResult (Forwarded, Consumed, or Dropped)
-    CppHandler->>HoldSock: SimOutputChannel writes forwarded packet to hold socket
-    EventSock-->>Coord: MessageResult event (outcome, latency, reasons)
-    HoldSock-->>Coord: Intercepts held packet bytes
-    Coord-->>Server: Broadcasts state update & packet diff
-    Server-->>Dev: UI updates node animations, fields & branch highlighting
+    alt Dynamic Generator Trigger
+        Dev->>Server: POST /api/simulation/trigger { node, payload? }
+        Server->>Coord: trigger_generator(node, custom_payload)
+        Coord->>Coord: Frame MessageView (0x5058, len, payload) & place into hold storage
+        Coord-->>Server: Synthetic packet created & staged at hold socket
+    else Step Forward (PCAP Ingress or Downstream Forward)
+        Dev->>Server: Click "Step Forward" (or press Space)
+        Server->>Coord: step()
+        Coord->>SimIn: Transmits current staged/held envelope to consumer socket
+        SimIn->>CppHandler: SimInputChannel receives packet
+        Note over CppHandler: Executes actual C++ logic<br/>(e.g. OrderValidationHandler)
+        CppHandler->>EventSock: Emits MessageResult (Forwarded, Consumed, or Dropped)
+        CppHandler->>HoldSock: SimOutputChannel writes forwarded packet to hold socket
+        EventSock-->>Coord: MessageResult event (outcome, latency, reasons)
+        HoldSock-->>Coord: Intercepts held packet bytes
+        Coord-->>Server: Broadcasts state update & packet diff
+        Server-->>Dev: UI updates node animations, fields & branch highlighting
+    end
 ```
 
 ### How It Works:
@@ -49,9 +56,12 @@ sequenceDiagram
 2. **The Coordinator (`InteractiveSimulationCoordinator`)**:
    - Manages packet queues loaded from `.pcap` files or synthetic generators.
    - Holds in-flight messages between pipeline stages. When the user clicks "Step Forward" (or triggers an automated test step), the coordinator releases the held message into the next handler's input channel.
+   - **Autonomous Generator Control & Timer Freezing**: When running chains in simulation mode, autonomous generator nodes (like `dummy_send`) have their periodic timers paused (`dummy.delay_ms=999999999`) to prevent uncontrolled emissions.
+   - **Synthetic Generation & Hold Storage**: When the user triggers a generator emit event (e.g. via the UI or `POST /api/simulation/trigger`), the coordinator frames the message payload using standard `MessageView` binary wire framing (`0x5058` magic) directly into hold storage (`active_in_flight["held_data"]`). It supports both default statically configured payloads (`dummy.message`) and dynamic custom payloads (XML, JSON, raw text). Subsequent "Step" operations deliver the held envelope directly into the downstream handler's socket (`/tmp/proxy_sim_<channel>.sock`), requiring zero modification to `backend/sim` or the C++ generator handlers.
 3. **The Web Dashboard**:
    - Renders a live SVG DAG of the active pipeline topology.
    - Highlights packet movements, visualizes field-level payload diffs, and displays dropped packet diagnostics.
+   - Provides split-button controls on generator nodes (`⚡ Trigger Emit` for immediate default emission, and `✏️` for opening the dynamic custom payload modal).
 
 ---
 

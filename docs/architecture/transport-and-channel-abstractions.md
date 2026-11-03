@@ -86,6 +86,7 @@ graph TD
 ### 5. `backend-sim` (Interactive Simulation)
 - **Use Case**: Step-by-step interactive visual simulation and deterministic trace testing.
 - **Implementation**: Emits exact `MessageResult` events over `/tmp/proxy_sim_events.sock` and diverts forwarded messages into channel-specific hold sockets (`/tmp/proxy_sim_hold_<channel>.sock`), allowing the Python coordinator to pause and step traffic.
+- **Synthetic Injection & Generator Decoupling**: Because simulation communication is mediated via Unix datagram sockets expecting standard `MessageView` framing, the simulation control plane can inject dynamically-framed messages directly into hold storage on demand without requiring custom transport C++ logic in generator handlers like `dummy_send`.
 
 ### 6. `backend-file` (Directory / File Queue)
 - **Use Case**: Offline debugging, audit recording, and file-based batch ingestion.
