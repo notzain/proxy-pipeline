@@ -6,7 +6,7 @@ Currently, pipeline chains are authored in structured formats (TOML files and JS
 2. Handlers to write custom CSV parsers (`route.rules=r1,r2`) and reconstruct structured objects manually.
 3. Multiline configurations (e.g. embedded Lua scripts) to undergo brittle flattening and character escaping.
 
-Option 1 modernizes the configuration layer by introducing **hierarchical, structured querying** in `Backend::IConfig` backed by `Core::Serialization::Ir::Value` and JSON/TOML ingestion in `Core::Config::Configuration`.
+Option 1 modernizes the configuration layer by introducing **hierarchical, structured querying** in `Backend::IConfig` backed by `Core::Serialization::Ir::Value` and pure JSON ingestion in `Core::Config::Configuration`. Backward compatibility with legacy `.conf`/`.ini` files is explicitly dropped in favor of a clean, consistent JSON schema.
 
 ---
 
@@ -16,15 +16,24 @@ Option 1 modernizes the configuration layer by introducing **hierarchical, struc
 flowchart TD
     Chain[chain.toml / Visual Builder JSON] --> Runner[chain_runner.py / Frontend Runner]
     Runner -- "Direct JSON snippet handoff (/tmp/<handler>.json)" --> CppHandler[C++ Handler Executable]
-    CppHandler --> Cfg[Core::Config::Configuration::fromFile]
+    CppHandler --> Cfg[Core::Config::Configuration::fromJsonFile]
     Cfg --> IrTree[Hierarchical Ir::Value Tree]
     IrTree --> IConfig[Backend::IConfig Interface]
-    IConfig -- "getSectionList('rules')" --> RouteCfg[RouteHandlerConfig / Custom Handlers]
-    RouteCfg --> Rules[Domain Objects / RouteRule structs]
+    IConfig -- "getChildren('rules') / getNode('rules.0')" --> NodeViews[ConfigNodeView]
+    IrTree -- "fromIntermediate<T>()" --> Reflection["Core Reflected get<T>(config, path)"]
+    Reflection --> Rules["std::vector<RouteRule> / Domain Structs"]
 ```
 
-### 1. `Backend::IConfig` Interface Modernization
-Update `include/backend/core/IConfig.hpp` to expose hierarchical and structured queries without exposing raw pointers:
+### 1. Architectural Layering & The Two-Tier Query System
+To preserve strict layer decoupling (`AGENTS.md` Section 8: `backend/*` cannot depend on `core`), type queries are divided into two complementary tiers:
+
+#### Tier 1: `Backend::IConfig` (`backend-interface`)
+Provides transport-agnostic navigation and primitive scalar parsing:
+- **Dot-Notation Path Resolution**: Uniform JSON-pointer style for objects (`"route.default_action"`) and array elements (`"rules.0.pattern"`).
+- **Primitive Scalars**: `get<T>(path)` / `getOr<T>(path, default)` for standard scalar types (`bool`, `int8_t`..`uint64_t`, `float`, `double`, `std::string`, `std::string_view`).
+- **Subtree Navigation**:
+  - `getNode(path)` &rarr; `Common::Memory::ObserverPtr<const IConfig>` representing any sub-node (object or array element).
+  - `getChildren(path)` &rarr; `std::vector<Common::Memory::ObserverPtr<const IConfig>>` for standard range-based `for` loop traversal.
 
 ```cpp
 namespace Backend {
@@ -33,46 +42,65 @@ class IConfig {
 public:
     virtual ~IConfig() = default;
 
-    // Existing strongly-typed scalar getters
     template <typename T>
-    std::optional<T> get(std::string_view key) const;
+    std::optional<T> get(std::string_view path) const;
 
     template <typename T>
-    T getOr(std::string_view key, const T& defaultValue) const;
+    T getOr(std::string_view path, const T& defaultValue) const;
 
-    // Direct section navigation (supports dot paths like "route.default_action" or "rules")
-    [[nodiscard]] virtual Common::Memory::ObserverPtr<const IConfig> getSection(std::string_view path) const = 0;
-
-    // Array of sections (for lists of objects like "rules")
-    [[nodiscard]] virtual std::vector<Common::Memory::ObserverPtr<const IConfig>> getSectionList(std::string_view path) const = 0;
-
-    // Primitive list queries (e.g. comma-separated or JSON string arrays)
-    [[nodiscard]] virtual std::vector<std::string> getStringList(std::string_view path) const = 0;
+    [[nodiscard]] virtual Common::Memory::ObserverPtr<const IConfig> getNode(std::string_view path) const = 0;
+    [[nodiscard]] virtual std::vector<Common::Memory::ObserverPtr<const IConfig>> getChildren(std::string_view path = "") const = 0;
 };
 
 } // namespace Backend
 ```
 
+#### Tier 2: Reflected Type Deserialization (`core`)
+`core` leverages its reflection system (`Core::Serialization::TypeTraits` and `Core::Serialization::Ir::fromIntermediate`) to allow single-line struct and vector deserialization:
+- **Reflected Structs (`TypeTraits<T>::isReflected == true`)**: Deserializes directly into domain structs.
+- **Vectors (`std::vector<T>`)**: Deserializes an array node into a vector of scalars or reflected structs.
+- **Syntax**: Exposed via `Core::Config::get<T>(config, path)` and direct convenience methods on `Core::Config::Configuration`.
+
+```cpp
+// Direct one-line deserialization in handlers:
+auto rules = Core::Config::getOr<std::vector<RouteRule>>(config, "rules", {});
+auto defaultRule = Core::Config::get<RouteRule>(config, "rules.0");
+```
+
+---
+
 ### 2. `Core::Config::Configuration` Ingestion & Representation
 - **Underlying Storage**: Backed by `Core::Serialization::Ir::Value` (which natively represents null, bool, int, uint, double, string, array, and object).
-- **Dual Format Ingestion**:
-  - `Configuration::fromFile(path)` checks file extension or contents:
-    - If JSON (`.json`) or TOML: parses via `nlohmann::json` directly into `Ir::Value`.
-    - If INI (`.conf`): parses key-value lines and synthesizes a dot-separated `Ir::Value` object hierarchy for complete backward compatibility.
-- **Section Views**: `ConfigSectionView` implements `Backend::IConfig` pointing to a subtree of `Ir::Value`.
+- **Pure JSON Ingestion**: `Configuration::fromJson(std::string_view jsonStr)` and `Configuration::fromJsonFile(const std::filesystem::path& path)`. Legacy `.conf` and `.ini` parsing is completely removed.
+- **Node Views**: `ConfigNodeView` implements `Backend::IConfig` wrapping a non-owning `Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>`.
+
+---
 
 ### 3. Pipeline Runner Handoff (`scripts/proxy_runner/config.py`)
-- Eliminate custom flattening rules for `rules` and complex handler parameters.
-- When generating individual handler configs, emit either a structured `.json` file or a clean TOML subsection.
+- Eliminate custom flattening rules and CSV stringification for `rules` and complex handler parameters.
+- When generating individual handler configs, emit clean structured `.json` files.
 - Handlers receive their configuration 1:1 matching their UI schema definition.
 
+---
+
 ### 4. Handler Adoption (`RouteHandlerConfig.cpp`)
-Refactor `RouteHandlerConfig::load` to directly consume the structured `rules` section:
+Handlers can either iterate using `getChildren` or directly deserialize the reflected struct array:
 ```cpp
 void RouteHandlerConfig::load(const Backend::IConfig& config) {
     m_defaultAction = parseAction(config.getOr<std::string>("default_action", "drop"));
 
-    for (const auto& ruleConfig : config.getSectionList("rules")) {
+    // Option A: Single-line reflected deserialization
+    auto rules = Core::Config::get<std::vector<RouteRule>>(config, "rules");
+    if (rules) {
+        m_rules = std::move(*rules);
+        return;
+    }
+
+    // Option B: Traversal via getChildren
+    for (const auto& ruleConfig : config.getChildren("rules")) {
+        if (!ruleConfig) {
+            continue;
+        }
         RouteRule rule;
         rule.name = ruleConfig->getOr<std::string>("name", "");
         rule.type = ruleConfig->getOr<std::string>("type", "pattern");
@@ -91,21 +119,21 @@ void RouteHandlerConfig::load(const Backend::IConfig& config) {
 ## Actionable Implementation Checklist (When Scheduled)
 
 - [ ] **Phase 1: `Backend::IConfig` Abstraction**
-  - [ ] Add `getSection`, `getSectionList`, and `getStringList` to `include/backend/core/IConfig.hpp`.
-  - [ ] Implement `ConfigSectionView` wrapping an `ObserverPtr<const Core::Serialization::Ir::Value>`.
+  - [ ] Update `include/backend/IConfig.hpp` to define `getNode(path)` and `getChildren(path)`.
+  - [ ] Implement dot-notation path traversal (`"path.to.key"` and `"array.0.key"`).
+  - [ ] Implement `ConfigNodeView` wrapping `ObserverPtr<const Core::Serialization::Ir::Value>`.
 
-- [ ] **Phase 2: `Core::Config::Configuration` Upgrades**
+- [ ] **Phase 2: `Core::Config::Configuration` & Reflection Integration**
   - [ ] Adapt `Configuration` to store `Core::Serialization::Ir::Value m_root`.
-  - [ ] Implement `Configuration::fromJson(std::string_view jsonStr)`.
-  - [ ] Implement `Configuration::fromJsonFile(const std::filesystem::path& path)`.
-  - [ ] Maintain legacy `.conf` flat parser with automatic dot-key nesting.
-  - [ ] Add unit tests in `test/TestConfiguration.cpp` verifying nested object and array queries.
+  - [ ] Implement `Configuration::fromJson(std::string_view jsonStr)` and `Configuration::fromJsonFile(...)`.
+  - [ ] Implement `Core::Config::get<T>(config, path)` supporting `TypeTraits<T>::isReflected` and `std::vector<T>` via `Ir::fromIntermediate<T>()`.
+  - [ ] Remove legacy `.conf`/`.ini` parsing logic and associated backward-compatibility bridges.
+  - [ ] Add unit tests in `test/TestConfiguration.cpp` verifying dot-notation navigation, nested object queries, array traversal, and reflected struct deserialization.
 
-- [ ] **Phase 3: Handler Config Modernization**
-  - [ ] Refactor `RouteConfig.hpp` to query `config.getSectionList("rules")` directly with fallback to legacy flat keys.
-  - [ ] Simplify `scripts/proxy_runner/config.py` by removing custom rule-flattening hacks.
+- [ ] **Phase 3: Runner & Handler Modernization**
+  - [ ] Refactor `RouteConfig.hpp` / `RouteHandlerConfig.cpp` to use the modernized config queries.
+  - [ ] Clean up `scripts/proxy_runner/config.py` and `chain_runner.py` by removing custom flattening rules and emitting pure JSON configuration files.
 
 - [ ] **Phase 4: End-to-End Verification & Docs**
-  - [ ] Run full Catch2 and Python regression suites.
-  - [ ] Update `docs/architecture/` and create feature document `docs/features/config/`.
-
+  - [ ] Run full test suites (`ctest` and Python tests).
+  - [ ] Update `docs/architecture/` specifications and create chronological feature document in `docs/features/config/`.

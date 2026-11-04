@@ -183,15 +183,14 @@ TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Commun
 
 TEST_CASE("ShmBackend: Factory and Dynamic Channel Creation", "[shm]")
 {
-    const std::string confPath = "/tmp/test_shm_config.conf";
-    {
-        std::ofstream f(confPath);
-        f << "shm.path=/tmp/test_shm_backend_default.dat\n";
-        f << "channel.alpha.path=/tmp/test_shm_alpha.dat\n";
-        f << "channel.beta.dest_path=/tmp/test_shm_beta.dat\n";
-    }
+    auto config = Core::Config::Configuration::fromJson(R"({
+  "shm": { "path": "/tmp/test_shm_backend_default.dat" },
+  "channel": {
+    "alpha": { "path": "/tmp/test_shm_alpha.dat" },
+    "beta": { "dest_path": "/tmp/test_shm_beta.dat" }
+  }
+})");
 
-    auto config = Core::Config::Configuration::fromFile(confPath);
     ShmBackend backend;
     backend.configure(config);
 
@@ -201,7 +200,6 @@ TEST_CASE("ShmBackend: Factory and Dynamic Channel Creation", "[shm]")
     auto outChan = backend.createOutputChannel("beta", config);
     REQUIRE(outChan != nullptr);
 
-    std::filesystem::remove(confPath);
     std::filesystem::remove("/tmp/test_shm_alpha.dat");
     std::filesystem::remove("/tmp/test_shm_beta.dat");
 }

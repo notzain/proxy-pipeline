@@ -1,68 +1,111 @@
 #include "core/config/Configuration.hpp"
+#include "core/serialization/json/JsonFormat.hpp"
 #include <fstream>
-#include <string_view>
+#include <sstream>
 
 namespace Core::Config {
 
-Configuration Configuration::fromFile(const std::filesystem::path& filePath)
+Configuration::Configuration()
+    : ConfigNodeView()
+    , m_root(Core::Serialization::Ir::ObjectType { })
 {
-    Configuration config;
+    bindNode(Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root));
+}
+
+Configuration::Configuration(Core::Serialization::Ir::Value root)
+    : ConfigNodeView()
+    , m_root(std::move(root))
+{
+    bindNode(Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root));
+}
+
+Configuration::Configuration(Configuration&& other) noexcept
+    : ConfigNodeView(std::move(other))
+    , m_root(std::move(other.m_root))
+{
+    bindNode(Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root));
+}
+
+Configuration& Configuration::operator=(Configuration&& other) noexcept
+{
+    if (this != &other) {
+        ConfigNodeView::operator=(std::move(other));
+        m_root = std::move(other.m_root);
+        bindNode(Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root));
+    }
+    return *this;
+}
+
+Configuration Configuration::fromJson(std::string_view jsonStr)
+{
+    auto decoded = Core::Serialization::Json::JsonFormat::decode(jsonStr);
+    if (!decoded) {
+        return Configuration { };
+    }
+    return Configuration(std::move(*decoded));
+}
+
+Configuration Configuration::fromJsonFile(const std::filesystem::path& filePath)
+{
     std::ifstream file(filePath);
     if (!file.is_open()) {
-        return config;
+        return Configuration { };
     }
 
-    std::string line;
-    while (std::getline(file, line)) {
-        auto commentPos = line.find_first_of("#;");
-        if (commentPos != std::string::npos) {
-            line.erase(commentPos);
-        }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return fromJson(buffer.str());
+}
 
-        auto delimiterPos = line.find_first_of("=:");
-        if (delimiterPos == std::string::npos) {
-            continue;
-        }
-
-        auto rawKey = line.substr(0, delimiterPos);
-        auto rawVal = line.substr(delimiterPos + 1);
-
-        auto trim = [](std::string_view s) -> std::string {
-            auto start = s.find_first_not_of(" \t\r\n");
-            if (start == std::string_view::npos) {
-                return "";
-            }
-            auto end = s.find_last_not_of(" \t\r\n");
-            return std::string(s.substr(start, end - start + 1));
-        };
-
-        auto key = trim(rawKey);
-        auto val = trim(rawVal);
-
-        if (!key.empty()) {
-            config.set(std::move(key), std::move(val));
-        }
-    }
-
-    return config;
+Configuration Configuration::fromFile(const std::filesystem::path& filePath)
+{
+    return fromJsonFile(filePath);
 }
 
 void Configuration::set(std::string key, std::string value)
 {
-    m_entries[std::move(key)] = std::move(value);
-}
+    clearCachedViews();
 
-std::optional<std::string_view> Configuration::getString(std::string_view key) const
-{
-    if (auto it = m_entries.find(std::string(key)); it != m_entries.end()) {
-        return it->second;
+    if (!m_root.isObject()) {
+        m_root = Core::Serialization::Ir::ObjectType { };
+        bindNode(Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root));
     }
-    return std::nullopt;
+
+    auto* current = &m_root;
+    std::string_view path(key);
+    size_t start = 0;
+
+    while (start < path.size()) {
+        auto dotPos = path.find('.', start);
+        auto segment = (dotPos == std::string_view::npos)
+            ? path.substr(start)
+            : path.substr(start, dotPos - start);
+
+        start = (dotPos == std::string_view::npos) ? path.size() : dotPos + 1;
+
+        if (segment.empty()) {
+            continue;
+        }
+
+        if (start >= path.size()) {
+            // Leaf segment
+            current->setField(std::string(segment), Core::Serialization::Ir::Value(std::move(value)));
+            break;
+        }
+
+        // Intermediate segment
+        auto* next = current->findField(segment);
+        if (!next || !next->isObject()) {
+            current->setField(std::string(segment), Core::Serialization::Ir::ObjectType { });
+            next = current->findField(segment);
+        }
+        current = const_cast<Core::Serialization::Ir::Value*>(next);
+    }
 }
 
-bool Configuration::has(std::string_view key) const noexcept
+Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value> Configuration::rawRoot() const noexcept
 {
-    return m_entries.find(std::string(key)) != m_entries.end();
+    return Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value>(&m_root);
 }
 
 } // namespace Core::Config

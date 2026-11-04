@@ -150,24 +150,25 @@ def generate_handler_config(
     backend_name: str,
     handler_spec: dict[str, Any],
 ) -> str:
-    lines: list[str] = [
-        f"# Automatically generated configuration for handler: {handler_spec.get('name', 'handler')}",
-        f"# Backend: {backend_name}",
-        "",
-        "# Global / backend settings",
-    ]
+    """Generate a structured JSON configuration for a handler instance."""
+    result: dict[str, Any] = {}
 
+    def _set_path(target: dict[str, Any], path: str, val: Any) -> None:
+        parts = path.split(".")
+        curr = target
+        for p in parts[:-1]:
+            if p not in curr or not isinstance(curr[p], dict):
+                curr[p] = {}
+            curr = curr[p]
+        curr[parts[-1]] = val
+
+    # 1. Global / backend settings
     for key, val in flatten_dict(global_config):
         if backend_name == "sim" and ("channel." in key or "shm." in key or "file." in key):
             continue  # Let SimBackend use default /tmp/proxy_sim sockets in simulation mode
-        if isinstance(val, bool):
-            lines.append(f"{key}={str(val).lower()}")
-        else:
-            lines.append(f"{key}={val}")
+        _set_path(result, key, val)
 
-    lines.append("")
-    lines.append("# Handler-specific settings")
-
+    # 2. Telemetry and simulation identifiers
     handler_name = handler_spec.get("name")
     if handler_name:
         global_prefix = (
@@ -175,102 +176,63 @@ def generate_handler_config(
             if isinstance(global_config.get("telemetry"), dict)
             else global_config.get("telemetry.prefix", "proxy")
         )
-        lines.append(f"telemetry.prefix={global_prefix}.{handler_name}")
-        lines.append(f"sim.handler_name={handler_name}")
+        _set_path(result, "telemetry.prefix", f"{global_prefix}.{handler_name}")
+        _set_path(result, "sim.handler_name", handler_name)
 
     if backend_name == "sim":
-        lines.append("sim.event_sock=/tmp/proxy_sim_events.sock")
+        _set_path(result, "sim.event_sock", "/tmp/proxy_sim_events.sock")
 
+    # 3. Standard channel routing aliases
     if "input_channel" in handler_spec:
         in_ch = handler_spec["input_channel"]
-        lines.append(f"channel.input={in_ch}")
-        lines.append(f"egress.input_channel={in_ch}")
-        lines.append(f"dummy.channel={in_ch}")
-        lines.append(f"print.channel={in_ch}")
-        lines.append(f"split.input_channel={in_ch}")
-        lines.append(f"scatter.input_channel={in_ch}")
-        lines.append(f"xml.input_channel={in_ch}")
-        lines.append(f"order.input_channel={in_ch}")
-        lines.append(f"route.input_channel={in_ch}")
+        for prefix in ("channel.input", "egress.input_channel", "dummy.channel", "print.channel",
+                       "split.input_channel", "scatter.input_channel", "xml.input_channel",
+                       "order.input_channel", "route.input_channel"):
+            _set_path(result, prefix, in_ch)
+
     if "input_channels" in handler_spec:
         in_chs = handler_spec["input_channels"]
-        if isinstance(in_chs, list):
-            lines.append(f"merge.input_channels={','.join(in_chs)}")
-            lines.append(f"gather.input_channels={','.join(in_chs)}")
-        else:
-            lines.append(f"merge.input_channels={in_chs}")
-            lines.append(f"gather.input_channels={in_chs}")
+        val_chs = in_chs if isinstance(in_chs, list) else [s.strip() for s in str(in_chs).split(",") if s.strip()]
+        _set_path(result, "merge.input_channels", ",".join(val_chs) if isinstance(in_chs, str) else in_chs)
+        _set_path(result, "gather.input_channels", ",".join(val_chs) if isinstance(in_chs, str) else in_chs)
+
     if "output_channel" in handler_spec:
         out_ch = handler_spec["output_channel"]
-        lines.append(f"channel.output={out_ch}")
-        lines.append(f"ingress.output_channel={out_ch}")
-        lines.append(f"dummy.channel={out_ch}")
-        lines.append(f"merge.output_channel={out_ch}")
-        lines.append(f"gather.output_channel={out_ch}")
-        lines.append(f"xml.output_channel={out_ch}")
-        lines.append(f"order.output_channel={out_ch}")
-        # Only assign route.default_output if default_action is explicitly 'forward'
+        for prefix in ("channel.output", "ingress.output_channel", "dummy.channel", "merge.output_channel",
+                       "gather.output_channel", "xml.output_channel", "order.output_channel"):
+            _set_path(result, prefix, out_ch)
         default_action = handler_spec.get("config", {}).get("default_action")
         if default_action == "forward":
-            lines.append(f"route.default_output={out_ch}")
+            _set_path(result, "route.default_output", out_ch)
+
     if "output_channels" in handler_spec:
         out_chs = handler_spec["output_channels"]
-        if isinstance(out_chs, list):
-            lines.append(f"split.output_channels={','.join(out_chs)}")
-            lines.append(f"scatter.output_channels={','.join(out_chs)}")
-        else:
-            lines.append(f"split.output_channels={out_chs}")
-            lines.append(f"scatter.output_channels={out_chs}")
+        val_chs = out_chs if isinstance(out_chs, list) else [s.strip() for s in str(out_chs).split(",") if s.strip()]
+        _set_path(result, "split.output_channels", ",".join(val_chs) if isinstance(out_chs, str) else out_chs)
+        _set_path(result, "scatter.output_channels", ",".join(val_chs) if isinstance(out_chs, str) else out_chs)
 
+    # 4. Handler-specific parameter overrides
     params = handler_spec.get("config", {})
-    # If route_handler has a 'rules' list, expand into route.rules and route.rule.<name>.*
+
+    # Route handler structured rules
     if handler_spec.get("type") == "route_handler" and "rules" in params and isinstance(params["rules"], list):
-        rule_names: list[str] = []
-        for idx, r in enumerate(params["rules"], 1):
-            if not isinstance(r, dict):
-                continue
-            r_name = str(r.get("name") or f"rule_{idx}").strip()
-            rule_names.append(r_name)
-            prefix = f"route.rule.{r_name}"
+        # Directly pass the rules array
+        _set_path(result, "route.rules", params["rules"])
 
-            r_type = r.get("type", "contains")
-            lines.append(f"{prefix}.type={r_type}")
-            if r.get("target"):
-                lines.append(f"{prefix}.target={r['target']}")
-            if r.get("action"):
-                lines.append(f"{prefix}.action={r['action']}")
-            if r.get("pattern"):
-                lines.append(f"{prefix}.pattern={r['pattern']}")
-            if r.get("expression"):
-                lines.append(f"{prefix}.expr={r['expression']}")
-            if r.get("script"):
-                # Escape newlines so flat .conf key-value parsing does not truncate multiline scripts
-                escaped_script = str(r['script']).replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
-                lines.append(f"{prefix}.script={escaped_script}")
-            if r.get("reason"):
-                lines.append(f"{prefix}.reason={r['reason']}")
-            if r.get("error_code"):
-                lines.append(f"{prefix}.error_code={r['error_code']}")
-
-        if rule_names:
-            lines.append(f"route.rules={','.join(rule_names)}")
-
-    for key, val in flatten_dict(params):
+    for key, val in params.items():
         if key == "rules" and handler_spec.get("type") == "route_handler":
-            continue  # Already expanded above
-        if backend_name == "sim" and key == "dummy.delay_ms":
-            # In simulation mode, pause generator timers so they only emit on manual/step trigger
-            lines.append(f"{key}=999999999")
             continue
-        if isinstance(val, bool):
-            lines.append(f"{key}={str(val).lower()}")
+        if isinstance(val, dict):
+            for sub_k, sub_v in flatten_dict(val, prefix=key):
+                _set_path(result, sub_k, sub_v)
         else:
-            lines.append(f"{key}={val}")
+            if backend_name == "sim" and key == "dummy.delay_ms":
+                _set_path(result, key, 999999999)
+            else:
+                _set_path(result, key, val)
 
     if backend_name == "sim" and handler_spec.get("type") == "dummy_send" and "dummy.delay_ms" not in params:
-        # Default pause for dummy_send in sim mode
-        lines.append("dummy.delay_ms=999999999")
+        _set_path(result, "dummy.delay_ms", 999999999)
 
-    lines.append("")
-    return "\n".join(lines)
+    return json.dumps(result, indent=2)
 

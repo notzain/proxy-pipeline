@@ -194,7 +194,7 @@ def run_chain(
                     f"Ensure handler '{handler_type}' is built for backend '{backend}'."
                 )
 
-            conf_file = work_dir / f"{handler_name}.conf"
+            conf_file = work_dir / f"{handler_name}.json"
             conf_content = generate_handler_config(global_config, backend, handler_spec)
             conf_file.write_text(conf_content, encoding="utf-8")
 

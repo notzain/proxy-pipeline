@@ -1,11 +1,13 @@
 #pragma once
 
 #include "common/compat/TypeTraits.hpp"
+#include "common/memory/ObserverPtr.hpp"
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace Backend {
 
@@ -65,7 +67,7 @@ namespace Detail {
 } // namespace Detail
 
 /**
- * @brief Abstract key-value configuration interface for components and backends.
+ * @brief Abstract hierarchical configuration interface for components and backends.
  */
 class IConfig {
 public:
@@ -74,15 +76,15 @@ public:
     /**
      * @brief Raw string lookup implemented by the underlying configuration store.
      *
-     * @param key Identifier for the configuration setting.
+     * @param key Identifier or dot-separated path for the configuration setting.
      * @return std::optional<std::string_view> String view if key exists, std::nullopt otherwise.
      */
     [[nodiscard]] virtual std::optional<std::string_view> getString(std::string_view key) const = 0;
 
     /**
-     * @brief Checks if a key exists in the configuration store.
+     * @brief Checks if a key or dot-separated path exists in the configuration store.
      *
-     * @param key Identifier for the configuration setting.
+     * @param key Identifier or dot-separated path for the configuration setting.
      * @return true If present.
      * @return false Otherwise.
      */
@@ -98,7 +100,7 @@ public:
      * floating-point types (float, double), std::string, and std::string_view.
      *
      * @tparam T Desired target type.
-     * @param key Identifier for the configuration setting.
+     * @param key Identifier or dot-separated path for the configuration setting.
      * @return std::optional<T> Parsed value if present and valid, std::nullopt otherwise.
      */
     template <typename T>
@@ -115,7 +117,7 @@ public:
      * @brief Templated getter returning typed value or a provided fallback default.
      *
      * @tparam T Desired target type.
-     * @param key Identifier for the configuration setting.
+     * @param key Identifier or dot-separated path for the configuration setting.
      * @param defaultValue Fallback value returned if key is missing or parsing fails.
      * @return T Parsed value or defaultValue.
      */
@@ -124,6 +126,25 @@ public:
     {
         return get<T>(key).value_or(defaultValue);
     }
+
+    /**
+     * @brief Retrieves a sub-node view at the given dot-separated path.
+     *
+     * @param path Dot-separated path to nested object or array element (e.g. "server.tls", "rules.0").
+     * @return Common::Memory::ObserverPtr<const IConfig> View of sub-node if present, nullptr otherwise.
+     */
+    [[nodiscard]] virtual Common::Memory::ObserverPtr<const IConfig> getNode(std::string_view path) const = 0;
+
+    /**
+     * @brief Returns child node views of the node at the given path.
+     *
+     * If the target node is an array, returns views for each array element.
+     * If the target node is an object, returns views for each child property.
+     *
+     * @param path Dot-separated path to the container node (or empty "" for current node).
+     * @return std::vector<Common::Memory::ObserverPtr<const IConfig>> List of non-owning child views.
+     */
+    [[nodiscard]] virtual std::vector<Common::Memory::ObserverPtr<const IConfig>> getChildren(std::string_view path = "") const = 0;
 };
 
 } // namespace Backend
