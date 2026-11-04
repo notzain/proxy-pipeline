@@ -55,6 +55,7 @@ th { font-weight: 600; text-align: left; }
 .h-3 { height: .75rem; }
 .h-2 { height: .5rem; }
 .flex { display: flex; }
+.flex-col { flex-direction: column; }
 .flex-1 { flex: 1 1 0%; }
 .inline-block { display: inline-block; }
 .grid { display: grid; }
