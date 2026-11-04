@@ -1,59 +1,69 @@
 #pragma once
 
 #include "backend/IConfig.hpp"
+#include "common/memory/ObserverPtr.hpp"
+#include "core/config/ConfigNodeView.hpp"
+#include "core/serialization/ir/Value.hpp"
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
+#include <vector>
 
 namespace Core::Config {
 
 /**
- * @brief Key-value configuration store implementing Backend::IConfig.
- *
- * Configuration is populated by reading from a file (key=value format, with '#' or ';' for comments)
- * or by directly setting key-value pairs. Inherits strongly-typed get<T>() and getOr<T>() from IConfig.
+ * @brief Owning hierarchical configuration store implementing Backend::IConfig backed by Ir::Value.
  */
-class Configuration : public Backend::IConfig {
+class Configuration : public ConfigNodeView {
 public:
-    Configuration() = default;
+    Configuration();
+    explicit Configuration(Core::Serialization::Ir::Value root);
+    ~Configuration() override = default;
+
+    Configuration(const Configuration&) = delete;
+    Configuration& operator=(const Configuration&) = delete;
+    Configuration(Configuration&& other) noexcept;
+    Configuration& operator=(Configuration&& other) noexcept;
 
     /**
-     * @brief Loads configuration from the specified file path.
+     * @brief Loads configuration from the specified JSON file path.
      *
-     * @param filePath Path to the configuration file.
+     * @param filePath Path to the JSON configuration file.
      * @return Configuration Populated Configuration instance.
      */
     static Configuration fromFile(const std::filesystem::path& filePath);
 
     /**
-     * @brief Sets a configuration value for a given key.
+     * @brief Alias for fromFile.
+     */
+    static Configuration fromJsonFile(const std::filesystem::path& filePath);
+
+    /**
+     * @brief Parses configuration from a JSON string.
      *
-     * @param key Setting identifier.
+     * @param jsonStr JSON input string.
+     * @return Configuration Populated Configuration instance.
+     */
+    static Configuration fromJson(std::string_view jsonStr);
+
+    /**
+     * @brief Sets a configuration string value for a given dot-separated path.
+     *
+     * Creates nested intermediate objects as needed.
+     *
+     * @param key Dot-separated setting identifier (e.g. "server.port").
      * @param value Setting value string.
      */
     void set(std::string key, std::string value);
 
     /**
-     * @brief Looks up a raw string value for the given key.
-     *
-     * @param key Setting identifier.
-     * @return std::optional<std::string_view> Value view if present, std::nullopt otherwise.
+     * @brief Returns non-owning observer pointer to the root Ir::Value.
      */
-    [[nodiscard]] std::optional<std::string_view> getString(std::string_view key) const override;
-
-    /**
-     * @brief Checks if a key exists in the configuration.
-     *
-     * @param key Setting identifier.
-     * @return true If present.
-     * @return false Otherwise.
-     */
-    [[nodiscard]] bool has(std::string_view key) const noexcept override;
+    [[nodiscard]] Common::Memory::ObserverPtr<const Core::Serialization::Ir::Value> rawRoot() const noexcept;
 
 private:
-    std::unordered_map<std::string, std::string> m_entries;
+    Core::Serialization::Ir::Value m_root;
 };
 
 } // namespace Core::Config

@@ -156,6 +156,38 @@ struct RouteHandlerConfig : public Core::Config::ConfigSection {
         }
 
         rules.clear();
+
+        // Check if rules are provided as structured array/children: "route.rules" or "rules"
+        auto ruleNodes = config.getChildren("route.rules");
+        if (ruleNodes.empty()) {
+            ruleNodes = config.getChildren("rules");
+        }
+
+        if (!ruleNodes.empty()) {
+            for (const auto& node : ruleNodes) {
+                if (!node) {
+                    continue;
+                }
+                RouteRuleConfig rule;
+                rule.name = node->getOr<std::string>("name", "");
+                rule.expr = node->getOr<std::string>("expr", node->getOr<std::string>("expression", ""));
+                rule.script = node->getOr<std::string>("script", "");
+                rule.type = node->getOr<std::string>("type", "contains");
+                rule.field = node->getOr<std::string>("field", "");
+                rule.op = node->getOr<std::string>("op", "==");
+                rule.pattern = node->getOr<std::string>("pattern", "");
+                rule.target = node->getOr<std::string>("target", "");
+                rule.actionType = node->getOr<std::string>("action", node->getOr<std::string>("action_type", "forward"));
+                rule.rejectReason = node->getOr<std::string>("reason", node->getOr<std::string>("reject_reason", "Message rejected by route rule"));
+                rule.rejectErrorCode = node->getOr<int>("error_code", node->getOr<int>("reject_error_code", 400));
+                rule.numericValue = node->getOr<int>("value", 0);
+                rule.times = node->getOr<int>("times", 1);
+                rules.push_back(std::move(rule));
+            }
+            return true;
+        }
+
+        // Fallback for comma-separated rule list if provided
         std::string_view namesView(rulesCsv.value());
         std::size_t start = 0;
 
