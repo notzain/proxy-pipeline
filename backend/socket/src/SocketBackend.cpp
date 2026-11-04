@@ -16,7 +16,7 @@ SocketBackend::~SocketBackend() = default;
 void SocketBackend::configure(const ::Backend::IConfig& config)
 {
     m_host = config.getOr<std::string>("socket.host", "0.0.0.0");
-    m_port = config.getOr<std::uint16_t>("socket.port", 8080);
+    m_port = config.getOr<std::uint16_t>("socket.port", 9123);
 
     std::string logHost = config.getOr<std::string>("socket.log_host", m_host == "0.0.0.0" ? "127.0.0.1" : m_host);
     std::uint16_t logPort = config.getOr<std::uint16_t>("socket.log_port", 9090);
@@ -30,7 +30,7 @@ std::unique_ptr<::Backend::IInputChannel> SocketBackend::createInputChannel(std:
     std::string portKey = fmt::format("channel.{}.port", name);
 
     std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.host", "0.0.0.0"));
-    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.port", 8080));
+    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.port", 9123));
 
     return std::make_unique<SocketInputChannel>(std::string(name), std::move(host), port);
 }
@@ -41,7 +41,7 @@ std::unique_ptr<::Backend::IOutputChannel> SocketBackend::createOutputChannel(st
     std::string portKey = fmt::format("channel.{}.dest_port", name);
 
     std::string host = config.getOr<std::string>(hostKey, config.getOr<std::string>("socket.dest_host", "127.0.0.1"));
-    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.dest_port", 8080));
+    std::uint16_t port = config.getOr<std::uint16_t>(portKey, config.getOr<std::uint16_t>("socket.dest_port", 9123));
 
     return std::make_unique<SocketOutputChannel>(std::string(name), std::move(host), port);
 }

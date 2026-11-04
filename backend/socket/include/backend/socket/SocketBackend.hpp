@@ -39,7 +39,7 @@ public:
 
 private:
     std::string m_host { "0.0.0.0" };
-    std::uint16_t m_port { 8080 };
+    std::uint16_t m_port { 9123 };
 };
 
 } // namespace Proxy::Backend::Socket

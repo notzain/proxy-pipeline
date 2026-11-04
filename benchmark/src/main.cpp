@@ -47,26 +47,52 @@ void createTempXsd(const std::filesystem::path& path)
     out << xsdContent;
 }
 
+std::string formatDuration(std::chrono::nanoseconds duration)
+{
+    double ms = std::chrono::duration<double, std::milli>(duration).count();
+    auto ns = duration.count();
+
+    if (ns < 1'000) {
+        return fmt::format("{:.3f} ms ({} ns)", ms, ns);
+    }
+    double us = static_cast<double>(ns) / 1'000.0;
+    if (us < 1'000.0) {
+        return fmt::format("{:.2f} ms ({:.1f} µs)", ms, us);
+    }
+    double sec = ms / 1'000.0;
+    if (sec < 1.0) {
+        // Less than 1 second: display fraction of a second with 2-3 decimals if informative
+        return fmt::format("{:.2f} ms ({:.2f}s)", ms, sec);
+    }
+    if (sec < 60.0) {
+        return fmt::format("{:.2f} ms ({:.2f}s)", ms, sec);
+    }
+    double min = sec / 60.0;
+    return fmt::format("{:.2f} ms ({:.2f} min)", ms, min);
+}
+
 void printResultTable(const std::vector<Proxy::Benchmark::BenchmarkResult>& results)
 {
     fmt::print("\n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "====================================================================================================\n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "                        XML VERIFICATION CHAIN END-TO-END BENCHMARK RESULTS                         \n");
-    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "====================================================================================================\n");
-    fmt::print("{:<22} | {:<10} | {:<16} | {:<17} | {:<12} | {:<10}\n",
-        "Strategy", "Messages", "Throughput (m/s)", "Throughput (MB/s)", "Avg Lat (µs)", "p99 (µs)");
-    fmt::print("----------------------------------------------------------------------------------------------------\n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "============================================================================================================================\n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "                                    XML VERIFICATION CHAIN END-TO-END BENCHMARK RESULTS                                     \n");
+    fmt::print(fmt::emphasis::bold | fg(fmt::color::cyan), "============================================================================================================================\n");
+    fmt::print("{:<22} | {:<10} | {:<18} | {:<16} | {:<17} | {:<12} | {:<10}\n",
+        "Strategy", "Messages", "Exec Time", "Throughput (m/s)", "Throughput (MB/s)", "Avg Lat (µs)", "p99 (µs)");
+    fmt::print("----------------------------------------------------------------------------------------------------------------------------\n");
 
     for (const auto& res : results) {
+        std::string execTimeStr = formatDuration(res.totalDuration);
         fmt::print(fmt::emphasis::bold, "{:<22}", res.backendName);
-        fmt::print(" | {:<10} | {:<16.2f} | {:<17.2f} | {:<12.2f} | {:<10.2f}\n",
+        fmt::print(" | {:<10} | {:<18} | {:<16.2f} | {:<17.2f} | {:<12.2f} | {:<10.2f}\n",
             res.verifiedMessages,
+            execTimeStr,
             res.messagesPerSecond,
             res.throughputMBps,
             res.averageLatencyUs,
             res.p99LatencyUs);
     }
-    fmt::print("====================================================================================================\n\n");
+    fmt::print("============================================================================================================================\n\n");
 }
 
 } // namespace
@@ -176,23 +202,33 @@ int main(int argc, char* argv[])
         std::size_t socketMessages = numMessages;
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running Socket (UDP) chain ({}) with {} messages...\n", strategyName, socketMessages);
 
-        std::ofstream confFile("/tmp/bench_socket.conf");
-        confFile << "socket.host=127.0.0.1\n";
-        confFile << "socket.port=9870\n";
-        confFile << "channel.udp_raw.host=127.0.0.1\n";
-        confFile << "channel.udp_raw.port=9871\n";
-        confFile << "channel.udp_raw.dest_host=127.0.0.1\n";
-        confFile << "channel.udp_raw.dest_port=9871\n";
-        confFile << "channel.udp_verified.host=127.0.0.1\n";
-        confFile << "channel.udp_verified.port=9872\n";
-        confFile << "channel.udp_verified.dest_host=127.0.0.1\n";
-        confFile << "channel.udp_verified.dest_port=9872\n";
-        confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
-        confFile << "xml.input_channel=udp_raw\n";
-        confFile << "xml.output_channel=udp_verified\n";
-        confFile.close();
+        auto config = Core::Config::Configuration::fromJson(fmt::format(R"({{
+  "socket": {{
+    "host": "127.0.0.1",
+    "port": 9870
+  }},
+  "channel": {{
+    "udp_raw": {{
+      "host": "127.0.0.1",
+      "port": 9871,
+      "dest_host": "127.0.0.1",
+      "dest_port": 9871
+    }},
+    "udp_verified": {{
+      "host": "127.0.0.1",
+      "port": 9872,
+      "dest_host": "127.0.0.1",
+      "dest_port": 9872
+    }}
+  }},
+  "xml": {{
+    "xsd_path": "{}",
+    "input_channel": "udp_raw",
+    "output_channel": "udp_verified"
+  }}
+}})",
+            xsdPath.string()));
 
-        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_socket.conf");
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Socket::SocketBackend>();
         backend->configure(config);
 
@@ -288,17 +324,25 @@ int main(int argc, char* argv[])
         std::size_t udsMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running IPC (UDS) chain ({}) with {} messages...\n", strategyName, udsMessages);
 
-        std::ofstream confFile("/tmp/bench_uds.conf");
-        confFile << "channel.uds_raw.path=/tmp/bench_uds_raw.sock\n";
-        confFile << "channel.uds_raw.dest_path=/tmp/bench_uds_raw.sock\n";
-        confFile << "channel.uds_verified.path=/tmp/bench_uds_verified.sock\n";
-        confFile << "channel.uds_verified.dest_path=/tmp/bench_uds_verified.sock\n";
-        confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
-        confFile << "xml.input_channel=uds_raw\n";
-        confFile << "xml.output_channel=uds_verified\n";
-        confFile.close();
+        auto config = Core::Config::Configuration::fromJson(fmt::format(R"({{
+  "channel": {{
+    "uds_raw": {{
+      "path": "/tmp/bench_uds_raw.sock",
+      "dest_path": "/tmp/bench_uds_raw.sock"
+    }},
+    "uds_verified": {{
+      "path": "/tmp/bench_uds_verified.sock",
+      "dest_path": "/tmp/bench_uds_verified.sock"
+    }}
+  }},
+  "xml": {{
+    "xsd_path": "{}",
+    "input_channel": "uds_raw",
+    "output_channel": "uds_verified"
+  }}
+}})",
+            xsdPath.string()));
 
-        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_uds.conf");
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Uds::UdsBackend>();
         backend->configure(config);
 
@@ -393,22 +437,30 @@ int main(int argc, char* argv[])
         std::size_t shmMessages = numMessages;
         fmt::print(fg(fmt::color::cyan), "[Benchmark] Running Kernel Bypass IPC (SHM) chain ({}) with {} messages...\n", strategyName, shmMessages);
 
-        std::ofstream confFile("/tmp/bench_shm.conf");
-        confFile << "channel.shm_raw.path=/tmp/bench_shm_raw.dat\n";
-        confFile << "channel.shm_raw.dest_path=/tmp/bench_shm_raw.dat\n";
-        confFile << "channel.shm_raw.capacity=16384\n";
-        confFile << "channel.shm_verified.path=/tmp/bench_shm_verified.dat\n";
-        confFile << "channel.shm_verified.dest_path=/tmp/bench_shm_verified.dat\n";
-        confFile << "channel.shm_verified.capacity=16384\n";
-        confFile << "xml.xsd_path=" << xsdPath.string() << "\n";
-        confFile << "xml.input_channel=shm_raw\n";
-        confFile << "xml.output_channel=shm_verified\n";
-        confFile.close();
-
         std::filesystem::remove("/tmp/bench_shm_raw.dat");
         std::filesystem::remove("/tmp/bench_shm_verified.dat");
 
-        Core::Config::Configuration config = Core::Config::Configuration::fromFile("/tmp/bench_shm.conf");
+        auto config = Core::Config::Configuration::fromJson(fmt::format(R"({{
+  "channel": {{
+    "shm_raw": {{
+      "path": "/tmp/bench_shm_raw.dat",
+      "dest_path": "/tmp/bench_shm_raw.dat",
+      "capacity": 16384
+    }},
+    "shm_verified": {{
+      "path": "/tmp/bench_shm_verified.dat",
+      "dest_path": "/tmp/bench_shm_verified.dat",
+      "capacity": 16384
+    }}
+  }},
+  "xml": {{
+    "xsd_path": "{}",
+    "input_channel": "shm_raw",
+    "output_channel": "shm_verified"
+  }}
+}})",
+            xsdPath.string()));
+
         std::unique_ptr<::Backend::IBackend> backend = std::make_unique<Proxy::Backend::Shm::ShmBackend>();
         backend->configure(config);
 
