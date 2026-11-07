@@ -50,6 +50,16 @@ Safe framing is mandatory regardless of whether a channel enables integrity or a
         // Reject outside the configured freshness window.
     }
     ```
+* **Status: Postponed for the current deployment profile**: The likely transports are shared memory and in-process channels. In-process messages remain within a trusted process, while shared-memory access is primarily controlled by OS file permissions and process isolation (the SHM backing-file hardening is described in §3.1). A wire MAC and replay window would add key management, protocol complexity, and per-message work without a clear additional boundary to protect in these deployments.
+* **Current behavior and scope**: Envelopes are structurally validated, but are not authenticated and have no replay detection. A valid envelope can be forged by a process able to inject bytes into a channel, and a duplicate valid envelope is dispatched again. Authentication would be most useful when an internal channel crosses a less-trusted boundary, such as a network-facing transport; it would not encrypt messages or prevent denial of service. An ingress gateway can authenticate the internal frame it creates, but that alone does not authenticate the original external sender.
+* **Revisit when**: A deployment uses TCP/UDP or another transport across a boundary where non-Proxy processes may observe or inject internal traffic, SHM permissions/process isolation are insufficient for the threat model, or a concrete security requirement calls for sender authenticity or replay prevention. Scope protection to the boundary that needs it rather than requiring cryptography on every channel by default.
+* **Decisions required before implementation**:
+  * Identify the untrusted boundary and whether the goal is system-membership proof, individual sender identity, or ingress-source authentication.
+  * Define how keys are provisioned, protected at rest/in transit, rotated, identified on the wire, and revoked.
+  * Choose replay-state behavior for concurrent senders and sender/receiver restarts. An epoch-based design needs durable receiver epoch tracking to remain effective across receiver restarts; a persisted monotonic sequence needs durable, non-rollback sender state and coordination for shared identities.
+  * Specify the replay-window size and handling of reordering, duplicates, key changes, and lost state.
+  * Define wire-version negotiation and downgrade behavior, including whether unauthenticated v1 frames are rejected on channels that require authentication.
+  * Measure the chosen cryptographic implementation and replay tracking against transport latency and throughput requirements.
 
 ### 2.2 Max Frame Size Clamping & Anti-DoS
 * **P0 implementation**: Envelopes are capped at 65,535 bytes total, including the header and metadata. Parsing requires the declared lengths to consume the complete input; packing rejects wire-field overflow and frames above the cap. Datagram pollers detect truncation for single and batched receives, and channel wrappers do not pass truncated slots on as valid messages. File, in-process, simulation, and mock inputs reject oversized messages instead of silently clipping them.
@@ -121,7 +131,7 @@ Use the following order across both hardening documents. P0 and P1 are correctne
 | **P0** | SHM | **Validate mapped size/header/capacity/slot length; restrict backing-file access** | Medium | Setup plus validation |
 | **P1** | Parsers | **Input-size and depth/work limits; verify XML external-resource policy** | Medium | Measure |
 | **P1** | Policy | **Document trust boundaries and behavior for raw/unverified payloads** | Low | None |
-| **P2** | Wire | **Authenticated messages and replay window, if required by deployment** | High | Measure |
+| **P2** | Wire | **Postponed for SHM/InProc-heavy deployments; revisit authenticated messages and replay protection when a concrete untrusted channel boundary or requirement exists** | High | Measure |
 | **P2** | Runtime | **Queue/network quotas and explicit overload behavior; initial queue backpressure metric and bounded logs implemented** | Medium | Depends on policy |
 | **P3** | IPC | **Platform-appropriate UDS peer identity and path hardening** | Medium | Setup / connection |
 | **P3** | Defense in depth | **Guard pages after bounds checks, if justified** | Medium | Measure |
