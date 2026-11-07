@@ -8,6 +8,13 @@ PetiteVue.createApp({
   selectedChain: "",
   selectedBackend: "sim",
   selectedPcap: "",
+  chainsLoading: false,
+  pcapsLoading: false,
+  chainsError: "",
+  pcapsError: "",
+  runnerError: "",
+  actionError: "",
+  actionMessage: "",
   
   status: {
     state: "idle",       // "idle" | "running" | "stopped" | "error"
@@ -23,6 +30,7 @@ PetiteVue.createApp({
   actionLoading: false,
   statusTimer: null,
   uptimeTimer: null,
+  statusInitialized: false,
 
   async init() {
     await this.fetchChains();
@@ -43,32 +51,40 @@ PetiteVue.createApp({
   },
 
   async fetchChains() {
+    this.chainsLoading = true;
+    this.chainsError = "";
     try {
       const resp = await fetch("/api/runner/chains");
-      if (resp.ok) {
-        this.chains = await resp.json();
-        if (this.chains.length > 0 && !this.selectedChain) {
-          this.selectedChain = this.chains[0].path;
-          this.onChainSelected();
-        }
+      if (!resp.ok) {
+        throw new Error(`Could not load chains (HTTP ${resp.status})`);
+      }
+      this.chains = await resp.json();
+      if (this.chains.length > 0 && !this.chains.some((chain) => chain.path === this.selectedChain)) {
+        this.selectedChain = this.chains[0].path;
+        this.onChainSelected();
+      } else if (this.chains.length === 0) {
+        this.selectedChain = "";
       }
     } catch (e) {
-      console.warn("Could not load chains:", e);
+      this.chainsError = e.message || String(e);
+    } finally {
+      this.chainsLoading = false;
     }
   },
 
   async fetchPcaps() {
+    this.pcapsLoading = true;
+    this.pcapsError = "";
     try {
       const resp = await fetch("/api/runner/pcaps");
-      if (resp.ok) {
-        this.pcaps = await resp.json();
-        // Default selectedPcap to "" (None / Autonomous generators)
-        if (!this.selectedPcap) {
-          this.selectedPcap = "";
-        }
+      if (!resp.ok) {
+        throw new Error(`Could not load PCAP captures (HTTP ${resp.status})`);
       }
+      this.pcaps = await resp.json();
     } catch (e) {
-      console.warn("Could not load pcaps:", e);
+      this.pcapsError = e.message || String(e);
+    } finally {
+      this.pcapsLoading = false;
     }
   },
 
@@ -79,13 +95,17 @@ PetiteVue.createApp({
     } else if (!this.selectedBackend) {
       this.selectedBackend = "sim";
     }
+    window.ProxyStudioContext?.set(this.selectedChain, this.selectedBackend);
   },
 
   async pollStatus() {
     try {
       const resp = await fetch("/api/runner/status");
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        throw new Error(`Runner status unavailable (HTTP ${resp.status})`);
+      }
       const data = await resp.json();
+      this.runnerError = "";
       
       this.status.state = data.state || "idle";
       this.status.pid = data.pid;
@@ -93,6 +113,14 @@ PetiteVue.createApp({
       this.status.backend = data.backend;
       this.status.uptimeSec = Math.round(data.uptimeSec || 0);
       this.status.exitCode = data.exitCode;
+      if (!this.statusInitialized && data.configPath) {
+        const activeChain = this.chains.find((chain) => chain.path === data.configPath);
+        if (activeChain) {
+          this.selectedChain = activeChain.path;
+          this.selectedBackend = data.backend || activeChain.backend;
+        }
+      }
+      this.statusInitialized = true;
       
       if (Array.isArray(data.logs)) {
         this.logs = data.logs;
@@ -103,13 +131,18 @@ PetiteVue.createApp({
         });
       }
     } catch (e) {
-      // transient polling error
+      this.runnerError = e.message || String(e);
     }
   },
 
   async startChain() {
-    if (!this.selectedChain) return;
+    if (!this.selectedChain) {
+      this.actionError = "Select a chain configuration before starting.";
+      return false;
+    }
     this.actionLoading = true;
+    this.actionError = "";
+    this.actionMessage = "";
     try {
       const resp = await fetch("/api/runner/start", {
         method: "POST",
@@ -122,12 +155,15 @@ PetiteVue.createApp({
       });
       const res = await resp.json();
       if (!resp.ok) {
-        alert("Failed to start chain: " + (res.message || "Unknown error"));
+        throw new Error(res.message || `Start failed (HTTP ${resp.status})`);
       } else {
         await this.pollStatus();
+        this.actionMessage = "Chain start requested.";
+        return true;
       }
     } catch (e) {
-      alert("Error contacting runner: " + e);
+      this.actionError = e.message || String(e);
+      return false;
     } finally {
       this.actionLoading = false;
     }
@@ -135,28 +171,38 @@ PetiteVue.createApp({
 
   async stopChain() {
     this.actionLoading = true;
+    this.actionError = "";
+    this.actionMessage = "";
     try {
       const resp = await fetch("/api/runner/stop", {
         method: "POST",
       });
       const res = await resp.json();
       if (!resp.ok) {
-        alert("Failed to stop chain: " + (res.message || "Unknown error"));
+        throw new Error(res.message || `Stop failed (HTTP ${resp.status})`);
       } else {
         await this.pollStatus();
+        this.actionMessage = "Chain stop requested.";
+        return true;
       }
     } catch (e) {
-      alert("Error stopping runner: " + e);
+      this.actionError = e.message || String(e);
+      return false;
     } finally {
       this.actionLoading = false;
     }
   },
 
   async restartChain() {
-    await this.stopChain();
-    setTimeout(() => {
-      this.startChain();
-    }, 500);
+    if (await this.stopChain()) {
+      setTimeout(() => this.startChain(), 500);
+    }
+  },
+
+  editSelectedChain() {
+    if (this.selectedChain) {
+      window.location.href = `/builder/?chain=${encodeURIComponent(this.selectedChain)}`;
+    }
   },
 
   clearLogs() {
@@ -201,4 +247,3 @@ window.toggleWorkspaceDropdown = function (e) {
 document.addEventListener("click", () => {
   document.querySelectorAll(".workspace-dropdown.open").forEach((el) => el.classList.remove("open"));
 });
-

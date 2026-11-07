@@ -161,9 +161,15 @@
         <div class="btn-group">
           <button class="btn-action btn-start"
                   @click="startChain()"
-                  :disabled="status.state === 'running' || actionLoading || !selectedChain"
+                  :disabled="status.state === 'running' || actionLoading || !selectedChain || chainsLoading"
                   title="Spawn chain_runner.py with selected chain and backend">
             ▶ Start Chain
+          </button>
+          <button class="btn-action"
+                  @click="editSelectedChain()"
+                  :disabled="!selectedChain || chainsLoading"
+                  title="Open the selected chain in the visual builder">
+            ✎ Edit Selected Chain
           </button>
           <button class="btn-action btn-stop"
                   @click="stopChain()"
@@ -185,6 +191,8 @@
         <div class="form-group">
           <label for="chain-select">Select Chain Configuration</label>
           <select id="chain-select" class="form-select" v-model="selectedChain" @change="onChainSelected()" :disabled="status.state === 'running'">
+            <option v-if="chainsLoading" value="">Loading chain configurations…</option>
+            <option v-else-if="chains.length === 0" value="">No chain configurations found</option>
             <option v-for="c in chains" :key="c.path" :value="c.path">
               {{ c.name }} ({{ c.handlersCount }} handlers, default {{ c.backend }})
             </option>
@@ -193,7 +201,7 @@
 
         <div class="form-group">
           <label for="backend-select">Transport Backend</label>
-          <select id="backend-select" class="form-select" v-model="selectedBackend" :disabled="status.state === 'running'">
+          <select id="backend-select" class="form-select" v-model="selectedBackend" @change="onChainSelected()" :disabled="status.state === 'running'">
             <option value="sim">sim (Simulation with hold sockets)</option>
             <option value="socket">socket (UDP datagram transport)</option>
             <option value="file">file (Filesystem directory transport)</option>
@@ -206,9 +214,29 @@
           <label for="pcap-select">Ingress PCAP Capture (Optional)</label>
           <select id="pcap-select" class="form-select" v-model="selectedPcap" :disabled="status.state === 'running'">
             <option value="">(None / Autonomous generators)</option>
+            <option v-if="pcapsLoading" value="" disabled>Loading PCAP captures…</option>
+            <option v-else-if="pcaps.length === 0" value="" disabled>No PCAP captures found</option>
             <option v-for="p in pcaps" :key="p" :value="p">{{ p }}</option>
           </select>
         </div>
+      </div>
+
+      <div v-if="chainsError || pcapsError || runnerError || actionError || actionMessage"
+           class="portal-feedback"
+           :class="{ 'feedback-error': chainsError || pcapsError || runnerError || actionError }"
+           :role="chainsError || pcapsError || runnerError || actionError ? 'alert' : 'status'"
+           aria-live="polite">
+        <div v-if="chainsError">Chain list unavailable: {{ chainsError }}
+          <button class="feedback-retry" @click="fetchChains()">Retry</button>
+        </div>
+        <div v-if="pcapsError">PCAP list unavailable: {{ pcapsError }}
+          <button class="feedback-retry" @click="fetchPcaps()">Retry</button>
+        </div>
+        <div v-if="runnerError">Runner connection issue: {{ runnerError }}
+          <button class="feedback-retry" @click="pollStatus()">Retry</button>
+        </div>
+        <div v-if="actionError">{{ actionError }}</div>
+        <div v-if="actionMessage">{{ actionMessage }}</div>
       </div>
 
       <!-- Live Runner Status Strip -->
@@ -277,7 +305,7 @@
     <span>Proxy High-Performance Trading Architecture &middot; Web Studio &amp; Control Plane</span>
   </footer>
 
+  <script src="/studio/context.js"></script>
   <script src="/portal/js/portal.js?v=1"></script>
 </body>
 </html>
-

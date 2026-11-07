@@ -339,7 +339,7 @@
         </div>
         <div class="field-group" style="margin-bottom: 12px;">
           <label class="field-label">Transport Backend</label>
-          <select v-model="backend" @change="validateChain()">
+          <select v-model="backend" @change="validateChain(); window.ProxyStudioContext?.set(currentChainPath, backend)">
             <option value="file">File (Directory watch/write)</option>
             <option value="socket">Socket (UDP Datagram)</option>
             <option value="shm">SHM (Shared Memory POSIX Ring)</option>
@@ -566,6 +566,7 @@
     </div>
   </div>
 
+  <script src="/studio/context.js"></script>
   <script src="js/builder_canvas.js"></script>
   <script src="js/builder_app.js"></script>
   <script>

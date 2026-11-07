@@ -32,6 +32,7 @@ import tempfile
 import threading
 import time
 from typing import Any, Optional
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 # Ensure scripts root is in sys.path
 scripts_dir = Path(__file__).resolve().parent
@@ -62,6 +63,7 @@ class ChainProcessManager:
         self.pid: Optional[int] = None
         self.config_path: Optional[str] = None
         self.backend: Optional[str] = None
+        self.chain_name: Optional[str] = None
         self.pcap_path: Optional[str] = None
         self.started_at: Optional[float] = None
         self.exit_code: Optional[int] = None
@@ -84,6 +86,7 @@ class ChainProcessManager:
                 "state": self.state,
                 "pid": self.pid if self.state == "running" else None,
                 "configPath": self.config_path,
+                "chainName": self.chain_name,
                 "backend": self.backend,
                 "pcap": self.pcap_path,
                 "startedAt": self.started_at,
@@ -99,6 +102,7 @@ class ChainProcessManager:
         pcap_str: Optional[str] = None,
         bin_dir: Optional[str] = None,
         http_port: int = 8080,
+        chain_name: Optional[str] = None,
     ) -> dict[str, Any]:
         with self.lock:
             if self.process is not None and self.process.poll() is None:
@@ -112,6 +116,7 @@ class ChainProcessManager:
                 raise FileNotFoundError(f"Chain configuration file not found: {cfg_path}")
 
             chain_def = load_chain_config(cfg_path)
+            chain_def.setdefault("name", chain_name or cfg_path.stem)
             self.current_chain_def = chain_def
             resolved_backend = backend or chain_def.get("backend", "sim")
 
@@ -170,6 +175,7 @@ class ChainProcessManager:
             self.state = "running"
             self.config_path = str(cfg_path.relative_to(self.root_dir) if cfg_path.is_relative_to(self.root_dir) else cfg_path)
             self.backend = resolved_backend
+            self.chain_name = str(chain_def["name"])
             self.pcap_path = str(pcap_path.name) if pcap_path else None
             self.started_at = time.time()
             self.exit_code = None
@@ -348,7 +354,8 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         scripts_path = self.root_dir / "scripts"
-        clean_path = self.path.split("?")[0]
+        request = urlsplit(self.path)
+        clean_path = request.path
 
         # -------------------------------------------------------------
         # 1. LANDING PAGE & PORTAL ASSETS
@@ -360,6 +367,10 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
         if clean_path.startswith("/portal/"):
             subpath = clean_path[len("/portal/"):].lstrip("/")
             return self._serve_file(scripts_path / "portal" / subpath)
+
+        if clean_path.startswith("/studio/"):
+            subpath = clean_path[len("/studio/"):].lstrip("/")
+            return self._serve_file(scripts_path / "studio" / subpath)
 
         # -------------------------------------------------------------
         # 2. VISUAL CHAIN BUILDER
@@ -414,6 +425,27 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
             return self._send_json(200, self.schemas)
 
         if clean_path == "/api/chain":
+            requested_paths = parse_qs(request.query, keep_blank_values=True).get("path")
+            if requested_paths is not None:
+                requested_path = requested_paths[0]
+                if not requested_path:
+                    return self._send_json(400, {"error": "Chain path must not be empty"})
+                chains_dir = (self.root_dir / "chains").resolve()
+                chain_path = (self.root_dir / requested_path).resolve()
+                if not chain_path.is_relative_to(chains_dir):
+                    return self._send_json(400, {"error": "Chain path must be inside chains/"})
+                if chain_path.suffix.lower() not in (".toml", ".json"):
+                    return self._send_json(400, {"error": "Chain file must use .toml or .json"})
+                if not chain_path.is_file():
+                    return self._send_json(404, {"error": "Chain configuration not found"})
+                try:
+                    chain_def = load_chain_config(chain_path)
+                    if not isinstance(chain_def, dict):
+                        return self._send_json(400, {"error": "Chain configuration must contain an object"})
+                    chain_def.setdefault("name", chain_path.stem)
+                    return self._send_json(200, chain_def)
+                except (OSError, ValueError, UnicodeError) as e:
+                    return self._send_json(400, {"error": f"Could not load chain configuration: {e}"})
             return self._send_json(200, self.manager.current_chain_def)
 
         # -------------------------------------------------------------
@@ -666,16 +698,35 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
 
         if clean_path == "/api/chain/save":
             payload = self._read_json_body()
-            target_path = self.root_dir / "chains" / payload.get("filename", "custom_chain.toml")
-            target_path.parent.mkdir(parents=True, exist_ok=True)
+            chains_dir = (self.root_dir / "chains").resolve()
+            requested_path = payload.get("chainPath")
+            if requested_path:
+                if not isinstance(requested_path, str):
+                    return self._send_json(400, {"status": "error", "message": "Chain path must be a string"})
+                target_path = (self.root_dir / requested_path).resolve()
+            else:
+                filename = payload.get("filename", "custom_chain.toml")
+                if not isinstance(filename, str) or Path(filename).name != filename:
+                    return self._send_json(400, {"status": "error", "message": "Filename must be a name inside chains/"})
+                target_path = chains_dir / filename
+            if not target_path.is_relative_to(chains_dir):
+                return self._send_json(400, {"status": "error", "message": "Chain path must be inside chains/"})
+            if target_path.suffix.lower() != ".toml":
+                return self._send_json(400, {"status": "error", "message": "Builder saves must use a .toml filename"})
             toml_content = serialize_chain_to_toml(payload)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(toml_content, encoding="utf-8")
-            return self._send_json(200, {"status": "ok", "path": str(target_path), "toml": toml_content})
+            relative_path = str(target_path.relative_to(self.root_dir))
+            return self._send_json(200, {"status": "ok", "path": relative_path, "toml": toml_content})
 
         if clean_path == "/api/chain/run":
             payload = self._read_json_body()
             # Save chain to temp file and launch chain_runner
-            tmp_chain = Path(tempfile.mktemp(prefix="builder_chain_", suffix=".toml"))
+            chain_name = str(payload.get("name") or "builder_chain")
+            safe_chain_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in chain_name)
+            tmp_file = tempfile.NamedTemporaryFile(prefix=f"{safe_chain_name}_", suffix=".toml", delete=False)
+            tmp_chain = Path(tmp_file.name)
+            tmp_file.close()
             toml_content = serialize_chain_to_toml(payload, backend_override="sim")
             tmp_chain.write_text(toml_content, encoding="utf-8")
 
@@ -685,8 +736,12 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
                     backend="sim",
                     pcap_str=None,
                     http_port=self.http_port,
+                    chain_name=chain_name,
                 )
-                return self._send_json(200, {"status": "ok", "url": "/dashboard/", "toml": toml_content})
+                query = {"chainName": chain_name, "backend": "sim"}
+                if payload.get("chainPath"):
+                    query["chain"] = str(payload["chainPath"])
+                return self._send_json(200, {"status": "ok", "url": f"/dashboard/?{urlencode(query)}", "toml": toml_content})
             except Exception as e:
                 return self._send_json(500, {
                     "status": "error",
@@ -821,4 +876,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

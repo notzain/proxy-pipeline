@@ -507,6 +507,34 @@ main.portal-main {
   align-items: end;
 }
 
+.portal-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.portal-feedback.feedback-error {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.feedback-retry {
+  margin-left: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-cyan);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -712,4 +740,3 @@ footer.portal-footer {
   color: var(--text-muted);
   background-color: var(--bg-secondary);
 }
-

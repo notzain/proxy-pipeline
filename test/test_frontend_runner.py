@@ -7,8 +7,10 @@ import json
 from pathlib import Path
 import sys
 import threading
+import tempfile
 import time
 import unittest
+from urllib.error import HTTPError
 from urllib.request import urlopen, Request
 from unittest.mock import Mock, patch
 
@@ -78,6 +80,58 @@ class FrontendRunnerTests(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             pcaps = json.loads(resp.read().decode("utf-8"))
             self.assertIsInstance(pcaps, list)
+
+    def test_chain_api_loads_requested_chain_inside_chains_directory(self):
+        with urlopen(f"{self.base_url}/api/chain?path=chains%2Fexample_file_chain.toml") as resp:
+            self.assertEqual(resp.status, 200)
+            chain = json.loads(resp.read().decode("utf-8"))
+            self.assertTrue(chain["handlers"])
+
+        for path in ("../README.md", "/etc/passwd"):
+            with self.assertRaises(HTTPError) as context:
+                urlopen(f"{self.base_url}/api/chain?path={path}")
+            self.assertEqual(context.exception.code, 400)
+            context.exception.close()
+
+    def test_chain_api_reports_missing_requested_chain(self):
+        with self.assertRaises(HTTPError) as context:
+            urlopen(f"{self.base_url}/api/chain?path=chains%2Fmissing.toml")
+        self.assertEqual(context.exception.code, 404)
+        context.exception.close()
+
+    def test_chain_save_preserves_chain_path_and_rejects_traversal(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "chains", prefix="ux_test_") as temp_dir:
+            relative_dir = Path(temp_dir).relative_to(ROOT)
+            chain_path = relative_dir / "saved.toml"
+            payload = {
+                "chainPath": str(chain_path),
+                "name": "saved_chain",
+                "backend": "sim",
+                "config": {},
+                "handlers": [],
+            }
+            req = Request(
+                f"{self.base_url}/api/chain/save",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertEqual(json.loads(resp.read().decode("utf-8"))["path"], str(chain_path))
+            self.assertTrue((ROOT / chain_path).is_file())
+
+        payload["chainPath"] = "../outside.toml"
+        req = Request(
+            f"{self.base_url}/api/chain/save",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as context:
+            urlopen(req)
+        self.assertEqual(context.exception.code, 400)
+        context.exception.close()
 
     def test_schemas_and_metrics_api(self):
         with urlopen(f"{self.base_url}/api/schemas") as resp:
@@ -185,4 +239,3 @@ class FrontendRunnerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

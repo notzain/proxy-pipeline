@@ -9,6 +9,7 @@ function createApp() {
     collapsedCategories: {},
     searchQuery: '',
     chainName: 'custom_chain',
+    currentChainPath: null,
     saveFilename: 'custom_chain.toml',
     showSaveModal: false,
     showExportModal: false,
@@ -129,15 +130,29 @@ function createApp() {
 
     async loadInitialChain() {
       try {
-        const res = await fetch('/api/chain');
-        if (res.ok) {
-          const chainDef = await res.json();
-          if (chainDef && chainDef.handlers && chainDef.handlers.length > 0) {
-            this.importChainDefinition(chainDef);
+        const requestedChain = new URLSearchParams(window.location.search).get('chain');
+        const endpoint = requestedChain
+          ? `/api/chain?path=${encodeURIComponent(requestedChain)}`
+          : '/api/chain';
+        const res = await fetch(endpoint);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `Request failed (${res.status})`);
+        }
+        const chainDef = await res.json();
+        if (requestedChain || (chainDef && chainDef.handlers && chainDef.handlers.length > 0)) {
+          this.importChainDefinition(chainDef);
+          if (requestedChain) {
+            this.currentChainPath = requestedChain;
+            window.ProxyStudioContext?.set(requestedChain, this.backend);
+            this.flashStatus(`Loaded ${requestedChain}`);
           }
         }
       } catch (err) {
-        // No chain preloaded
+        const requestedChain = new URLSearchParams(window.location.search).get('chain');
+        if (requestedChain) {
+          this.flashStatus(`Could not load chain: ${err.message}`);
+        }
       }
     },
 
@@ -1350,6 +1365,7 @@ function createApp() {
       this.closeSaveModal();
       const chainDef = this.exportChainDefinition();
       chainDef.filename = this.saveFilename || 'custom_chain.toml';
+      chainDef.chainPath = this.currentChainPath;
       try {
         const res = await fetch('/api/chain/save', {
           method: 'POST',
@@ -1358,6 +1374,11 @@ function createApp() {
         });
         const data = await res.json();
         if (res.ok) {
+          this.currentChainPath = data.path;
+          window.ProxyStudioContext?.set(this.currentChainPath, this.backend);
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('chain', this.currentChainPath);
+          history.replaceState(null, '', nextUrl);
           this.flashStatus(`Saved to ${data.path || 'disk'}`);
         } else {
           alert('Save failed: ' + (data.message || 'Unknown error'));
@@ -1373,6 +1394,7 @@ function createApp() {
 
     async runSimulation() {
       const chainDef = this.exportChainDefinition();
+      chainDef.chainPath = this.currentChainPath;
       const localToml = this.toTomlString(chainDef);
       try {
         const res = await fetch('/api/chain/run', {
@@ -1410,4 +1432,3 @@ function createApp() {
 }
 
 window.createApp = createApp;
-

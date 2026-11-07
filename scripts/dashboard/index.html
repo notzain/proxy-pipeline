@@ -60,6 +60,7 @@
           {{ state.pcap || 'trace' }} ({{ traceStepIdx }}/{{ traceAllEvents.length }})
         </span>
         <span v-else>
+          {{ state.chain.name || state.chain.chainId || 'Active chain' }} ·
           {{ (state.chain.backend || "SIM").toUpperCase() }} · {{ state.pcap }}
         </span>
       </span>
@@ -558,6 +559,7 @@
   </div>
 
   <!-- ES6 App Module Bootstrapper -->
+  <script src="/studio/context.js"></script>
   <script>
     window.toggleWorkspaceDropdown = function (e) {
       e.stopPropagation();
