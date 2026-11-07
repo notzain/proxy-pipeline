@@ -34,7 +34,10 @@ namespace {
             message.metadata(),
             message.payload(),
             message.timestampNs());
-        return channel.send(Common::Compat::span<const std::byte>(packed.data(), packed.size()));
+        if (!packed) {
+            return false;
+        }
+        return channel.send(Common::Compat::span<const std::byte>(packed->data(), packed->size()));
     }
 
 } // namespace

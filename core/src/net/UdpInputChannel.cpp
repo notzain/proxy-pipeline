@@ -171,9 +171,10 @@ Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slo
     }
 
     Common::Net::SocketAddress clientAddr;
+    const std::size_t frameSize = std::min(destination.size(), Backend::MaxEnvelopeFrameBytes);
     Common::Net::BytesResult receiveResult = m_poller->receive(
         m_socketFd.get(),
-        destination.subspan(EnvelopePreambleSize),
+        destination.subspan(EnvelopePreambleSize, frameSize - EnvelopePreambleSize),
         timeout,
         &clientAddr);
 
@@ -211,10 +212,18 @@ Common::Net::BatchResult UdpInputChannel::receiveBatch(
     std::array<Common::Net::SocketAddress, MaxBatch> clientAddrs;
 
     for (std::size_t i = 0; i < batchSize; ++i) {
+        slots[i].size = 0;
+    }
+
+    for (std::size_t i = 0; i < batchSize; ++i) {
         if (slots[i].buffer.size() <= EnvelopePreambleSize) {
             return BatchResult::err({ 0, Common::Net::ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
         }
-        payloadSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer.subspan(EnvelopePreambleSize), 0 };
+        const std::size_t frameSize = std::min(slots[i].buffer.size(), Backend::MaxEnvelopeFrameBytes);
+        payloadSlots[i] = Common::Net::PollerBufferSlot {
+            slots[i].buffer.subspan(EnvelopePreambleSize, frameSize - EnvelopePreambleSize),
+            0
+        };
     }
 
     Common::Net::BatchResult result = m_poller->receiveBatch(
@@ -225,6 +234,10 @@ Common::Net::BatchResult UdpInputChannel::receiveBatch(
 
     const std::size_t receivedCount = result.isOk() ? result.unwrap() : result.unwrapErr().receivedCount;
     for (std::size_t i = 0; i < receivedCount; ++i) {
+        if (payloadSlots[i].truncated) {
+            slots[i].size = 0;
+            continue;
+        }
         writeEnvelopePreamble(slots[i].buffer, payloadSlots[i].size, clientAddrs[i], m_boundAddr);
         slots[i].size = EnvelopePreambleSize + payloadSlots[i].size;
     }

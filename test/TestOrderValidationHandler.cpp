@@ -122,7 +122,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         CHECK(parsedXercesSax->quantity == 42);
 #endif
 
-        auto env = Backend::MessageView::packRaw(span);
+        auto env = Backend::MessageView::packRaw(span).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
@@ -138,7 +138,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
 
-        auto env = Backend::MessageView::packRaw(span);
+        auto env = Backend::MessageView::packRaw(span).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
@@ -151,7 +151,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         auto parsed = handler.parseOrder(span);
         CHECK_FALSE(parsed.has_value());
 
-        auto env = Backend::MessageView::packRaw(span);
+        auto env = Backend::MessageView::packRaw(span).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
@@ -202,7 +202,7 @@ TEST_CASE("OrderValidationHandler deserialization and domain validation", "[orde
         std::string invalidOrderXml = "<order><customer>A</customer><item>Widget</item><quantity>5</quantity></order>";
         Common::Memory::ByteView span(invalidOrderXml);
 
-        auto env = Backend::MessageView::packRaw(span);
+        auto env = Backend::MessageView::packRaw(span).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
         handler.onMessageReceived("input_ch", *view);
@@ -327,7 +327,7 @@ TEST_CASE("OrderValidationHandler Catch2 Benchmarks", "[!benchmark][order_valida
 
     BENCHMARK("Baseline: Order Full Ingress Pipeline")
     {
-        auto env = Backend::MessageView::packRaw(span);
+        auto env = Backend::MessageView::packRaw(span).value();
         auto view = *Backend::MessageView::from(env);
         handler.onMessageReceived("bench_in", view);
     };

@@ -172,13 +172,17 @@ Backend::MessageResult GatherHandler::onMessageReceived(
         Proxy::Log::info("[GatherHandler] All {} splits gathered for correlationId={} (restoring protocol={}, {} meta bytes); forwarding to '{}'",
             totalSplits, corrId, static_cast<unsigned>(originalProtocol.value()), completedMetadata.size(), m_outputChannel->name());
 
-        auto restoredMsg = Backend::MessageView::pack(
+        const auto restoredMsg = Backend::MessageView::pack(
             originalProtocol,
             Common::Compat::span<const std::byte>(completedMetadata.data(), completedMetadata.size()),
             Common::Compat::span<const std::byte>(completedPayload.data(), completedPayload.size()),
             message.timestampNs());
+        if (!restoredMsg) {
+            Proxy::Log::warn("[GatherHandler] Could not restore gathered envelope: message exceeds envelope size limit");
+            return Backend::Dropped { .reason = "Gathered message exceeds envelope size limit", .errorCode = 413 };
+        }
 
-        auto optView = Backend::MessageView::from(Common::Compat::span<const std::byte>(restoredMsg.data(), restoredMsg.size()));
+        auto optView = Backend::MessageView::from(Common::Compat::span<const std::byte>(restoredMsg->data(), restoredMsg->size()));
         if (optView && m_outputChannel->send(*optView)) {
             return Backend::Forwarded { .channel = m_outputChannel->name() };
         }
@@ -187,7 +191,7 @@ Backend::MessageResult GatherHandler::onMessageReceived(
         return Backend::Dropped { .reason = "Failed to send to output channel", .errorCode = 500 };
     }
 
-    return Backend::Consumed {};
+    return Backend::Consumed { };
 }
 
 } // namespace Proxy::Handler

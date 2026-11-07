@@ -2,6 +2,7 @@
 #include "backend/message/MessageView.hpp"
 #include "common/compat/Latch.hpp"
 #include "common/compat/Span.hpp"
+#include "common/io/UniqueFd.hpp"
 #include "common/memory/ByteView.hpp"
 #include "common/memory/MutableByteView.hpp"
 #include "common/net/ISocketPoller.hpp"
@@ -10,6 +11,7 @@
 #include "core/handler/IHandler.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
+#include <arpa/inet.h>
 #include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
@@ -17,11 +19,15 @@
 #include <condition_variable>
 #include <csignal>
 #include <fmt/core.h>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
 #include <system_error>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -35,7 +41,7 @@ public:
         : Backend::IInputChannel(std::move(name))
     {
         for (const auto& msg : messages) {
-            auto env = Backend::MessageView::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size())));
+            auto env = Backend::MessageView::packRaw(Common::Compat::as_bytes(Common::Compat::span<const char>(msg.data(), msg.size()))).value();
             m_messages.emplace_back(reinterpret_cast<const char*>(env.data()), env.size());
         }
         if (appendMalformed) {
@@ -559,6 +565,7 @@ TEST_CASE("Ingress accounting is consistent across execution models", "[channel]
     const std::string payload = "valid";
     const auto expectedBytes = Backend::MessageView::packRaw(
         Common::Compat::as_bytes(Common::Compat::span<const char>(payload.data(), payload.size())))
+                                   .value()
                                    .size();
 
     const std::array<Core::Handler::ExecutionModel, 3> models {
@@ -1080,4 +1087,105 @@ TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelop
     REQUIRE(optViewDefault.has_value());
     CHECK(optViewDefault->timestampNs() >= Common::Compat::toEpochNs(beforeUtc));
     CHECK(optViewDefault->timestampNs() <= Common::Compat::toEpochNs(afterUtc));
+}
+
+TEST_CASE("Envelope packing and parsing enforce frame bounds", "[backend][envelope][hardening]")
+{
+    const std::size_t maxPayloadSize = Backend::MaxEnvelopeFrameBytes - sizeof(Backend::EnvelopeHeader);
+    std::vector<std::byte> payload(maxPayloadSize);
+    auto maxFrame = Backend::MessageView::packRaw(payload);
+
+    REQUIRE(maxFrame.has_value());
+    REQUIRE(maxFrame->size() == Backend::MaxEnvelopeFrameBytes);
+    CHECK(Backend::MessageView::from(*maxFrame).has_value());
+
+    payload.push_back(std::byte { 0 });
+    std::vector<std::byte> destination(Backend::MaxEnvelopeFrameBytes + 1);
+    CHECK(Backend::MessageView::packInto(destination, Backend::RawProtocol, { }, payload) == 0);
+    CHECK_FALSE(Backend::MessageView::packRaw(payload).has_value());
+
+    std::vector<std::byte> malformedHeader(sizeof(Backend::EnvelopeHeader));
+    REQUIRE(Backend::writeEnvelopeHeader(
+                malformedHeader,
+                Backend::RawProtocol,
+                0,
+                std::numeric_limits<std::uint32_t>::max())
+        == sizeof(Backend::EnvelopeHeader));
+    CHECK_FALSE(Backend::MessageView::from(malformedHeader).has_value());
+
+    auto trailingBytes = Backend::MessageView::packRaw({ }).value();
+    trailingBytes.push_back(std::byte { 0 });
+    CHECK_FALSE(Backend::MessageView::from(trailingBytes).has_value());
+
+    std::vector<std::byte> oversized(Backend::MaxEnvelopeFrameBytes + 1);
+    CHECK_FALSE(Backend::MessageView::from(oversized).has_value());
+}
+
+TEST_CASE("Output channels reject oversized MessageViews without throwing", "[backend][envelope][hardening]")
+{
+    MockOutputChannel output;
+    std::vector<std::byte> payload(Backend::MaxEnvelopeFrameBytes);
+    Backend::MessageView message { Common::Compat::span<const std::byte>(payload) };
+
+    CHECK_FALSE(output.send(message));
+    CHECK(output.sentMessages.empty());
+}
+
+TEST_CASE("Socket poller rejects truncated datagrams", "[channel][receive][hardening]")
+{
+    Common::Io::UniqueFd receiver(::socket(AF_INET, SOCK_DGRAM, 0));
+    REQUIRE(receiver);
+
+    sockaddr_in localAddress { };
+    localAddress.sin_family = AF_INET;
+    localAddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    localAddress.sin_port = 0;
+    REQUIRE(::bind(
+                receiver.get(),
+                reinterpret_cast<const sockaddr*>(&localAddress),
+                sizeof(localAddress))
+        == 0);
+
+    socklen_t addressLength = sizeof(localAddress);
+    REQUIRE(::getsockname(receiver.get(), reinterpret_cast<sockaddr*>(&localAddress), &addressLength) == 0);
+
+    Common::Io::UniqueFd sender(::socket(AF_INET, SOCK_DGRAM, 0));
+    REQUIRE(sender);
+
+    constexpr char payload[] = "oversized-datagram";
+    REQUIRE(::sendto(
+                sender.get(),
+                payload,
+                sizeof(payload),
+                0,
+                reinterpret_cast<const sockaddr*>(&localAddress),
+                sizeof(localAddress))
+        == static_cast<ssize_t>(sizeof(payload)));
+
+    auto poller = Common::Net::createSocketPoller();
+    std::array<std::byte, 4> destination { };
+    auto result = poller->receive(receiver.get(), destination, std::chrono::milliseconds(100));
+
+    REQUIRE_FALSE(result.isOk());
+    const auto* failure = std::get_if<Common::Net::ReceiveFailure>(&result.unwrapErr());
+    REQUIRE(failure != nullptr);
+    CHECK(failure->code == std::make_error_code(std::errc::message_size));
+
+    REQUIRE(::sendto(
+                sender.get(),
+                payload,
+                sizeof(payload),
+                0,
+                reinterpret_cast<const sockaddr*>(&localAddress),
+                sizeof(localAddress))
+        == static_cast<ssize_t>(sizeof(payload)));
+
+    Common::Net::PollerBufferSlot pollerSlot { destination };
+    auto batchResult = poller->receiveBatch(
+        receiver.get(),
+        Common::Compat::span<Common::Net::PollerBufferSlot>(&pollerSlot, 1),
+        std::chrono::milliseconds(100));
+    REQUIRE_FALSE(batchResult.isOk());
+    CHECK(pollerSlot.truncated);
+    CHECK(pollerSlot.size == 0);
 }

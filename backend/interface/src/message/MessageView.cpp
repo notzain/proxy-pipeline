@@ -3,8 +3,24 @@
 #include "common/io/WireFormat.hpp"
 #include <chrono>
 #include <cstring>
+#include <limits>
 
 namespace Backend {
+
+namespace {
+
+    bool isFrameSizeValid(std::size_t metadataSize, std::size_t payloadSize) noexcept
+    {
+        if (metadataSize > std::numeric_limits<std::uint16_t>::max()
+            || payloadSize > std::numeric_limits<std::uint32_t>::max()
+            || metadataSize > MaxEnvelopeFrameBytes - sizeof(EnvelopeHeader)) {
+            return false;
+        }
+
+        return payloadSize <= MaxEnvelopeFrameBytes - sizeof(EnvelopeHeader) - metadataSize;
+    }
+
+} // namespace
 
 std::size_t MessageView::packInto(
     Common::Compat::span<std::byte> destination,
@@ -13,7 +29,11 @@ std::size_t MessageView::packInto(
     Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
-    std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
+    if (!isFrameSizeValid(metadata.size(), payload.size())) {
+        return 0;
+    }
+
+    const std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
     if (destination.data() == nullptr || destination.size() < totalSize) {
         return 0;
     }
@@ -44,26 +64,32 @@ std::size_t MessageView::packInto(
     return totalSize;
 }
 
-std::vector<std::byte> MessageView::pack(
+std::optional<std::vector<std::byte>> MessageView::pack(
     ProtocolId protocol,
     Common::Compat::span<const std::byte> metadata,
     Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
+    if (!isFrameSizeValid(metadata.size(), payload.size())) {
+        return std::nullopt;
+    }
+
     std::size_t totalSize = sizeof(EnvelopeHeader) + metadata.size() + payload.size();
     std::vector<std::byte> buffer(totalSize);
-    packInto(buffer, protocol, metadata, payload, timestampNs);
+    if (packInto(buffer, protocol, metadata, payload, timestampNs) == 0) {
+        return std::nullopt;
+    }
     return buffer;
 }
 
-std::vector<std::byte> MessageView::packRaw(
+std::optional<std::vector<std::byte>> MessageView::packRaw(
     Common::Compat::span<const std::byte> payload,
     std::uint64_t timestampNs)
 {
     return pack(RawProtocol, { }, payload, timestampNs);
 }
 
-std::vector<std::byte> MessageView::withPayload(
+std::optional<std::vector<std::byte>> MessageView::withPayload(
     const MessageView& view,
     Common::Compat::span<const std::byte> newPayload)
 {
@@ -85,7 +111,7 @@ bool MessageView::hasWireEnvelope() const noexcept
 
 std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byte> buffer) noexcept
 {
-    if (buffer.size() < sizeof(EnvelopeHeader)) {
+    if (buffer.size() < sizeof(EnvelopeHeader) || buffer.size() > MaxEnvelopeFrameBytes) {
         return std::nullopt;
     }
 
@@ -101,8 +127,12 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
     std::uint32_t payloadLength = Common::IO::Wire::readUint32Be(data + 6);
     std::uint64_t timestampNs = Common::IO::Wire::readUint64Be(data + 10);
 
-    std::size_t requiredSize = sizeof(EnvelopeHeader) + metadataLength + payloadLength;
-    if (buffer.size() < requiredSize) {
+    if (!isFrameSizeValid(metadataLength, payloadLength)) {
+        return std::nullopt;
+    }
+
+    const std::size_t requiredSize = sizeof(EnvelopeHeader) + metadataLength + payloadLength;
+    if (buffer.size() != requiredSize) {
         return std::nullopt;
     }
 

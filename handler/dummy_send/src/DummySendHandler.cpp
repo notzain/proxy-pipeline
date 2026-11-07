@@ -1,5 +1,6 @@
 #include "DummySendHandler.hpp"
 #include "backend/IBackend.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "backend/message/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
@@ -12,6 +13,11 @@ bool DummySendHandler::onConfigure(const Core::Config::Configuration& config)
 {
     const auto channelName = config.getOr<std::string>("dummy.channel", "test_channel");
     m_messageText = config.getOr<std::string>("dummy.message", "Hello from DummySend!");
+    if (m_messageText.size() > Backend::MaxEnvelopeFrameBytes - sizeof(Backend::EnvelopeHeader)) {
+        Proxy::Log::error("[DummySend] Configured message exceeds the maximum envelope payload size");
+        return false;
+    }
+
     int delayMs = config.getOr<int>("dummy.delay_ms", 1000);
     m_delay = std::chrono::milliseconds(delayMs);
     m_lastSendTime = std::chrono::steady_clock::now() - m_delay;
@@ -30,11 +36,15 @@ void DummySendHandler::step()
     if (now - m_lastSendTime >= m_delay) {
         m_lastSendTime = now;
 
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(m_messageText));
+        const auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(m_messageText));
+        if (!envelope) {
+            Proxy::Log::error("[DummySend] Configured message could not be packed within the envelope size limit");
+            return;
+        }
 
         if (m_outputChannel) {
             Proxy::Log::info("[DummySend] Sending message to channel '{}': {}", m_outputChannel->name(), m_messageText);
-            m_outputChannel->send(envelope);
+            m_outputChannel->send(*envelope);
         } else {
             Proxy::Log::warn("[DummySend] No output channel is available");
         }

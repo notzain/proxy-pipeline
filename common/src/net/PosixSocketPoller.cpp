@@ -21,6 +21,11 @@ namespace {
         return BytesResult::err(ReceiveFailure { std::error_code(error, std::generic_category()) });
     }
 
+    ReceiveFailure messageTooLarge()
+    {
+        return ReceiveFailure { std::make_error_code(std::errc::message_size) };
+    }
+
     BatchResult batchError(int error, std::size_t receivedCount = 0)
     {
         ReceiveError cause;
@@ -49,21 +54,21 @@ BytesResult PosixSocketPoller::receive(
         return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::invalid_argument) });
     }
 
-    sockaddr_storage ss { };
-    socklen_t addrLen = sizeof(ss);
-    sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-    socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
     auto readDatagram = [&]() -> BytesResult {
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(destination.data()),
-            destination.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
+        sockaddr_storage ss { };
+        iovec iov { destination.data(), destination.size() };
+        msghdr msg { };
+        msg.msg_name = outSourceAddress ? &ss : nullptr;
+        msg.msg_namelen = outSourceAddress ? sizeof(ss) : 0;
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        const ssize_t bytes = ::recvmsg(socketFd, &msg, MSG_DONTWAIT);
         if (bytes >= 0) {
+            if ((msg.msg_flags & MSG_TRUNC) != 0 || static_cast<std::size_t>(bytes) > destination.size()) {
+                return BytesResult::err(messageTooLarge());
+            }
             if (outSourceAddress) {
-                outSourceAddress->setFromNative(&ss, addrLen);
+                outSourceAddress->setFromNative(&ss, msg.msg_namelen);
             }
             return BytesResult::ok(static_cast<std::size_t>(bytes));
         }
@@ -125,8 +130,13 @@ BatchResult PosixSocketPoller::receiveBatch(
     if (slots.empty()) {
         return BatchResult::err({ 0, ReceiveFailure { std::make_error_code(std::errc::invalid_argument) } });
     }
+    for (auto& slot : slots) {
+        slot.size = 0;
+        slot.truncated = false;
+    }
 
     std::size_t count = 0;
+    bool truncated = false;
     const std::size_t maxBatch = slots.size();
 
 #if defined(__linux__)
@@ -137,6 +147,8 @@ BatchResult PosixSocketPoller::receiveBatch(
     sockaddr_storage addrs[kernelBatchMax] { };
 
     for (std::size_t i = 0; i < batchTarget; ++i) {
+        slots[i].size = 0;
+        slots[i].truncated = false;
         iov[i].iov_base = slots[i].buffer.data();
         iov[i].iov_len = slots[i].buffer.size();
         msgvec[i].msg_hdr.msg_iov = &iov[i];
@@ -149,11 +161,19 @@ BatchResult PosixSocketPoller::receiveBatch(
 
     int received = ::recvmmsg(socketFd, msgvec, static_cast<unsigned int>(batchTarget), MSG_DONTWAIT, nullptr);
     if (received > 0) {
+        bool batchTruncated = false;
         for (int i = 0; i < received; ++i) {
-            slots[i].size = msgvec[i].msg_len;
+            const bool slotTruncated = (msgvec[i].msg_hdr.msg_flags & MSG_TRUNC) != 0
+                || msgvec[i].msg_len > iov[i].iov_len;
+            slots[i].size = slotTruncated ? 0 : msgvec[i].msg_len;
+            slots[i].truncated = slotTruncated;
+            batchTruncated = batchTruncated || slotTruncated;
             if (static_cast<std::size_t>(i) < outSourceAddresses.size()) {
                 outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
             }
+        }
+        if (batchTruncated) {
+            return BatchResult::err({ static_cast<std::size_t>(received), messageTooLarge() });
         }
         return BatchResult::ok(static_cast<std::size_t>(received));
     }
@@ -163,21 +183,22 @@ BatchResult PosixSocketPoller::receiveBatch(
 #else
     while (count < maxBatch) {
         sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
+        iovec iov { slots[count].buffer.data(), slots[count].buffer.size() };
+        msghdr msg { };
+        msg.msg_name = count < outSourceAddresses.size() ? &ss : nullptr;
+        msg.msg_namelen = count < outSourceAddresses.size() ? sizeof(ss) : 0;
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        const ssize_t bytes = ::recvmsg(socketFd, &msg, MSG_DONTWAIT);
         if (bytes >= 0) {
+            const bool slotTruncated = (msg.msg_flags & MSG_TRUNC) != 0
+                || static_cast<std::size_t>(bytes) > slots[count].buffer.size();
             if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
+                outSourceAddresses[count].setFromNative(&ss, msg.msg_namelen);
             }
-            slots[count++].size = static_cast<std::size_t>(bytes);
+            slots[count++].size = slotTruncated ? 0 : static_cast<std::size_t>(bytes);
+            slots[count - 1].truncated = slotTruncated;
+            truncated = truncated || slotTruncated;
             continue;
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -188,6 +209,9 @@ BatchResult PosixSocketPoller::receiveBatch(
 #endif
 
     if (count > 0 || timeout.count() <= 0) {
+        if (truncated) {
+            return BatchResult::err({ count, messageTooLarge() });
+        }
         return count > 0
             ? BatchResult::ok(count)
             : BatchResult::err({ 0, ReceiveTimeout { } });
@@ -222,15 +246,26 @@ BatchResult PosixSocketPoller::receiveBatch(
     }
 
 #if defined(__linux__)
+    for (std::size_t i = 0; i < batchTarget; ++i) {
+        msgvec[i].msg_hdr.msg_flags = 0;
+        msgvec[i].msg_hdr.msg_namelen = i < outSourceAddresses.size() ? sizeof(addrs[i]) : 0;
+    }
     received = ::recvmmsg(socketFd, msgvec, static_cast<unsigned int>(batchTarget), MSG_DONTWAIT, nullptr);
     if (received < 0) {
         return batchError(errno);
     }
     for (int i = 0; i < received; ++i) {
-        slots[i].size = msgvec[i].msg_len;
+        const bool slotTruncated = (msgvec[i].msg_hdr.msg_flags & MSG_TRUNC) != 0
+            || msgvec[i].msg_len > iov[i].iov_len;
+        slots[i].size = slotTruncated ? 0 : msgvec[i].msg_len;
+        slots[i].truncated = slotTruncated;
+        truncated = truncated || slotTruncated;
         if (static_cast<std::size_t>(i) < outSourceAddresses.size()) {
             outSourceAddresses[i].setFromNative(&addrs[i], msgvec[i].msg_hdr.msg_namelen);
         }
+    }
+    if (truncated) {
+        return BatchResult::err({ static_cast<std::size_t>(received), messageTooLarge() });
     }
     return received > 0
         ? BatchResult::ok(static_cast<std::size_t>(received))
@@ -238,27 +273,31 @@ BatchResult PosixSocketPoller::receiveBatch(
 #else
     while (count < maxBatch) {
         sockaddr_storage ss { };
-        socklen_t addrLen = sizeof(ss);
-        sockaddr* saPtr = (count < outSourceAddresses.size()) ? reinterpret_cast<sockaddr*>(&ss) : nullptr;
-        socklen_t* saLenPtr = (count < outSourceAddresses.size()) ? &addrLen : nullptr;
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(slots[count].buffer.data()),
-            slots[count].buffer.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
+        iovec iov { slots[count].buffer.data(), slots[count].buffer.size() };
+        msghdr msg { };
+        msg.msg_name = count < outSourceAddresses.size() ? &ss : nullptr;
+        msg.msg_namelen = count < outSourceAddresses.size() ? sizeof(ss) : 0;
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        const ssize_t bytes = ::recvmsg(socketFd, &msg, MSG_DONTWAIT);
         if (bytes >= 0) {
+            const bool slotTruncated = (msg.msg_flags & MSG_TRUNC) != 0
+                || static_cast<std::size_t>(bytes) > slots[count].buffer.size();
             if (count < outSourceAddresses.size()) {
-                outSourceAddresses[count].setFromNative(&ss, addrLen);
+                outSourceAddresses[count].setFromNative(&ss, msg.msg_namelen);
             }
-            slots[count++].size = static_cast<std::size_t>(bytes);
+            slots[count++].size = slotTruncated ? 0 : static_cast<std::size_t>(bytes);
+            slots[count - 1].truncated = slotTruncated;
+            truncated = truncated || slotTruncated;
             continue;
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             return batchError(errno, count);
         }
         break;
+    }
+    if (truncated) {
+        return BatchResult::err({ count, messageTooLarge() });
     }
     return count > 0
         ? BatchResult::ok(count)

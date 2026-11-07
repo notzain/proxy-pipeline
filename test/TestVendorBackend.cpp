@@ -291,7 +291,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
     {
         Backend::Vendor::VendorOutputChannel outputChannel("vendor_out", mockManager, mockSender);
         const std::string payload = "Clean Vendor Egress Payload";
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(payload));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(payload)).value();
 
         REQUIRE(outputChannel.send(Common::Memory::ByteView(envelope)));
         REQUIRE(mockSender->sentPayloads.size() == 1);
@@ -346,7 +346,7 @@ TEST_CASE("VendorBackend Out-of-Band Lease Ownership & Settlement Lifecycle", "[
         VendorTestHandler handler(backend, /*shouldDrop=*/false);
         handler.registerInputChannel(std::make_unique<Backend::Vendor::VendorInputChannel>("vendor_in", backend, mockReceiver));
 
-        const auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(std::string_view("inner")));
+        const auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(std::string_view("inner"))).value();
         const std::string envelopeBytes(reinterpret_cast<const char*>(envelope.data()), envelope.size());
         mockReceiver->enqueue(4503, envelopeBytes);
 

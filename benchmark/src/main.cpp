@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
         Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath);
 
         Common::Memory::ByteView rawXmlSpan(validXmlMsg);
-        auto envelope = Backend::MessageView::packRaw(rawXmlSpan);
+        auto envelope = Backend::MessageView::packRaw(rawXmlSpan).value();
         Common::Compat::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         std::vector<double> latenciesUs;
@@ -256,7 +256,7 @@ int main(int argc, char* argv[])
         // Brief delay to allow UDP socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg)).value();
         Common::Compat::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
@@ -370,7 +370,7 @@ int main(int argc, char* argv[])
         // Brief delay to allow UDS socket binding
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg)).value();
         Common::Compat::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
@@ -485,7 +485,7 @@ int main(int argc, char* argv[])
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg)).value();
         Common::Compat::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();
@@ -586,7 +586,7 @@ int main(int argc, char* argv[])
 
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg));
+        auto envelope = Backend::MessageView::packRaw(Common::Memory::ByteView(validXmlMsg)).value();
         Common::Compat::span<const std::byte> msgSpan(envelope.data(), envelope.size());
 
         auto startAll = std::chrono::steady_clock::now();

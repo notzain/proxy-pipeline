@@ -31,7 +31,8 @@ public:
      * @brief Parses and validates an envelope from a raw Proxy binary envelope buffer.
      *
      * @param buffer Non-owning view of raw bytes received from an IPC channel.
-     * @return std::optional<MessageView> Valid view if the header and lengths match, or std::nullopt.
+     * @return std::optional<MessageView> Valid view if the frame is at most MaxEnvelopeFrameBytes and its
+     *         declared lengths exactly match the supplied buffer, or std::nullopt.
      */
     static std::optional<MessageView> from(Common::Compat::span<const std::byte> buffer) noexcept;
 
@@ -42,9 +43,10 @@ public:
      * @param metadata Non-owning view of metadata bytes.
      * @param payload Non-owning view of payload bytes.
      * @param timestampNs Ingress timestamp in nanoseconds (0 to use current steady/system clock).
-     * @return std::vector<std::byte> Serialized binary envelope.
+     * @return std::optional<std::vector<std::byte>> Serialized envelope, or std::nullopt if it exceeds wire limits.
+     * @throws std::bad_alloc If envelope storage cannot be allocated.
      */
-    static std::vector<std::byte> pack(
+    static std::optional<std::vector<std::byte>> pack(
         ProtocolId protocol,
         Common::Compat::span<const std::byte> metadata,
         Common::Compat::span<const std::byte> payload,
@@ -53,9 +55,12 @@ public:
     /**
      * @brief Packs a strongly-typed protocol metadata struct `T` (registered via `MetadataTraits<T>`)
      *        together with an application payload.
+     *
+     * @return std::optional<std::vector<std::byte>> Serialized envelope, or std::nullopt if it exceeds wire limits.
+     * @throws std::bad_alloc If envelope storage cannot be allocated.
      */
     template <typename T>
-    static std::vector<std::byte> pack(
+    static std::optional<std::vector<std::byte>> pack(
         const T& metadata,
         Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0)
@@ -71,8 +76,11 @@ public:
 
     /**
      * @brief Packs an unadorned/raw application payload (RawProtocol, empty metadata).
+     *
+     * @return std::optional<std::vector<std::byte>> Serialized envelope, or std::nullopt if it exceeds wire limits.
+     * @throws std::bad_alloc If envelope storage cannot be allocated.
      */
-    static std::vector<std::byte> packRaw(
+    static std::optional<std::vector<std::byte>> packRaw(
         Common::Compat::span<const std::byte> payload,
         std::uint64_t timestampNs = 0);
 
@@ -84,7 +92,8 @@ public:
      * @param metadata Metadata byte view.
      * @param payload Payload byte view.
      * @param timestampNs Timestamp in nanoseconds.
-     * @return std::size_t Number of bytes written into destination, or 0 if destination is too small.
+     * @return std::size_t Number of bytes written into destination, or 0 if destination is too small or
+     *         the metadata, payload, or total frame exceeds the wire limits.
      */
     static std::size_t packInto(
         Common::Compat::span<std::byte> destination,
@@ -115,8 +124,11 @@ public:
 
     /**
      * @brief Constructs a new serialized binary envelope reusing @p view's metadata and timestamp with @p newPayload.
+     *
+     * @return std::optional<std::vector<std::byte>> Serialized envelope, or std::nullopt if it exceeds wire limits.
+     * @throws std::bad_alloc If envelope storage cannot be allocated.
      */
-    static std::vector<std::byte> withPayload(
+    static std::optional<std::vector<std::byte>> withPayload(
         const MessageView& view,
         Common::Compat::span<const std::byte> newPayload);
 

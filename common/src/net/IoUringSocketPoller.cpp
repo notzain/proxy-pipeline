@@ -59,21 +59,21 @@ BytesResult IoUringSocketPoller::receive(
     // Fast-path: speculative non-blocking read avoids ring submission when data is ready
     {
         sockaddr_storage directSs { };
-        socklen_t addrLen = sizeof(directSs);
-        sockaddr* saPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&directSs) : nullptr;
-        socklen_t* saLenPtr = outSourceAddress ? &addrLen : nullptr;
-
-        ssize_t directBytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(destination.data()),
-            destination.size(),
-            MSG_DONTWAIT,
-            saPtr,
-            saLenPtr);
+        iovec directIov { destination.data(), destination.size() };
+        msghdr directMsg { };
+        directMsg.msg_name = outSourceAddress ? &directSs : nullptr;
+        directMsg.msg_namelen = outSourceAddress ? sizeof(directSs) : 0;
+        directMsg.msg_iov = &directIov;
+        directMsg.msg_iovlen = 1;
+        const ssize_t directBytes = ::recvmsg(socketFd, &directMsg, MSG_DONTWAIT);
 
         if (directBytes >= 0) {
+            if ((directMsg.msg_flags & MSG_TRUNC) != 0
+                || static_cast<std::size_t>(directBytes) > destination.size()) {
+                return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::message_size) });
+            }
             if (outSourceAddress) {
-                outSourceAddress->setFromNative(&directSs, addrLen);
+                outSourceAddress->setFromNative(&directSs, directMsg.msg_namelen);
             }
             return BytesResult::ok(static_cast<std::size_t>(directBytes));
         }
@@ -150,8 +150,14 @@ BytesResult IoUringSocketPoller::receive(
             const auto tag = io_uring_cqe_get_data64(drainCqe);
             if (tag == kRecvUserData) {
                 if (drainCqe->res >= 0) {
-                    receiveResult = BytesResult::ok(static_cast<std::size_t>(drainCqe->res));
-                    if (outSourceAddress) {
+                    if ((m_impl->msg.msg_flags & MSG_TRUNC) != 0
+                        || static_cast<std::size_t>(drainCqe->res) > destination.size()) {
+                        receiveResult = BytesResult::err(
+                            ReceiveFailure { std::make_error_code(std::errc::message_size) });
+                    } else {
+                        receiveResult = BytesResult::ok(static_cast<std::size_t>(drainCqe->res));
+                    }
+                    if (outSourceAddress && receiveResult.isOk()) {
                         outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
                     }
                 } else if (-drainCqe->res != ECANCELED && -drainCqe->res != EAGAIN) {
@@ -174,8 +180,13 @@ BytesResult IoUringSocketPoller::receive(
 
     if (cqe) {
         if (cqe->res >= 0) {
-            receiveResult = BytesResult::ok(static_cast<std::size_t>(cqe->res));
-            if (outSourceAddress) {
+            if ((m_impl->msg.msg_flags & MSG_TRUNC) != 0
+                || static_cast<std::size_t>(cqe->res) > destination.size()) {
+                receiveResult = BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::message_size) });
+            } else {
+                receiveResult = BytesResult::ok(static_cast<std::size_t>(cqe->res));
+            }
+            if (outSourceAddress && receiveResult.isOk()) {
                 outSourceAddress->setFromNative(&m_impl->ss, m_impl->msg.msg_namelen);
             }
         } else if (-cqe->res != ECANCELED && -cqe->res != EAGAIN) {

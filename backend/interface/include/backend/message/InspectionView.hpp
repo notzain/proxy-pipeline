@@ -36,9 +36,10 @@ public:
      *
      * @param message The original message view to wrap.
      * @param header The InspectionHeader to prepend.
-     * @return std::vector<std::byte> The serialized wire envelope.
+     * @return std::optional<std::vector<std::byte>> The serialized envelope, or std::nullopt if it exceeds wire limits.
+     * @throws std::bad_alloc If envelope storage cannot be allocated.
      */
-    static std::vector<std::byte> pack(const MessageView& message, const InspectionHeader& header);
+    static std::optional<std::vector<std::byte>> pack(const MessageView& message, const InspectionHeader& header);
 
     /**
      * @brief Returns the underlying MessageView.
@@ -66,7 +67,7 @@ public:
         if (metaSpan.size() < sizeof(T)) {
             return std::nullopt;
         }
-        T out {};
+        T out { };
         std::memcpy(&out, metaSpan.data(), sizeof(T));
         return out;
     }
@@ -83,4 +84,3 @@ private:
 };
 
 } // namespace Backend
-

@@ -1,7 +1,10 @@
 #include "backend/uds/UdsInputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "common/net/ISocketPoller.hpp"
 #include "log/Log.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
@@ -91,7 +94,8 @@ BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout ti
     }
 
     if (m_poller) {
-        auto result = m_poller->receive(m_socketFd, slot.buffer, timeout);
+        auto receiveBuffer = slot.buffer.first(std::min(slot.buffer.size(), ::Backend::MaxEnvelopeFrameBytes));
+        auto result = m_poller->receive(m_socketFd, receiveBuffer, timeout);
         if (result.isOk()) {
             slot.size = result.unwrap();
         }
@@ -121,7 +125,10 @@ BatchResult UdsInputChannel::receiveBatch(
         const std::size_t batchSize = std::min(slots.size(), MaxBatch);
         std::array<Common::Net::PollerBufferSlot, MaxBatch> pollerSlots;
         for (std::size_t i = 0; i < batchSize; ++i) {
-            pollerSlots[i] = Common::Net::PollerBufferSlot { slots[i].buffer, 0 };
+            slots[i].size = 0;
+            const auto receiveBuffer = slots[i].buffer.first(
+                std::min(slots[i].buffer.size(), ::Backend::MaxEnvelopeFrameBytes));
+            pollerSlots[i] = Common::Net::PollerBufferSlot { receiveBuffer, 0 };
         }
 
         auto result = m_poller->receiveBatch(

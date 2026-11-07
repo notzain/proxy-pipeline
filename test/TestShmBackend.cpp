@@ -2,12 +2,18 @@
 #include "backend/shm/ShmInputChannel.hpp"
 #include "backend/shm/ShmOutputChannel.hpp"
 #include "backend/shm/ShmRingBuffer.hpp"
+#include "common/io/UniqueFd.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
 #include <catch2/catch_test_macros.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 using namespace Proxy::Backend::Shm;
@@ -127,6 +133,80 @@ TEST_CASE("ShmRingBuffer: Vectorized Batch Operations", "[shm]")
     }
 
     std::filesystem::remove(testPath);
+}
+
+TEST_CASE("ShmRingBuffer restricts file permissions and rejects incompatible mappings", "[shm][hardening]")
+{
+    const std::string testPath = "/tmp/test_shm_ring_hardening.dat";
+    std::filesystem::remove(testPath);
+
+    {
+        ShmRingBuffer ring(testPath, 4);
+        REQUIRE(ring.isValid());
+    }
+
+    struct stat status { };
+    REQUIRE(::stat(testPath.c_str(), &status) == 0);
+    CHECK((status.st_mode & 0777) == 0600);
+
+    {
+        Common::Io::UniqueFd fd(::open(testPath.c_str(), O_RDWR));
+        REQUIRE(fd);
+        const uint32_t invalidCapacity = 3;
+        REQUIRE(::pwrite(
+                    fd.get(),
+                    &invalidCapacity,
+                    sizeof(invalidCapacity),
+                    static_cast<off_t>(offsetof(ShmHeader, capacity)))
+            == static_cast<ssize_t>(sizeof(invalidCapacity)));
+    }
+
+    {
+        ShmRingBuffer ring(testPath, 4);
+        CHECK_FALSE(ring.isValid());
+    }
+
+    std::filesystem::remove(testPath);
+}
+
+TEST_CASE("ShmRingBuffer rejects corrupted slot lengths and does not truncate to destination", "[shm][hardening]")
+{
+    const std::string corruptPath = "/tmp/test_shm_ring_corrupt_slot.dat";
+    std::filesystem::remove(corruptPath);
+
+    {
+        ShmRingBuffer ring(corruptPath, 4);
+        REQUIRE(ring.isValid());
+        std::array<std::byte, 8> message { };
+        REQUIRE(ring.push(message));
+
+        Common::Io::UniqueFd fd(::open(corruptPath.c_str(), O_RDWR));
+        REQUIRE(fd);
+        const auto invalidLength = static_cast<uint32_t>(ShmRingBuffer::MaxPayloadBytes + 1);
+        const auto lengthOffset = sizeof(ShmHeader) + offsetof(ShmSlot, length);
+        REQUIRE(::pwrite(fd.get(), &invalidLength, sizeof(invalidLength), static_cast<off_t>(lengthOffset))
+            == static_cast<ssize_t>(sizeof(invalidLength)));
+
+        std::array<std::byte, 16> destination { };
+        CHECK(ring.popInto(destination) == 0);
+        CHECK_FALSE(ring.isValid());
+    }
+    std::filesystem::remove(corruptPath);
+
+    const std::string smallBufferPath = "/tmp/test_shm_ring_small_buffer.dat";
+    std::filesystem::remove(smallBufferPath);
+    {
+        ShmRingBuffer ring(smallBufferPath, 4);
+        REQUIRE(ring.isValid());
+        std::array<std::byte, 16> message { };
+        REQUIRE(ring.push(message));
+
+        std::array<std::byte, 8> destination { };
+        CHECK(ring.popInto(destination) == 0);
+        CHECK(ring.isValid());
+        CHECK(ring.empty());
+    }
+    std::filesystem::remove(smallBufferPath);
 }
 
 TEST_CASE("ShmInputChannel and ShmOutputChannel: End-to-End Inter-Channel Communication", "[shm]")

@@ -62,7 +62,8 @@ TEST_CASE("SimpleExecutionStrategy runs deterministic message loop", "[threading
     {
         const std::string testMsg = "Hello Simple Strategy";
         auto env = Backend::MessageView::packRaw(
-            Common::Compat::as_bytes(Common::Compat::span<const char>(testMsg.data(), testMsg.size())));
+            Common::Compat::as_bytes(Common::Compat::span<const char>(testMsg.data(), testMsg.size())))
+                       .value();
         rawChannel->pushMessage(Common::Compat::span<const std::byte>(env.data(), env.size()));
 
         Core::Handler::HandlerRunner runner(handler);

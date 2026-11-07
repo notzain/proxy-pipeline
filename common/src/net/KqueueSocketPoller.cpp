@@ -76,16 +76,19 @@ BytesResult KqueueSocketPoller::receive(
     sockaddr* addressPtr = outSourceAddress ? reinterpret_cast<sockaddr*>(&address) : nullptr;
     socklen_t* addressLengthPtr = outSourceAddress ? &addressLength : nullptr;
     auto readDatagram = [&]() -> BytesResult {
-        ssize_t bytes = ::recvfrom(
-            socketFd,
-            reinterpret_cast<char*>(destination.data()),
-            destination.size(),
-            MSG_DONTWAIT,
-            addressPtr,
-            addressLengthPtr);
+        iovec iov { destination.data(), destination.size() };
+        msghdr msg { };
+        msg.msg_name = addressPtr;
+        msg.msg_namelen = addressLengthPtr ? *addressLengthPtr : 0;
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        const ssize_t bytes = ::recvmsg(socketFd, &msg, MSG_DONTWAIT);
         if (bytes >= 0) {
+            if ((msg.msg_flags & MSG_TRUNC) != 0 || static_cast<std::size_t>(bytes) > destination.size()) {
+                return BytesResult::err(ReceiveFailure { std::make_error_code(std::errc::message_size) });
+            }
             if (outSourceAddress) {
-                outSourceAddress->setFromNative(&address, addressLength);
+                outSourceAddress->setFromNative(&address, msg.msg_namelen);
             }
             return BytesResult::ok(static_cast<std::size_t>(bytes));
         }

@@ -92,8 +92,13 @@ Backend::MessageResult ScatterHandler::onMessageReceived(
             .originalMetadataLength = static_cast<std::uint16_t>(message.metadata().size())
         };
 
-        auto packedEnvelope = Backend::InspectionView::pack(message, header);
-        auto optView = Backend::MessageView::from(Common::Compat::span<const std::byte>(packedEnvelope.data(), packedEnvelope.size()));
+        const auto packedEnvelope = Backend::InspectionView::pack(message, header);
+        if (!packedEnvelope) {
+            Proxy::Log::error("[ScatterHandler] Could not serialize inspection envelope for branch {}", i);
+            return Backend::Dropped { .reason = "Inspection envelope exceeds envelope size limit", .errorCode = 413 };
+        }
+
+        auto optView = Backend::MessageView::from(Common::Compat::span<const std::byte>(packedEnvelope->data(), packedEnvelope->size()));
         if (!optView) {
             Proxy::Log::error("[ScatterHandler] Failed to serialize inspection envelope for branch {}", i);
             continue;

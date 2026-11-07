@@ -46,7 +46,7 @@ public:
      * `message.payload()` if the instance was already consumed by an earlier send.
      *
      * @param message In-flight message view to forward.
-     * @return true If the message was successfully dispatched, false otherwise.
+     * @return true If the message was successfully dispatched, false if packing failed or the transport rejected it.
      */
     virtual bool send(const MessageView& message);
 

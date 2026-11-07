@@ -20,7 +20,7 @@ std::optional<InspectionView> InspectionView::from(const MessageView& message) n
     return InspectionView(message, header);
 }
 
-std::vector<std::byte> InspectionView::pack(const MessageView& message, const InspectionHeader& header)
+std::optional<std::vector<std::byte>> InspectionView::pack(const MessageView& message, const InspectionHeader& header)
 {
     const auto origMeta = message.metadata();
     const std::size_t combinedMetaSize = sizeof(InspectionHeader) + origMeta.size();
@@ -57,7 +57,7 @@ Common::Compat::span<const std::byte> InspectionView::extractMetadata() const no
 {
     const auto meta = m_message.metadata();
     if (meta.size() <= sizeof(InspectionHeader)) {
-        return {};
+        return { };
     }
     const auto available = meta.size() - sizeof(InspectionHeader);
     const auto length = std::min(static_cast<std::size_t>(m_header.originalMetadataLength), available);
@@ -65,4 +65,3 @@ Common::Compat::span<const std::byte> InspectionView::extractMetadata() const no
 }
 
 } // namespace Backend
-

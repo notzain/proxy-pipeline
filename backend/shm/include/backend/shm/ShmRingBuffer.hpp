@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace Proxy::Backend::Shm {
 
@@ -158,9 +159,13 @@ private:
     std::size_t m_mappedSize { 0 };
     ShmHeader* m_header { nullptr };
     ShmSlot* m_slots { nullptr };
+    std::size_t m_capacity { 0 };
+    std::atomic<bool> m_corrupted { false };
+    std::atomic<uint64_t> m_invalidSlotCount { 0 };
 
     void mapMemory(std::size_t capacity);
     void unmapMemory();
+    void logInvalidSlot(std::string_view message, std::size_t length, std::size_t capacity);
 };
 
 } // namespace Proxy::Backend::Shm

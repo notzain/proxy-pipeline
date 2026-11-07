@@ -25,7 +25,8 @@ public:
      * @param destination Target buffer.
      * @param timeout Maximum wait duration.
      * @param outSourceAddress Optional pointer to record sender's address.
-     * @return Typed result distinguishing received data, timeout, closure, and errors.
+     * @return Typed result distinguishing received data, timeout, closure, and errors. A truncated datagram
+     *         returns `ReceiveFailure` with `std::errc::message_size` and is never reported as received data.
      */
     virtual BytesResult receive(
         int socketFd,
@@ -42,7 +43,8 @@ public:
      * @param slots Target buffer slots to populate. Each slot contains a target buffer and tracks received byte count.
      * @param timeout Maximum wait duration for the first packet.
      * @param outSourceAddresses Optional span to record sender addresses.
-     * @return Typed result containing the packet count or the receive status.
+     * @return Typed result containing the packet count or the receive status. Truncated slots are marked in
+     *         `PollerBufferSlot::truncated`, have size zero, and cause a `message_size` failure.
      */
     virtual BatchResult receiveBatch(
         int socketFd,

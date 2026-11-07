@@ -10,6 +10,8 @@ namespace Backend {
 
 inline constexpr std::uint16_t EnvelopeMagic = 0x5058; // 'PX' (Proxy eXchange)
 inline constexpr std::uint8_t EnvelopeVersion = 1;
+/// Maximum total size of an enveloped frame accepted by the current ingress buffers.
+inline constexpr std::size_t MaxEnvelopeFrameBytes = 65535;
 
 /**
  * @brief Fixed-size, packed binary envelope header preceding every message frame.

@@ -3,6 +3,7 @@
 #include "backend/IBackend.hpp"
 #include "backend/channel/IInputChannel.hpp"
 #include "backend/channel/IOutputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "backend/message/MessageView.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/config/Configuration.hpp"
@@ -11,6 +12,7 @@
 #include "core/net/UdpMetadata.hpp"
 #include "core/net/UdpOutputChannel.hpp"
 #include <arpa/inet.h>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cstddef>
@@ -178,7 +180,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
 
     SECTION("Pack raw envelope")
     {
-        auto env = Backend::MessageView::packRaw(payloadSpan);
+        auto env = Backend::MessageView::packRaw(payloadSpan).value();
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
@@ -198,7 +200,7 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         meta.dstIp = 0x0100007F;
         meta.dstPort = htons(9123);
 
-        auto env = Backend::MessageView::pack(meta, payloadSpan);
+        auto env = Backend::MessageView::pack(meta, payloadSpan).value();
         auto view = Backend::MessageView::from(env);
 
         REQUIRE(view.has_value());
@@ -217,14 +219,14 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
     {
         Core::Net::UdpMetadata meta { };
         meta.srcPort = htons(1122);
-        auto env = Backend::MessageView::pack(meta, payloadSpan);
+        auto env = Backend::MessageView::pack(meta, payloadSpan).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
         std::string updatedPayload = "<order><item>SuperWidget</item><qty>10</qty></order>";
         Common::Memory::ByteView updatedSpan(updatedPayload);
 
-        auto mutatedEnv = Backend::MessageView::withPayload(*view, updatedSpan);
+        auto mutatedEnv = Backend::MessageView::withPayload(*view, updatedSpan).value();
         auto mutatedView = Backend::MessageView::from(mutatedEnv);
 
         REQUIRE(mutatedView.has_value());
@@ -288,7 +290,8 @@ TEST_CASE("Backend::MessageView binary wire packing and parsing", "[message][env
         // Verify packing produces identical bytes
         std::vector<std::byte> packed = Backend::MessageView::packRaw(
             view->payload(),
-            0x0102030405060708ULL);
+            0x0102030405060708ULL)
+                                            .value();
         REQUIRE(packed.size() == goldenWire.size());
         for (std::size_t i = 0; i < packed.size(); ++i) {
             CHECK(static_cast<std::uint8_t>(packed[i]) == goldenWire[i]);
@@ -325,7 +328,7 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         sendTestUdpDatagram("127.0.0.1", testPort, expectedPayload);
 
         std::array<std::byte, 2048> buffer;
-        Backend::BufferSlot slot { buffer, 0 };
+        Backend::BufferSlot slot { Common::Compat::span<std::byte>(buffer), 0 };
         auto receiveResult = channel.receiveSlot(slot, std::chrono::milliseconds(500));
 
         REQUIRE(receiveResult.isOk());
@@ -341,6 +344,34 @@ TEST_CASE("Core::Net::UdpInputChannel receives external UDP datagrams as envelop
         std::string_view receivedView(reinterpret_cast<const char*>(view->payload().data()), view->payload().size());
         CHECK(receivedView == expectedPayload);
     }
+}
+
+TEST_CASE("Core::Net::UdpInputChannel rejects truncated datagrams", "[net][udp][hardening]")
+{
+    constexpr std::uint16_t testPort = 19877;
+    Core::Net::UdpInputChannel channel("127.0.0.1", testPort);
+    REQUIRE(channel.getNativeSocket() >= 0);
+
+    const std::string oversizedPayload(100, 'x');
+    sendTestUdpDatagram("127.0.0.1", testPort, oversizedPayload);
+
+    std::array<std::byte, 80> buffer { };
+    Backend::BufferSlot slot { buffer, 0 };
+    auto result = channel.receiveSlot(slot, std::chrono::milliseconds(500));
+
+    REQUIRE_FALSE(result.isOk());
+    const auto* failure = std::get_if<Common::Net::ReceiveFailure>(&result.unwrapErr());
+    REQUIRE(failure != nullptr);
+    CHECK(failure->code == std::make_error_code(std::errc::message_size));
+    CHECK(slot.size == 0);
+
+    sendTestUdpDatagram("127.0.0.1", testPort, oversizedPayload);
+    std::array<Backend::BufferSlot, 1> slots {
+        Backend::BufferSlot { Common::Compat::span<std::byte>(buffer), 0 }
+    };
+    auto batchResult = channel.receiveBatch(slots, std::chrono::milliseconds(500));
+    REQUIRE_FALSE(batchResult.isOk());
+    CHECK(slots[0].size == 0);
 }
 
 TEST_CASE("UDP channel moves preserve their names", "[net][udp][move]")
@@ -431,7 +462,8 @@ TEST_CASE("UdpEgressHandler restores client metadata and transmits reply over UD
     std::string expectedPayload = "<order_receipt status=\"confirmed\"/>";
     auto envelope = Backend::MessageView::pack(
         meta,
-        Common::Memory::ByteView(expectedPayload));
+        Common::Memory::ByteView(expectedPayload))
+                        .value();
 
     // Configure Egress Handler reading from a mock input channel
     DummyTestBackend backend;
@@ -492,7 +524,8 @@ TEST_CASE("UdpEgressHandler restores IPv6 client metadata and transmits reply ov
     std::string expectedPayload = "<order_receipt ipv6=\"true\"/>";
     auto envelope = Backend::MessageView::pack(
         meta,
-        Common::Memory::ByteView(expectedPayload));
+        Common::Memory::ByteView(expectedPayload))
+                        .value();
 
     DummyTestBackend backend;
     std::vector<std::vector<std::byte>> queuedMsgs { envelope };
@@ -539,8 +572,8 @@ TEST_CASE("UdpEgressHandler vectorized batch forward transmits all payloads in f
 
     const std::string payload1 = "BatchPacket1";
     const std::string payload2 = "BatchPacket2";
-    auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload1));
-    auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload2));
+    auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload1)).value();
+    auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(payload2)).value();
 
     DummyTestBackend backend;
     std::vector<std::vector<std::byte>> queuedMsgs { env1, env2 };

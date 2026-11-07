@@ -9,7 +9,7 @@ In multi-stage distributed message pipelines, passing naked application payloads
 - **Protocol Ambiguity**: Pipelines processing multiple simultaneous protocols (e.g. FIX, ITCH/OUCH, XML) cannot inspect protocol identity without parsing each message's internal payload.
 
 ### The Solution
-The system encapsulates every message in a standardized, compact binary **`MessageEnvelope`**. The envelope prepends a fixed-size header containing integrity checksums, timestamps, protocol IDs, and an extensible metadata section (**`UdpMetadata`**) that preserves network origin across arbitrary pipeline stages.
+The system encapsulates every message in a standardized, compact binary **`MessageEnvelope`**. The envelope prepends a fixed-size header containing timestamps, protocol IDs, and an extensible metadata section (**`UdpMetadata`**) that preserves network origin across arbitrary pipeline stages. The current envelope does not contain an integrity checksum or authentication tag.
 
 ---
 
@@ -79,6 +79,7 @@ sequenceDiagram
    - When receiving a message, handlers receive a `MessageView` that points directly into the channel's receive buffer without heap allocation.
    - Accessors (`view.payload()`, `view.metadata()`, `view.rawBuffer()`) return lightweight `Common::Compat::span<const std::byte>` slices.
    - Strongly-typed metadata is accessed via `view.getMetadata<T>()` through traits (`MetadataTraits<T>`) using alignment-safe copies.
+
 ### 3. Open Protocol Identification & Decentralized Reflection (`MetadataCatalog`)
 - Replaced fixed enum identifiers with `Common::Types::StrongType<std::uint8_t, ProtocolIdTag>` aligned with standard IANA 8-bit protocol numbers (e.g. `IPPROTO_UDP` = 17, `RawProtocol` = 0) and `MetadataTraits<T>`.
 - **Decentralized Protocol Reflection (`Core::Metadata::MetadataCatalog`)**: Protocol metadata structures (e.g. `Core::Net::UdpMetadata`) register with `MetadataCatalog` via `PROXY_REGISTER_METADATA(Type)` without creating circular dependencies on handlers or scripting engines.
@@ -92,3 +93,14 @@ sequenceDiagram
    - **Cross-Host and Distributed Tracing**: Because `MessageEnvelope` traverses physical network sockets (UDP, TCP) and inter-process boundaries where producer and consumer processes may run on separate hosts or containers without a shared monotonic timebase, epoch wall-clock time is required for distributed correlation and simulation replay (e.g. PCAP captures, JSON traces).
    - **Intra-Host Monotonic Latency**: For internal hop timeouts, poller deadlines, and ring buffer synchronization, channels and execution strategies strictly use `std::chrono::steady_clock` to prevent clock shifts or NTP skew from causing deadlocks or erratic timeout behavior.
 
+## 6. Safe Framing and Receive Limits
+
+The current wire-frame ceiling is `Backend::MaxEnvelopeFrameBytes` (65,535 bytes total, including the 18-byte `EnvelopeHeader` and metadata). A transport may impose a lower limit. This shared ceiling matches the fixed ingress scratch-slot size; it is not a configurable per-channel setting.
+
+`MessageView::from()` accepts only complete frames whose declared header, metadata, and payload lengths exactly consume the provided byte span. Length arithmetic and wire-field conversions are checked before reading or writing a frame. Packing that cannot be represented by the wire format reports failure through `packInto()` returning zero or the allocating helpers returning `std::nullopt`.
+
+Datagram pollers use receive flags that expose truncation. A truncated datagram is returned as `std::errc::message_size` and is not parsed or dispatched as a complete frame. Batched pollers mark individual truncated slots and preserve that information through channel wrappers. File, in-process, simulation, and mock input paths reject oversized input rather than silently accepting a prefix.
+
+For file-backed shared memory, a mapping is accepted only when its backing file and validated header/capacity match the configured layout. Invalid mappings are rejected rather than resized or reinitialized. Slots with invalid lengths are rejected instead of copied as truncated messages.
+
+These checks provide framing and bounds safety only. They do not authenticate a sender, prevent replay, or detect all accidental corruption.

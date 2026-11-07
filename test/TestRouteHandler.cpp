@@ -85,17 +85,17 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
     SECTION("Single message routing")
     {
         std::string msg1 = "Hello VIP Customer";
-        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg1));
+        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg1)).value();
         auto view1 = Backend::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
         std::string msg2 = "STD: Regular Customer";
-        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg2));
+        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg2)).value();
         auto view2 = Backend::MessageView::from(env2);
         REQUIRE(view2.has_value());
 
         std::string msg3 = "Other message";
-        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg3));
+        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msg3)).value();
         auto view3 = Backend::MessageView::from(env3);
         REQUIRE(view3.has_value());
 
@@ -120,10 +120,10 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string msgStd = "STD: Batch";
         std::string msgDef = "Default Fallback";
 
-        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip1));
-        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgStd));
-        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip2));
-        auto env4 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgDef));
+        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip1)).value();
+        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgStd)).value();
+        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgVip2)).value();
+        auto env4 = Backend::MessageView::packRaw(Common::Memory::ByteView(msgDef)).value();
 
         std::vector<Backend::MessageView> batch = {
             *Backend::MessageView::from(env1),
@@ -169,7 +169,8 @@ TEST_CASE("RouteHandler content-based routing rules", "[handler][router]")
         std::string payload = "Datagram from 9050";
         auto env = Backend::MessageView::pack(
             meta,
-            Common::Memory::ByteView(payload));
+            Common::Memory::ByteView(payload))
+                       .value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -209,7 +210,7 @@ TEST_CASE("RouteHandler composable rules, fluent builder and rejection reasons",
     SECTION("Rejection triggers Dropped with explicit reason and error code")
     {
         std::string multiLine = "Line1\nLine2\nLine3\nLine4";
-        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(multiLine));
+        auto env1 = Backend::MessageView::packRaw(Common::Memory::ByteView(multiLine)).value();
         auto view1 = Backend::MessageView::from(env1);
         REQUIRE(view1.has_value());
 
@@ -230,7 +231,7 @@ TEST_CASE("RouteHandler composable rules, fluent builder and rejection reasons",
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "HDR:Authorized packet";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -252,7 +253,7 @@ TEST_CASE("RouteHandler composable rules, fluent builder and rejection reasons",
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "HDR:SECRET_DATA";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -275,9 +276,9 @@ TEST_CASE("RouteHandler composable rules, fluent builder and rejection reasons",
         std::string badMsg1 = "a\nb\nc\nd";
         std::string badMsg2 = "Contains SECRET token";
 
-        auto env1 = Backend::MessageView::pack(meta, Common::Memory::ByteView(goodMsg));
-        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(badMsg1));
-        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(badMsg2));
+        auto env1 = Backend::MessageView::pack(meta, Common::Memory::ByteView(goodMsg)).value();
+        auto env2 = Backend::MessageView::packRaw(Common::Memory::ByteView(badMsg1)).value();
+        auto env3 = Backend::MessageView::packRaw(Common::Memory::ByteView(badMsg2)).value();
 
         std::vector<Backend::MessageView> batch = {
             *Backend::MessageView::from(env1),
@@ -328,7 +329,7 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
     SECTION("Expression OR matches first branch (newlines)")
     {
         std::string payload = "line1\nline2\nline3\nline4";
-        auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -346,7 +347,7 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "BLOCK: Suspicious activity";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -363,7 +364,7 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "BLOCK: Whitelisted maintenance bypass";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -381,7 +382,7 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "HDR:Good message";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -398,7 +399,7 @@ TEST_CASE("RouteHandler parses inline expr with AND, OR, NOT from config", "[han
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "HDR:Message with BAD content";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -440,7 +441,7 @@ TEST_CASE("RouteHandler evaluates generic metadata field conditions and expr syn
         meta.addressFamily = 4;
 
         std::string payload = "SECURE:TopSecretData";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -456,7 +457,7 @@ TEST_CASE("RouteHandler evaluates generic metadata field conditions and expr syn
         meta.addressFamily = 4;
 
         std::string payload = "NORMAL:Data";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -473,14 +474,14 @@ TEST_CASE("RouteHandler evaluates generic metadata field conditions and expr syn
 
         Core::Net::UdpMetadata metaMatch;
         metaMatch.srcPort = 9999;
-        auto envMatch = Backend::MessageView::pack(metaMatch, Common::Memory::ByteView("payload"));
+        auto envMatch = Backend::MessageView::pack(metaMatch, Common::Memory::ByteView("payload")).value();
         auto viewMatch = Backend::MessageView::from(envMatch);
         REQUIRE(viewMatch.has_value());
         CHECK(rule.matches(*viewMatch));
 
         Core::Net::UdpMetadata metaNoMatch;
         metaNoMatch.srcPort = 1111;
-        auto envNoMatch = Backend::MessageView::pack(metaNoMatch, Common::Memory::ByteView("payload"));
+        auto envNoMatch = Backend::MessageView::pack(metaNoMatch, Common::Memory::ByteView("payload")).value();
         auto viewNoMatch = Backend::MessageView::from(envNoMatch);
         REQUIRE(viewNoMatch.has_value());
         CHECK_FALSE(rule.matches(*viewNoMatch));
@@ -519,7 +520,7 @@ TEST_CASE("RouteHandler evaluates embedded Lua routing rules and rejections", "[
     SECTION("Lua rule rejects when newline count matches")
     {
         std::string payload = "line1\nline2\nline3\nline4";
-        auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::packRaw(Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -539,7 +540,7 @@ TEST_CASE("RouteHandler evaluates embedded Lua routing rules and rejections", "[
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "LUA:Dynamic route packet";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 
@@ -558,7 +559,7 @@ TEST_CASE("RouteHandler evaluates embedded Lua routing rules and rejections", "[
         meta.srcIp = inet_addr("127.0.0.1");
 
         std::string payload = "LUA:Dynamic route packet";
-        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload));
+        auto env = Backend::MessageView::pack(meta, Common::Memory::ByteView(payload)).value();
         auto view = Backend::MessageView::from(env);
         REQUIRE(view.has_value());
 

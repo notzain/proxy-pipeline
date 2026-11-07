@@ -1,4 +1,5 @@
 #include "backend/file/FileInputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <chrono>
@@ -55,7 +56,20 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
             if (fileSize < 0) {
                 return BytesResult::err(Common::Net::ReceiveFailure { std::make_error_code(std::errc::io_error) });
             }
-            const auto bytesToRead = std::min(destination.size(), static_cast<std::size_t>(fileSize));
+            const auto maxBytes = std::min(destination.size(), ::Backend::MaxEnvelopeFrameBytes);
+            if (fileSize > static_cast<std::streamoff>(maxBytes)) {
+                file.close();
+                std::error_code removeError;
+                std::filesystem::remove(filePath, removeError);
+                if (removeError) {
+                    Proxy::Log::error("[FileInputChannel] Could not remove oversized input file {}: {}",
+                        filePath.string(), removeError.message());
+                }
+                return BytesResult::err(Common::Net::ReceiveFailure {
+                    std::make_error_code(std::errc::message_size) });
+            }
+
+            const auto bytesToRead = static_cast<std::size_t>(fileSize);
             file.seekg(0, std::ios::beg);
             file.read(reinterpret_cast<char*>(destination.data()), static_cast<std::streamsize>(bytesToRead));
             if (!file && bytesToRead != 0) {

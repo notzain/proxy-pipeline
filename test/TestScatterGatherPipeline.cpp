@@ -84,7 +84,8 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
         std::string payloadStr = "{\"action\":\"inspect_me\",\"packetId\":42}";
         auto udpEnvelope = Backend::MessageView::pack(
             udpMeta,
-            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(payloadStr.data()), payloadStr.size()));
+            Common::Compat::span<const std::byte>(reinterpret_cast<const std::byte*>(payloadStr.data()), payloadStr.size()))
+                               .value();
         auto optMsg = Backend::MessageView::from(Common::Compat::span<const std::byte>(udpEnvelope.data(), udpEnvelope.size()));
         REQUIRE(optMsg.has_value());
         REQUIRE(optMsg->protocol().value() == IPPROTO_UDP);
@@ -148,7 +149,8 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
 
         auto innerEnv = Backend::MessageView::pack(
             origUdp,
-            payloadSpan);
+            payloadSpan)
+                            .value();
         auto innerMsg = Backend::MessageView::from(Common::Compat::span<const std::byte>(innerEnv.data(), innerEnv.size()));
         REQUIRE(innerMsg.has_value());
 
@@ -162,7 +164,7 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
             .originalMetadataLength = sizeof(origUdp)
         };
 
-        auto env0 = Backend::InspectionView::pack(*innerMsg, header0);
+        auto env0 = Backend::InspectionView::pack(*innerMsg, header0).value();
         auto msg0 = Backend::MessageView::from(Common::Compat::span<const std::byte>(env0.data(), env0.size()));
         REQUIRE(msg0.has_value());
 
@@ -173,7 +175,7 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
 
         Backend::InspectionHeader header1 = header0;
         header1.splitIndex = 1;
-        auto env1 = Backend::InspectionView::pack(*innerMsg, header1);
+        auto env1 = Backend::InspectionView::pack(*innerMsg, header1).value();
         auto msg1 = Backend::MessageView::from(Common::Compat::span<const std::byte>(env1.data(), env1.size()));
         REQUIRE(msg1.has_value());
 
@@ -221,7 +223,7 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
             .originalMetadataLength = 0
         };
 
-        auto envReject = Backend::InspectionView::pack(rawMsg, rejectHeader);
+        auto envReject = Backend::InspectionView::pack(rawMsg, rejectHeader).value();
         auto msgReject = Backend::MessageView::from(Common::Compat::span<const std::byte>(envReject.data(), envReject.size()));
         REQUIRE(msgReject.has_value());
 
@@ -258,7 +260,7 @@ TEST_CASE("Scatter-Gather Pipeline: Fork-Join Inspection Flow", "[handler][scatt
             .originalMetadataLength = 0
         };
 
-        auto env0 = Backend::InspectionView::pack(rawMsg, header0);
+        auto env0 = Backend::InspectionView::pack(rawMsg, header0).value();
         auto msg0 = Backend::MessageView::from(Common::Compat::span<const std::byte>(env0.data(), env0.size()));
         REQUIRE(msg0.has_value());
 

@@ -1,4 +1,5 @@
 #include "core/simulation/MockInputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "common/memory/ByteView.hpp"
 #include "core/simulation/SimulationClock.hpp"
 #include <algorithm>
@@ -70,7 +71,12 @@ Common::Net::BytesResult MockInputChannel::receiveSlot(::Backend::BufferSlot& sl
             std::lock_guard lock(m_mutex);
             if (!m_queue.empty() && isReady(m_queue.front())) {
                 const auto& data = m_queue.front().data;
-                std::size_t copyLen = std::min(slot.buffer.size(), data.size());
+                if (data.size() > slot.buffer.size() || data.size() > ::Backend::MaxEnvelopeFrameBytes) {
+                    m_queue.pop_front();
+                    return BytesResult::err(
+                        Common::Net::ReceiveFailure { std::make_error_code(std::errc::message_size) });
+                }
+                const std::size_t copyLen = data.size();
                 std::memcpy(slot.buffer.data(), data.data(), copyLen);
                 slot.size = copyLen;
                 m_queue.pop_front();
@@ -103,15 +109,22 @@ Common::Net::BatchResult MockInputChannel::receiveBatch(
 
     auto startTime = std::chrono::steady_clock::now();
     std::size_t drained = 0;
+    bool oversized = false;
 
     while (true) {
         {
             std::lock_guard lock(m_mutex);
             while (drained < slots.size() && !m_queue.empty() && isReady(m_queue.front())) {
                 const auto& item = m_queue.front();
-                std::size_t copyLen = std::min(slots[drained].buffer.size(), item.data.size());
-                std::memcpy(slots[drained].buffer.data(), item.data.data(), copyLen);
-                slots[drained].size = copyLen;
+                if (item.data.size() > slots[drained].buffer.size()
+                    || item.data.size() > ::Backend::MaxEnvelopeFrameBytes) {
+                    slots[drained].size = 0;
+                    oversized = true;
+                } else {
+                    const std::size_t copyLen = item.data.size();
+                    std::memcpy(slots[drained].buffer.data(), item.data.data(), copyLen);
+                    slots[drained].size = copyLen;
+                }
                 drained++;
                 m_queue.pop_front();
             }
@@ -130,7 +143,10 @@ Common::Net::BatchResult MockInputChannel::receiveBatch(
     }
 
     return drained > 0
-        ? BatchResult::ok(drained)
+        ? (oversized
+                  ? BatchResult::err(
+                        { drained, Common::Net::ReceiveFailure { std::make_error_code(std::errc::message_size) } })
+                  : BatchResult::ok(drained))
         : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 

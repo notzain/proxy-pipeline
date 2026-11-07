@@ -1,4 +1,5 @@
 #include "SimInputChannel.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "backend/message/MessageView.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
@@ -141,21 +142,33 @@ BatchResult SimInputChannel::receiveBatch(
             : BatchResult::err({ 0, Common::Net::ReceiveClosed { } });
     }
 
+    for (auto& slot : slots) {
+        slot.size = 0;
+    }
+
     std::size_t count = 0;
+    bool truncated = false;
     auto start = std::chrono::steady_clock::now();
 
     while (count < slots.size()) {
-        ssize_t n = ::recvfrom(
-            m_serverFd,
-            slots[count].buffer.data(),
-            slots[count].buffer.size(),
-            0,
-            nullptr,
-            nullptr);
+        const auto receiveBuffer = slots[count].buffer.first(
+            std::min(slots[count].buffer.size(), ::Backend::MaxEnvelopeFrameBytes));
+        iovec iov { receiveBuffer.data(), receiveBuffer.size() };
+        msghdr msg { };
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        const ssize_t n = ::recvmsg(m_serverFd, &msg, 0);
 
         if (n >= 0) {
-            slots[count].size = static_cast<std::size_t>(n);
-            emitEvent(slots[count].filledSpan(), "channel_received");
+            const bool tooLarge = (msg.msg_flags & MSG_TRUNC) != 0
+                || static_cast<std::size_t>(n) > receiveBuffer.size()
+                || static_cast<std::size_t>(n) > ::Backend::MaxEnvelopeFrameBytes;
+            slots[count].size = tooLarge ? 0 : static_cast<std::size_t>(n);
+            if (tooLarge) {
+                truncated = true;
+            } else {
+                emitEvent(slots[count].filledSpan(), "channel_received");
+            }
             count++;
             continue;
         }
@@ -180,7 +193,10 @@ BatchResult SimInputChannel::receiveBatch(
     }
 
     return count > 0
-        ? BatchResult::ok(count)
+        ? (truncated
+                  ? BatchResult::err(
+                        { count, Common::Net::ReceiveFailure { std::make_error_code(std::errc::message_size) } })
+                  : BatchResult::ok(count))
         : BatchResult::err({ 0, Common::Net::ReceiveTimeout { } });
 }
 
