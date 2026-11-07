@@ -29,6 +29,7 @@ The shared context owns workspace-menu toggling, synchronizes `aria-expanded` wi
 ## Design decisions
 
 - **Use native buttons for primary actions.** Builder palette entries and packet/batch selection cards now receive built-in Tab, Enter, and Space behavior without changing their click or drag actions.
+- **Preserve card styling when using native buttons.** Packet and batch buttons explicitly restore the original stretch alignment and text color so global button styles do not center their contents or tint selected packet details.
 - **Keep specialized interactions local.** SVG builder wires and the simulation trace tree need custom keyboard handling; they expose button semantics, focus targets, and accessible names without introducing a component layer.
 - **Keep status and navigation in the shared script.** This avoids four independent implementations drifting in wording, state announcements, focus treatment, and menu keyboard behavior.
 - **Use explicit accessible names for icon controls.** Tooltips remain helpful for pointer users, but no longer serve as the only description for controls whose visible text is hidden at narrow widths.

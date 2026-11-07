@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Proxy :: Control Plane &amp; Studio Portal</title>
-  <link rel="stylesheet" href="/portal/css/portal.css?v=2">
+  <link rel="stylesheet" href="/portal/css/portal.css?v=5">
   <script src="/portal/vendor/petite-vue.iife.js"></script>
 </head>
 <body v-scope @vue:mounted="init()">
@@ -294,19 +294,39 @@
             <span v-if="status.state === 'running'" style="color: var(--accent-green); font-size: 11px;">● LIVE</span>
           </div>
           <div class="terminal-controls">
-            <label>
-              <input type="checkbox" v-model="autoScroll"> Auto-scroll
+            <label title="Pauses when you scroll up and resumes when you return to the bottom.">
+              <input type="checkbox" v-model="autoScroll" @change="onAutoScrollChange"> Auto-scroll
             </label>
             <button class="btn-xs" @click="clearLogs()">Clear</button>
           </div>
         </div>
-        <div id="terminal-output" class="terminal-body">
+        <div class="terminal-tabs" role="tablist" aria-label="Terminal output streams">
+          <button v-for="(tab, idx) in terminalTabs" :key="tab.source || 'all'"
+            :id="'terminal-tab-' + idx"
+            :data-source="tab.source"
+            class="terminal-tab"
+            :class="{ active: selectedTerminalSource === tab.source }"
+            role="tab"
+            :aria-selected="selectedTerminalSource === tab.source"
+            aria-controls="terminal-output"
+            :tabindex="selectedTerminalSource === tab.source ? 0 : -1"
+            @click="selectTerminalSource(tab.source)"
+            @keydown="onTerminalTabKeydown($event)">
+            <span>{{ tab.label }}</span>
+            <span class="terminal-tab-count">{{ tab.count }}</span>
+          </button>
+        </div>
+        <div id="terminal-output" class="terminal-body" role="tabpanel"
+          :aria-labelledby="'terminal-tab-' + selectedTerminalTabIndex"
+          @scroll="onTerminalScroll">
           <div v-if="logs.length === 0" style="color: var(--text-muted); font-style: italic;">
             Waiting for chain runner process to start... Click 'Start Chain' to launch.
           </div>
-          <div v-for="(line, idx) in logs" :key="idx" class="terminal-line" :class="getLogClass(line)">
-            {{ line }}
+          <div v-else-if="filteredLogs.length === 0" class="terminal-empty-filter">
+            No output for {{ selectedTerminalSource }}.
           </div>
+          <div v-for="(line, idx) in filteredLogs" :key="selectedTerminalSource + '-' + idx"
+            class="terminal-line" :class="getLogClass(line)" v-text="line"></div>
         </div>
       </div>
     </section>
@@ -319,6 +339,6 @@
   </footer>
 
   <script src="/studio/context.js?v=2"></script>
-  <script src="/portal/js/portal.js?v=2"></script>
+  <script src="/portal/js/portal.js?v=5"></script>
 </body>
 </html>

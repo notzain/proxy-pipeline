@@ -27,10 +27,35 @@ PetiteVue.createApp({
   
   logs: [],
   autoScroll: true,
+  terminalScrollThreshold: 24,
+  selectedTerminalSource: "",
   actionLoading: false,
   statusTimer: null,
   uptimeTimer: null,
   statusInitialized: false,
+
+  get terminalTabs() {
+    const sources = new Map();
+    for (const line of this.logs) {
+      const source = this.getLogSource(line);
+      sources.set(source, (sources.get(source) || 0) + 1);
+    }
+
+    return [
+      { source: "", label: "All output", count: this.logs.length },
+      ...Array.from(sources, ([source, count]) => ({ source, label: source, count }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    ];
+  },
+
+  get filteredLogs() {
+    if (!this.selectedTerminalSource) return this.logs;
+    return this.logs.filter((line) => this.getLogSource(line) === this.selectedTerminalSource);
+  },
+
+  get selectedTerminalTabIndex() {
+    return this.terminalTabs.findIndex((tab) => tab.source === this.selectedTerminalSource);
+  },
 
   async init() {
     await this.fetchChains();
@@ -210,12 +235,54 @@ PetiteVue.createApp({
 
   clearLogs() {
     this.logs = [];
+    this.selectedTerminalSource = "";
+  },
+
+  getLogSource(line) {
+    const match = String(line).match(/^\[([^\]]+)\]/);
+    return match ? match[1] : "System";
+  },
+
+  selectTerminalSource(source) {
+    this.selectedTerminalSource = source;
+    if (this.autoScroll) {
+      this.$nextTick(() => this.scrollToBottom());
+    }
+  },
+
+  onTerminalTabKeydown(event) {
+    const tabs = Array.from(event.currentTarget.parentElement.querySelectorAll('[role="tab"]'));
+    const index = tabs.indexOf(event.currentTarget);
+    let nextIndex = index;
+
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabs.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    this.selectTerminalSource(nextTab.dataset.source || "");
+    nextTab.focus();
   },
 
   scrollToBottom() {
     const el = document.getElementById("terminal-output");
     if (el) {
       el.scrollTop = el.scrollHeight;
+    }
+  },
+
+  onTerminalScroll(event) {
+    const el = event.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+    this.autoScroll = distanceFromBottom <= this.terminalScrollThreshold;
+  },
+
+  onAutoScrollChange() {
+    if (this.autoScroll) {
+      this.$nextTick(() => this.scrollToBottom());
     }
   },
 

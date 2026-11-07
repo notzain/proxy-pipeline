@@ -440,7 +440,7 @@ main {
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   flex-shrink: 0;
 }
@@ -711,6 +711,7 @@ canvas {
   transition: all 0.15s ease;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 3px;
   font-family: inherit;
   text-align: left;
@@ -726,6 +727,7 @@ canvas {
   background: rgba(56, 189, 248, 0.12);
   border-color: rgba(56, 189, 248, 0.45);
   border-left: 3px solid var(--accent);
+  color: var(--text);
 }
 
 .list-item.completed {
@@ -889,6 +891,7 @@ canvas {
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 5px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -903,6 +906,7 @@ canvas {
   background: rgba(56, 189, 248, 0.15);
   border-color: var(--accent);
   border-left: 4px solid var(--accent);
+  color: var(--text);
 }
 
 .batch-card.completed {
@@ -1039,6 +1043,3 @@ canvas {
   justify-content: flex-end;
   gap: 8px;
 }
-
-
-

@@ -321,6 +321,10 @@
           <div class="label">Dropped by Handler</div>
           <div class="val" style="color: var(--danger);">{{ state.stats.dropped }}</div>
         </div>
+        <div class="stat-card">
+          <div class="label">Unconfirmed</div>
+          <div class="val" style="color: #fbbf24;">{{ state.stats.unconfirmed }}</div>
+        </div>
       </div>
 
       <!-- Canvas Wrap -->
@@ -501,6 +505,10 @@
               </span>
               <span v-else-if="ev.type === 'egress' || ev.result === 'Consumed'">
                 <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: var(--success); font-weight: 600;">Consumed</span>
+                <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
+              </span>
+              <span v-else-if="ev.type === 'unconfirmed' || ev.result === 'Unknown'">
+                <strong>{{ getEventHandler(ev) }}</strong> — <span style="color: #fbbf24; font-weight: 600;">Outcome unconfirmed</span>
                 <span v-if="getEventIncomingChannel(ev)" style="color: var(--text-muted);">(in: {{ getEventIncomingChannel(ev) }})</span>
               </span>
               <span v-else>

@@ -715,19 +715,84 @@ main.portal-main {
 }
 
 .terminal-body {
-  padding: 12px 14px;
+  padding: 8px 12px;
   height: 260px;
   overflow-y: auto;
+  overflow-x: hidden;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.35;
   color: #cbd5e1;
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: normal;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
+}
+
+.terminal-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 8px;
+  overflow-x: auto;
+  background: #080d17;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  scrollbar-width: thin;
+}
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  max-width: 220px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font: 11px var(--font-mono);
+}
+
+.terminal-tab:hover {
+  color: var(--text-main);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.terminal-tab.active {
+  color: var(--text-main);
+  background: rgba(148, 163, 184, 0.06);
+  border-bottom-color: var(--accent-cyan);
+}
+
+.terminal-tab-count {
+  color: inherit;
+  opacity: 0.65;
+  font-size: 10px;
 }
 
 .terminal-line {
-  margin-bottom: 2px;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  padding: 1px 2px;
+  margin: 0;
+  line-height: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.terminal-line:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.terminal-empty-filter {
+  padding: 2px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .log-err { color: #f87171; }

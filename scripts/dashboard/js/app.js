@@ -35,6 +35,7 @@ export function createSimulationApp() {
       stats: {
         delivered: 0,
         dropped: 0,
+        unconfirmed: 0,
         currentStatus: "Waiting"
       }
     },
@@ -151,12 +152,15 @@ export function createSimulationApp() {
     updateStats() {
       let delivered = 0;
       let dropped = 0;
+      let unconfirmed = 0;
       this.state.events.forEach(ev => {
         if (ev.type === "egress" || ev.result === "Consumed") delivered++;
         if (ev.type === "drop" || ev.result === "Dropped") dropped++;
+        if (ev.type === "unconfirmed" || ev.result === "Unknown") unconfirmed++;
       });
       this.state.stats.delivered = delivered;
       this.state.stats.dropped = dropped;
+      this.state.stats.unconfirmed = unconfirmed;
 
       if (this.mode === "trace") {
         if (this.traceAllEvents.length === 0) {
@@ -316,6 +320,9 @@ export function createSimulationApp() {
       }
       if (ev.type === "drop" || ev.result === "Dropped") {
         return `${handler} — Dropped${inCh ? " (in: " + inCh + ")" : ""}`;
+      }
+      if (ev.type === "unconfirmed" || ev.result === "Unknown") {
+        return `${handler} — Outcome unconfirmed${inCh ? " (in: " + inCh + ")" : ""}`;
       }
       if (ev.type === "egress" || ev.result === "Consumed") {
         return `${handler} — Consumed${inCh ? " (in: " + inCh + ")" : ""}`;

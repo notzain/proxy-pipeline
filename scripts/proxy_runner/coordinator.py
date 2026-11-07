@@ -42,6 +42,7 @@ class InteractiveSimulationCoordinator:
         self.events: list[dict[str, Any]] = []
         self.event_counter = 1
         self.lock = threading.Lock()
+        self.pending_message_results: list[dict[str, Any]] = []
 
         # In-flight active message state:
         # None when idle between packets, or dict with:
@@ -446,7 +447,6 @@ class InteractiveSimulationCoordinator:
         first_desc = load_handler_descriptor(first_handler.get("type", ""))
 
         # Drain any stale notifications before injecting
-        self._drain_socket(self.events_sock)
         send_time_ns = time.time_ns()
 
         # Inject packet(s) using pluggable injector strategy
@@ -465,6 +465,11 @@ class InteractiveSimulationCoordinator:
             batch_pkts=current_batch_pkts,
             send_time_ns=send_time_ns,
             pending_branches=info.get("pending_branches", []),
+            expected_msg_timestamps=(
+                None
+                if first_desc.is_external_ingress
+                else {packet.timestamp_ns for packet in current_batch_pkts}
+            ),
         )
 
     def _advance_in_flight(self) -> dict[str, Any]:
@@ -530,7 +535,6 @@ class InteractiveSimulationCoordinator:
             self._advance_or_clear_branches(remaining_pending)
             return {"status": "ok", "event": ev_egress, "finishedPacket": pkt.seq_id}
 
-        self._drain_socket(self.events_sock)
         send_time_ns = time.time_ns()
 
         # Deliver held envelope(s) to all downstream consumer sockets in parallel
@@ -553,6 +557,7 @@ class InteractiveSimulationCoordinator:
             expected_handler=expected_handler_names,
             expected_count=len(branches_to_deliver) * len(batch_pkts),
             timeout_sec=0.5,
+            expected_msg_timestamps={packet.timestamp_ns for packet in batch_pkts},
         )
         elapsed_us = round(max(1.0, (time.time_ns() - send_time_ns) / 1000.0), 2)
 
@@ -584,6 +589,13 @@ class InteractiveSimulationCoordinator:
             forwarded_trs = [t for t in raw_traces if t.get("result") == "Forwarded"]
             consumed_trs = [t for t in raw_traces if t.get("result") == "Consumed"]
             dropped_trs = [t for t in raw_traces if t.get("result") == "Dropped"]
+            recovered_held: dict[str, list[bytes]] = {}
+            if not raw_traces:
+                for out_channel in self._handler_output_channels(consumer):
+                    held = self._poll_held_output(out_channel, timeout_sec=0.15)
+                    if held:
+                        recovered_held[out_channel] = held
+                        forwarded_trs.append({"outputChannel": out_channel, "result": "Forwarded"})
 
             if forwarded_trs:
                 out_channels: list[str] = []
@@ -602,7 +614,7 @@ class InteractiveSimulationCoordinator:
 
                 for oc in out_channels:
                     self._ensure_hold_socket(oc)
-                    held = self._poll_held_output(oc, timeout_sec=0.15)
+                    held = recovered_held.pop(oc, None) or self._poll_held_output(oc, timeout_sec=0.15)
                     if held:
                         next_held_branches.append({
                             "stage": "held",
@@ -647,8 +659,24 @@ class InteractiveSimulationCoordinator:
                     "detail": f"Consumed by '{c_name}'",
                 })
             else:
-                # Dropped or unacknowledged
-                primary_tr = dropped_trs[0] if dropped_trs else {}
+                if not dropped_trs:
+                    summary = f"Batch of {len(batch_pkts)} messages" if is_batch else pkt.payload_text[:60]
+                    full = "\n---\n".join(p.payload_text for p in batch_pkts) if is_batch else pkt.payload_text
+                    combined_traces.append({
+                        "traceId": len(combined_traces) + 1,
+                        "msgId": pkt.seq_id,
+                        "handler": c_name,
+                        "handlerType": c_type,
+                        "inputChannel": in_ch,
+                        "channel": in_ch,
+                        "result": "Unknown",
+                        "status": "unconfirmed",
+                        "payloadSummary": summary,
+                        "payloadFull": full,
+                        "detail": f"No message result received from '{c_name}'",
+                    })
+                    continue
+                primary_tr = dropped_traces[0]
                 reason = primary_tr.get("reason") or "Message rejected by handler"
                 error_code = int(primary_tr.get("errorCode") or 0)
                 code_suffix = f" (code {error_code})" if error_code else ""
@@ -681,6 +709,7 @@ class InteractiveSimulationCoordinator:
         has_forwarded = any(t.get("result") == "Forwarded" for t in combined_traces)
         has_dropped = any(t.get("result") == "Dropped" for t in combined_traces)
         all_consumed = all(t.get("result") == "Consumed" for t in combined_traces)
+        has_unconfirmed = any(t.get("result") == "Unknown" for t in combined_traces)
 
         if has_forwarded:
             event_type = "hop"
@@ -694,6 +723,10 @@ class InteractiveSimulationCoordinator:
             event_type = "drop"
             overall_result = "Dropped"
             overall_status = "dropped"
+        elif has_unconfirmed:
+            event_type = "unconfirmed"
+            overall_result = "Unknown"
+            overall_status = "unconfirmed"
         else:
             event_type = "egress"
             overall_result = "Consumed"
@@ -743,6 +776,7 @@ class InteractiveSimulationCoordinator:
         batch_pkts: list[PcapPacket],
         send_time_ns: int,
         pending_branches: list[dict[str, Any]],
+        expected_msg_timestamps: Optional[set[int]] = None,
     ) -> dict[str, Any]:
         handler_name = handler_spec["name"]
         handler_type = handler_spec.get("type", "unknown")
@@ -758,6 +792,7 @@ class InteractiveSimulationCoordinator:
             expected_handler=handler_name,
             expected_count=len(batch_pkts),
             timeout_sec=0.5,
+            expected_msg_timestamps=expected_msg_timestamps,
         )
         elapsed_us = round(max(1.0, (time.time_ns() - send_time_ns) / 1000.0), 2)
 
@@ -773,6 +808,13 @@ class InteractiveSimulationCoordinator:
         forwarded_traces = [t for t in raw_traces if t.get("result") == "Forwarded"]
         consumed_traces = [t for t in raw_traces if t.get("result") == "Consumed"]
         dropped_traces = [t for t in raw_traces if t.get("result") == "Dropped"]
+        recovered_held: dict[str, list[bytes]] = {}
+        if not raw_traces:
+            for out_channel in self._handler_output_channels(handler_spec):
+                held = self._poll_held_output(out_channel, timeout_sec=0.15)
+                if held:
+                    recovered_held[out_channel] = held
+                    forwarded_traces.append({"outputChannel": out_channel, "result": "Forwarded"})
 
         if forwarded_traces:
             # Extract target output channels across all forwarded traces
@@ -784,16 +826,13 @@ class InteractiveSimulationCoordinator:
                     if c and c not in out_channels:
                         out_channels.append(c)
 
-            if not out_channels and handler_spec.get("output_channel"):
-                out_channels = [c.strip() for c in str(handler_spec["output_channel"]).split(",") if c.strip()]
-            if not out_channels and handler_spec.get("output_channels"):
-                ocs = handler_spec["output_channels"]
-                out_channels = list(ocs) if isinstance(ocs, list) else [c.strip() for c in str(ocs).split(",") if c.strip()]
+            if not out_channels:
+                out_channels = self._handler_output_channels(handler_spec)
 
             collected_branches: list[dict[str, Any]] = []
             for oc in out_channels:
                 self._ensure_hold_socket(oc)
-                held = self._poll_held_output(oc, timeout_sec=0.15)
+                held = recovered_held.pop(oc, None) or self._poll_held_output(oc, timeout_sec=0.15)
                 if held:
                     collected_branches.append({
                         "stage": "held",
@@ -809,7 +848,7 @@ class InteractiveSimulationCoordinator:
             # Fallback if hold socket had data on default output channel
             if not collected_branches and out_channels:
                 oc = out_channels[0]
-                held = self._poll_held_output(oc, timeout_sec=0.15)
+                held = recovered_held.pop(oc, None) or self._poll_held_output(oc, timeout_sec=0.15)
                 if held:
                     collected_branches.append({
                         "stage": "held",
@@ -930,7 +969,41 @@ class InteractiveSimulationCoordinator:
             self._advance_or_clear_branches(pending_branches)
             return {"status": "ok", "event": ev_consumed, "finishedPacket": pkt.seq_id}
 
-        # Dropped (either explicit MessageResult::Dropped or handler discarded without forwarding)
+        if not dropped_traces:
+            ev_unconfirmed = {
+                "eventId": self.event_counter,
+                "msgId": pkt.seq_id,
+                "batchIds": [p.seq_id for p in batch_pkts],
+                "batchCount": len(batch_pkts),
+                "timestampNs": time.time_ns(),
+                "type": "unconfirmed",
+                "result": "Unknown",
+                "handler": handler_name,
+                "handlerType": handler_type,
+                "inputChannel": input_channel,
+                "payloadSummary": f"Batch of {len(batch_pkts)} messages" if is_batch else pkt.payload_text[:60],
+                "payloadFull": "\n---\n".join(p.payload_text for p in batch_pkts) if is_batch else pkt.payload_text,
+                "status": "unconfirmed",
+                "latencyUs": elapsed_us,
+                "detail": f"No message result received from '{handler_name}'",
+                "traces": [{
+                    "traceId": 1,
+                    "msgId": pkt.seq_id,
+                    "handler": handler_name,
+                    "handlerType": handler_type,
+                    "channel": input_channel,
+                    "inputChannel": input_channel,
+                    "result": "Unknown",
+                    "status": "unconfirmed",
+                    "detail": f"No message result received from '{handler_name}'",
+                }],
+            }
+            self.event_counter += 1
+            self.events.append(ev_unconfirmed)
+            self._advance_or_clear_branches(pending_branches)
+            return {"status": "ok", "event": ev_unconfirmed, "finishedPacket": pkt.seq_id}
+
+        # Explicit MessageResult::Dropped
         primary_tr = dropped_traces[0] if dropped_traces else {}
         reason = primary_tr.get("reason") or "Message rejected by handler"
         error_code = int(primary_tr.get("errorCode") or 0)
@@ -995,21 +1068,40 @@ class InteractiveSimulationCoordinator:
         expected_handler: str | set[str] | list[str],
         expected_count: int = 1,
         timeout_sec: float = 0.5,
+        expected_msg_timestamps: Optional[set[int]] = None,
     ) -> list[dict[str, Any]]:
         """
         Polls /tmp/proxy_sim_events.sock for MessageResult JSON payloads emitted by SimBackend::onMessageResult.
         Can accept a single handler name or a collection/set of expected handler names.
         """
-        if not self.events_sock:
-            return []
-
         expected_handlers: set[str] = (
             set(expected_handler)
             if isinstance(expected_handler, (set, list))
             else {expected_handler}
         )
-
         matched: list[dict[str, Any]] = []
+        known_handlers = {h.get("name") for h in self.handlers}
+
+        def matches(event: dict[str, Any]) -> bool:
+            return (
+                event.get("type") == "message_result"
+                and event.get("handler") in expected_handlers
+                and (
+                    expected_msg_timestamps is None
+                    or event.get("msgTimestampNs") in expected_msg_timestamps
+                )
+            )
+
+        remaining: list[dict[str, Any]] = []
+        for event in self.pending_message_results:
+            if len(matched) < expected_count and matches(event):
+                matched.append(event)
+            else:
+                remaining.append(event)
+        self.pending_message_results = remaining
+        if not self.events_sock or len(matched) >= expected_count:
+            return matched
+
         deadline = time.time() + timeout_sec
 
         while time.time() < deadline and len(matched) < expected_count:
@@ -1017,11 +1109,13 @@ class InteractiveSimulationCoordinator:
                 raw, _ = self.events_sock.recvfrom(65535)
                 if raw:
                     ev = json.loads(raw.decode("utf-8", errors="replace"))
-                    if ev.get("type") == "message_result" and ev.get("handler") in expected_handlers:
+                    if matches(ev):
                         matched.append(ev)
                         # Extend deadline slightly to drain remaining batch items if any
                         deadline = min(deadline, time.time() + 0.05)
                         continue
+                    if ev.get("type") == "message_result" and ev.get("handler") in known_handlers:
+                        self.pending_message_results.append(ev)
             except (BlockingIOError, socket.timeout):
                 pass
             except Exception:
@@ -1029,6 +1123,13 @@ class InteractiveSimulationCoordinator:
             time.sleep(0.002)
 
         return matched
+
+    @staticmethod
+    def _handler_output_channels(handler: dict[str, Any]) -> list[str]:
+        configured = handler.get("output_channels") or handler.get("output_channel") or []
+        if isinstance(configured, str):
+            return [channel.strip() for channel in configured.split(",") if channel.strip()]
+        return [str(channel).strip() for channel in configured if str(channel).strip()]
 
     def _poll_held_output(self, channel_name: Optional[str], timeout_sec: float = 0.15) -> Optional[list[bytes]]:
         """
@@ -1107,6 +1208,7 @@ class InteractiveSimulationCoordinator:
             else:
                 msg_text = h_config.get("dummy.message", f"Message from {node_name}")
             payload_bytes = msg_text.encode("utf-8")
+            timestamp_ns = time.time_ns()
 
             header = struct.pack(
                 "!HBBHIQ",
@@ -1115,14 +1217,14 @@ class InteractiveSimulationCoordinator:
                 0,  # protocol = Raw
                 0,  # metadataLength = 0
                 len(payload_bytes),
-                time.time_ns(),
+                timestamp_ns,
             )
             raw_envelope = header + payload_bytes
 
             new_seq_id = len(self.pcap_packets) + 1
             synthetic_pkt = PcapPacket(
                 seq_id=new_seq_id,
-                timestamp_ns=time.time_ns(),
+                timestamp_ns=timestamp_ns,
                 src_ip="127.0.0.1",
                 src_port=0,
                 dst_ip="127.0.0.1",
@@ -1291,6 +1393,7 @@ class InteractiveSimulationCoordinator:
             self.event_counter = 1
             self.active_in_flight = None
             self.pending_queue.clear()
+            self.pending_message_results.clear()
             self.last_triggered_generator = None
             self.batch_groups.clear()
             self._drain_all_sockets()

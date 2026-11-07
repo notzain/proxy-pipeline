@@ -158,7 +158,7 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                             for pb in pending_batch_ids
                         )
                         is_completed = not is_active and not is_queued and any(
-                            ev.get("type") in ("egress", "drop")
+                            ev.get("type") in ("egress", "drop", "unconfirmed")
                             and (
                                 (ev.get("batchIds") and any(bid in found_group for bid in ev.get("batchIds", [])))
                                 or ev.get("msgId") in found_group
@@ -186,7 +186,7 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
                     )
                     is_queued = not is_active and any(pid in pb for pb in pending_batch_ids)
                     is_completed = not is_active and not is_queued and any(
-                        ev.get("type") in ("egress", "drop")
+                        ev.get("type") in ("egress", "drop", "unconfirmed")
                         and (
                             (ev.get("batchIds") and pid in ev.get("batchIds", []))
                             or ev.get("msgId") == pid
