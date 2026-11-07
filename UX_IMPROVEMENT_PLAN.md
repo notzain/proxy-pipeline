@@ -38,9 +38,9 @@ Make Proxy feel like one understandable workflow rather than a collection of cap
 
 ### Phase 4 — Unify interaction and accessibility
 
-- [ ] Establish shared navigation and status language across all workspaces.
-- [ ] Audit keyboard access, focus order, accessible names, live announcements, and small-screen layouts.
-- [ ] Replace clickable non-semantic controls with buttons and links where appropriate.
+- [x] Establish shared navigation and status language across all workspaces.
+- [x] Audit keyboard access, focus order, accessible names, live announcements, and small-screen layouts.
+- [x] Replace clickable non-semantic controls with buttons and links where appropriate.
 
 ## Phase 1 implementation summary
 
@@ -55,6 +55,9 @@ Phase 1 made the portal's chain selection actionable and surfaces request state 
 - Existing builder behavior without a `chain` query parameter remains unchanged.
 - The chain-loading API rejects paths outside `chains/` and reports missing/invalid chain files.
 - Focused frontend-runner tests pass.
+- Workspace menus expose expanded state, close with Escape, and return keyboard focus to their trigger.
+- Primary builder and simulator actions have keyboard support and accessible names.
+- Portal, Builder, Simulator, and Telemetry render without horizontal overflow at a 375 px viewport.
 
 ## Out of scope for this slice
 
@@ -73,3 +76,7 @@ The README now provides a first-pipeline path using existing presets and sample 
 ## Phase 3 implementation summary
 
 The builder tracks edits against the last loaded/saved definition, warns before leaving, keeps save failures in the open dialog, and provides a run retry in the error viewer. Existing files require explicit overwrite confirmation in the UI and API. Runner restart now waits for a successful stop/status check before starting again.
+
+## Phase 4 implementation summary
+
+All four workspaces now share the same runner status banner, visible keyboard focus, and accessible workspace-menu state (including Escape-to-close and focus return). Builder palette actions and simulation packet items use native buttons; trace entries and builder connections support keyboard selection. Icon-only actions have explicit accessible names. Mobile viewport metadata and the portal's narrow-screen grid/action layout were corrected; all workspaces fit a 375 px viewport without horizontal overflow.

@@ -824,6 +824,14 @@ function createApp() {
           e.stopPropagation();
           this.selectWire(wire.id);
         });
+        pathEl.setAttribute('tabindex', '0');
+        pathEl.setAttribute('role', 'button');
+        pathEl.setAttribute('aria-label', `Select connection ${wire.channel || wire.id}`);
+        pathEl.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          this.selectWire(wire.id);
+        });
         svg.appendChild(pathEl);
 
         // Render Channel Name Badge on the wire
@@ -867,6 +875,9 @@ function createApp() {
             delGroup.setAttribute('class', 'wire-delete-btn');
             delGroup.setAttribute('cursor', 'pointer');
             delGroup.setAttribute('pointer-events', 'auto');
+            delGroup.setAttribute('tabindex', '0');
+            delGroup.setAttribute('role', 'button');
+            delGroup.setAttribute('aria-label', `Delete connection ${wire.channel || wire.id}`);
 
             const delCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             delCircle.setAttribute('cx', delCenterX);
@@ -884,6 +895,12 @@ function createApp() {
             delGroup.appendChild(delCross);
 
             delGroup.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.deleteWire(wire.id);
+            });
+            delGroup.addEventListener('keydown', (e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
               e.stopPropagation();
               this.deleteWire(wire.id);
             });

@@ -3,8 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Proxy :: Visual Chain Builder</title>
-  <link rel="stylesheet" href="css/builder.css?v=1">
+  <link rel="stylesheet" href="css/builder.css?v=2">
   <script src="vendor/petite-vue.iife.js"></script>
 </head>
 
@@ -14,7 +15,7 @@
   <header>
     <div class="brand">
       <div class="workspace-dropdown">
-        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace" aria-label="Switch workspace: Visual Builder">
           <span class="badge-icon">🎨</span>
           <span class="badge-text">VISUAL BUILDER</span>
           <span class="badge-caret">▾</span>
@@ -69,19 +70,19 @@
     </div>
 
     <div class="header-actions">
-      <button @click="openExportModal()" title="Export chain definition as TOML or JSON">
+      <button @click="openExportModal()" title="Export chain definition as TOML or JSON" aria-label="Export chain">
         <span class="btn-icon">📥</span>
         <span class="btn-text">Export</span>
       </button>
-      <button class="danger-outline" @click="resetChain()" title="Clear and reset chain canvas to blank state">
+      <button class="danger-outline" @click="resetChain()" title="Clear and reset chain canvas to blank state" aria-label="Reset chain">
         <span class="btn-icon">↺</span>
         <span class="btn-text">Reset</span>
       </button>
-      <button class="primary" @click="openSaveModal()" title="Save chain to working directory">
+      <button class="primary" @click="openSaveModal()" title="Save chain to working directory" aria-label="Save chain">
         <span class="btn-icon">💾</span>
         <span class="btn-text">Save Chain</span>
       </button>
-      <button class="success" @click="runSimulation()" title="Launch chain in interactive simulation runner">
+      <button class="success" @click="runSimulation()" title="Launch chain in interactive simulation runner" aria-label="Run in simulation">
         <span class="btn-icon">▶</span>
         <span class="btn-text">Run in Simulation</span>
       </button>
@@ -104,20 +105,23 @@
                v-model="searchQuery"
                placeholder="Filter handlers by name or role..."
                class="palette-search-input">
-        <button v-if="searchQuery" @click="searchQuery = ''" class="search-clear-btn" title="Clear search">✕</button>
+        <button v-if="searchQuery" @click="searchQuery = ''" class="search-clear-btn" title="Clear search" aria-label="Clear handler search">✕</button>
       </div>
 
       <div class="palette-scroll">
-        <div v-for="(handlers, category) in filteredSchemaCategories" :key="category" class="palette-group">
-          <div class="palette-group-title" @click="toggleCategory(category)">
+        <div v-for="(handlers, category, categoryIndex) in filteredSchemaCategories" :key="category" class="palette-group">
+          <button type="button" class="palette-group-title" @click="toggleCategory(category)"
+            :aria-expanded="!collapsedCategories[category]" :aria-controls="'palette-handlers-' + categoryIndex">
             <span>{{ category }} ({{ handlers.length }})</span>
             <span class="palette-toggle-icon">
               {{ collapsedCategories[category] ? '▶' : '▼' }}
             </span>
-          </div>
+          </button>
 
-          <div v-if="!collapsedCategories[category]" style="display: flex; flex-direction: column; gap: 8px;">
-            <div v-for="h in handlers" :key="h.name" class="palette-card" draggable="true"
+          <div v-if="!collapsedCategories[category]" :id="'palette-handlers-' + categoryIndex"
+            style="display: flex; flex-direction: column; gap: 8px;">
+            <button v-for="h in handlers" :key="h.name" type="button" class="palette-card" draggable="true"
+              :aria-label="'Add ' + (h.displayName || h.name)"
               @dragstart="onDragPaletteStart($event, h.name)" @click="createNodeFromSchema(h.name, 250, 150)">
               <div class="palette-card-name">
                 <span>{{ h.displayName || h.name }}</span>
@@ -126,7 +130,7 @@
                 </span>
               </div>
               <div class="palette-card-desc">{{ h.description }}</div>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -169,7 +173,7 @@
                 :class="'role-' + ((schemas[node.type] && schemas[node.type].role) || 'processor')">
                 {{ ((schemas[node.type] && schemas[node.type].role) || 'processor').replace('external_', '') }}
               </span>
-              <button class="node-delete-btn" @click.stop="deleteNode(node.id)" title="Delete handler node">✕</button>
+              <button class="node-delete-btn" @click.stop="deleteNode(node.id)" title="Delete handler node" :aria-label="'Delete ' + node.name">✕</button>
             </div>
 
             <!-- Node Body: Sockets & Embedded Configuration -->
@@ -289,9 +293,9 @@
 
       <!-- Canvas Floating Navigation Controls -->
       <div class="canvas-controls">
-        <button @click="canvasInstance.zoomIn()" title="Zoom In">+</button>
-        <button @click="canvasInstance.zoomOut()" title="Zoom Out">-</button>
-        <button @click="canvasInstance.resetZoom()" title="Reset Pan / Zoom">⌂</button>
+        <button @click="canvasInstance.zoomIn()" title="Zoom In" aria-label="Zoom in">+</button>
+        <button @click="canvasInstance.zoomOut()" title="Zoom Out" aria-label="Zoom out">-</button>
+        <button @click="canvasInstance.resetZoom()" title="Reset Pan / Zoom" aria-label="Reset canvas view">⌂</button>
       </div>
 
       <!-- Floating Diagnostics Toast & Popover in Canvas Corner -->
@@ -307,7 +311,7 @@
         <div v-if="showDiagnosticsDrawer" class="diag-drawer">
           <div class="diag-drawer-header">
             <span>Diagnostics</span>
-            <button class="modal-close-btn" @click="showDiagnosticsDrawer = false">✕</button>
+            <button class="modal-close-btn" @click="showDiagnosticsDrawer = false" aria-label="Close diagnostics">✕</button>
           </div>
           <div class="diag-drawer-body">
             <div v-if="validation.valid && validation.warnings.length === 0" class="diag-item diag-valid">
@@ -334,7 +338,7 @@
     <div class="modal-dialog" @click.stop>
       <div class="modal-header">
         <span class="modal-title">💾 Save Pipeline Chain</span>
-        <button class="modal-close-btn" @click="closeSaveModal()">✕</button>
+        <button class="modal-close-btn" @click="closeSaveModal()" aria-label="Close save dialog">✕</button>
       </div>
       <div class="modal-body">
         <div class="field-group" style="margin-bottom: 12px;">
@@ -388,7 +392,7 @@
     <div class="modal-dialog" @click.stop style="max-width: 420px;">
       <div class="modal-header">
         <span class="modal-title">📥 Export Chain Definition</span>
-        <button class="modal-close-btn" @click="closeExportModal()">✕</button>
+        <button class="modal-close-btn" @click="closeExportModal()" aria-label="Close export dialog">✕</button>
       </div>
       <div class="modal-body">
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.4;">
@@ -425,7 +429,7 @@
           <span>{{ chainViewerError ? '⚠️' : '📄' }}</span>
           <span>{{ chainViewerTitle }}</span>
         </span>
-        <button class="modal-close-btn" @click="closeChainViewer()" title="Close (Esc)">✕</button>
+        <button class="modal-close-btn" @click="closeChainViewer()" title="Close (Esc)" aria-label="Close chain viewer">✕</button>
       </div>
 
       <div class="modal-body" style="padding: 12px 16px; gap: 10px; display: flex; flex-direction: column; overflow: hidden; max-height: calc(85vh - 120px);">
@@ -458,7 +462,7 @@
       </div>
 
       <div class="modal-footer">
-        <button @click="copyChainViewerText()" style="margin-right: auto;" title="Copy entire TOML to clipboard">
+        <button @click="copyChainViewerText()" style="margin-right: auto;" title="Copy entire TOML to clipboard" aria-label="Copy chain configuration">
           📋 Copy TOML
         </button>
         <button v-if="runError" class="primary" @click="runSimulation()" :disabled="runningSimulation">
@@ -481,7 +485,7 @@
           </div>
           <div class="param-drawer-subtitle">{{ drawerParamDef.description }}</div>
         </div>
-        <button class="modal-close-btn" @click="closeParamDrawer()">✕</button>
+        <button class="modal-close-btn" @click="closeParamDrawer()" aria-label="Close parameter editor">✕</button>
       </div>
 
       <div class="param-drawer-body">
@@ -499,9 +503,9 @@
                 <span>{{ item.name || (drawerParamDef.label ? drawerParamDef.label.replace(/s$/, '') : 'Item') + ' ' + (itemIdx + 1) }}</span>
               </div>
               <div class="rule-card-actions">
-                <button v-if="itemIdx > 0" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, -1)" title="Move Up">↑</button>
-                <button v-if="itemIdx < drawerNode.config[drawerParamKey].length - 1" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, 1)" title="Move Down">↓</button>
-                <button class="rule-btn-mini rule-btn-danger" @click="removeArrayItem(drawerNode.config[drawerParamKey], itemIdx)" title="Delete Item">✕</button>
+                <button v-if="itemIdx > 0" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, -1)" title="Move Up" :aria-label="'Move item ' + (itemIdx + 1) + ' up'">↑</button>
+                <button v-if="itemIdx < drawerNode.config[drawerParamKey].length - 1" class="rule-btn-mini" @click="moveArrayItem(drawerNode.config[drawerParamKey], itemIdx, 1)" title="Move Down" :aria-label="'Move item ' + (itemIdx + 1) + ' down'">↓</button>
+                <button class="rule-btn-mini rule-btn-danger" @click="removeArrayItem(drawerNode.config[drawerParamKey], itemIdx)" title="Delete Item" :aria-label="'Delete item ' + (itemIdx + 1)">✕</button>
               </div>
             </div>
 
@@ -595,18 +599,10 @@
     </div>
   </div>
 
-  <script src="/studio/context.js"></script>
+  <script src="/studio/context.js?v=2"></script>
   <script src="js/builder_canvas.js"></script>
-  <script src="js/builder_app.js"></script>
+  <script src="js/builder_app.js?v=2"></script>
   <script>
-    function toggleWorkspaceDropdown(e) {
-      e.stopPropagation();
-      const dd = e.currentTarget.closest('.workspace-dropdown');
-      if (dd) dd.classList.toggle('open');
-    }
-    document.addEventListener('click', () => {
-      document.querySelectorAll('.workspace-dropdown.open').forEach(el => el.classList.remove('open'));
-    });
     window.appInstance = createApp();
     PetiteVue.createApp(window.appInstance).mount("body");
     window.appInstance.init();

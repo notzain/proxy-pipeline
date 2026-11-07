@@ -240,13 +240,3 @@ PetiteVue.createApp({
     return "log-info";
   },
 }).mount();
-
-window.toggleWorkspaceDropdown = function (e) {
-  e.stopPropagation();
-  const dd = e.currentTarget.closest(".workspace-dropdown");
-  if (dd) dd.classList.toggle("open");
-};
-
-document.addEventListener("click", () => {
-  document.querySelectorAll(".workspace-dropdown.open").forEach((el) => el.classList.remove("open"));
-});

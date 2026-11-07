@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Proxy :: Control Plane &amp; Studio Portal</title>
-  <link rel="stylesheet" href="/portal/css/portal.css?v=1">
+  <link rel="stylesheet" href="/portal/css/portal.css?v=2">
   <script src="/portal/vendor/petite-vue.iife.js"></script>
 </head>
 <body v-scope @vue:mounted="init()">
@@ -13,7 +13,7 @@
   <header class="portal-header">
     <div class="brand-section">
       <div class="workspace-dropdown">
-        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace" aria-label="Switch workspace: Control Plane">
           <span class="badge-icon">🏠</span>
           <span class="badge-text">CONTROL PLANE</span>
           <span class="badge-caret">▾</span>
@@ -318,7 +318,7 @@
     <span>Proxy High-Performance Trading Architecture &middot; Web Studio &amp; Control Plane</span>
   </footer>
 
-  <script src="/studio/context.js"></script>
-  <script src="/portal/js/portal.js?v=1"></script>
+  <script src="/studio/context.js?v=2"></script>
+  <script src="/portal/js/portal.js?v=2"></script>
 </body>
 </html>

@@ -701,6 +701,7 @@ canvas {
 }
 
 .list-item {
+  width: 100%;
   padding: 8px 10px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
@@ -711,6 +712,9 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  font-family: inherit;
+  text-align: left;
+  white-space: normal;
 }
 
 .list-item:hover {
@@ -877,6 +881,7 @@ canvas {
 .log-desc { font-size: 11px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .batch-card {
+  width: 100%;
   background: rgba(30, 41, 59, 0.7);
   border: 1px solid rgba(56, 189, 248, 0.35);
   border-left: 4px solid var(--accent);
@@ -887,6 +892,11 @@ canvas {
   gap: 5px;
   cursor: pointer;
   transition: all 0.2s ease;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: normal;
 }
 
 .batch-card.active {
@@ -1029,7 +1039,6 @@ canvas {
   justify-content: flex-end;
   gap: 8px;
 }
-
 
 
 

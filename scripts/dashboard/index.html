@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Proxy :: Interactive Simulation &amp; Trace Dashboard</title>
-  <link rel="stylesheet" href="css/dashboard.css?v=7">
+  <link rel="stylesheet" href="css/dashboard.css?v=8">
   <script src="vendor/petite-vue.iife.js?v=7"></script>
 </head>
 <body v-scope @vue:mounted="init()">
@@ -12,7 +13,7 @@
   <header>
     <div class="brand">
       <div class="workspace-dropdown">
-        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+        <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace" aria-label="Switch workspace: Simulation">
           <span class="badge-icon">🔍</span>
           <span class="badge-text">SIMULATION</span>
           <span class="badge-caret">▾</span>
@@ -72,29 +73,32 @@
         <button class="primary"
                 @click="stepForward()"
                 :disabled="!state.inFlight && !state.hasPendingQueue && state.currentPacketIdx >= state.packetCount"
-                title="Step forward through handlers or auto-load the next packet">
+                title="Step forward through handlers or auto-load the next packet"
+                aria-label="Step forward through the simulation">
           <span class="btn-icon">⏭</span>
           <span class="btn-text">Step</span>
         </button>
-        <button @click="togglePlay()" title="Automatically load and step packets through the chain">
+        <button @click="togglePlay()" title="Automatically load and step packets through the chain"
+                :aria-label="isPlaying ? 'Pause simulation' : 'Play simulation'">
           <span class="btn-icon">{{ isPlaying ? "⏸" : "▶" }}</span>
           <span class="btn-text">{{ isPlaying ? "Pause" : "Play" }}</span>
         </button>
-        <button @click="resetSim()" title="Reset simulation state and return to Packet #1">
+        <button @click="resetSim()" title="Reset simulation state and return to Packet #1" aria-label="Reset simulation">
           <span class="btn-icon">↺</span>
           <span class="btn-text">Reset</span>
         </button>
         <button @click="exportTrace()"
                 :disabled="state.events.length === 0"
                 style="color: var(--success);"
-                title="Download deterministic export.trace.json">
+                title="Download deterministic export.trace.json" aria-label="Export execution trace">
           <span class="btn-icon">💾</span>
           <span class="btn-text">Export</span>
         </button>
         <button @click="switchToTraceModeFromLive()"
                 :disabled="state.events.length === 0"
                 style="color: #c084fc;"
-                title="Inspect current execution trace in Trace Simulation Mode (step forwards & backwards)">
+                title="Inspect current execution trace in Trace Simulation Mode (step forwards & backwards)"
+                aria-label="Inspect execution trace">
           <span class="btn-icon">🔍</span>
           <span class="btn-text">Trace</span>
         </button>
@@ -104,29 +108,30 @@
       <div v-else style="display: contents;">
         <button @click="stepBack()"
                 :disabled="traceStepIdx <= 0"
-                title="Step backward one event in the execution trace (Left Arrow)">
+                title="Step backward one event in the execution trace (Left Arrow)" aria-label="Step backward in trace">
           <span class="btn-icon">⏮</span>
           <span class="btn-text">Back</span>
         </button>
         <button class="primary"
                 @click="stepForward()"
                 :disabled="traceStepIdx >= traceAllEvents.length"
-                title="Step forward one event in the execution trace (Right Arrow)">
+                title="Step forward one event in the execution trace (Right Arrow)" aria-label="Step forward in trace">
           <span class="btn-icon">⏭</span>
           <span class="btn-text">Step</span>
         </button>
-        <button @click="togglePlay()" title="Replay trace events automatically (Space)">
+        <button @click="togglePlay()" title="Replay trace events automatically (Space)"
+                :aria-label="isPlaying ? 'Pause trace replay' : 'Play trace replay'">
           <span class="btn-icon">{{ isPlaying ? "⏸" : "▶" }}</span>
           <span class="btn-text">{{ isPlaying ? "Pause" : "Play" }}</span>
         </button>
-        <button @click="resetSim()" title="Rewind to the start of the trace (R)">
+        <button @click="resetSim()" title="Rewind to the start of the trace (R)" aria-label="Rewind trace">
           <span class="btn-icon">↺</span>
           <span class="btn-text">Rewind</span>
         </button>
         <button v-if="realtimeAvailable"
                 @click="returnToRealtimeMode()"
                 style="color: var(--success);"
-                title="Return to live Real-Time Simulation">
+                title="Return to live Real-Time Simulation" aria-label="Return to live simulation">
           <span class="btn-icon">🟢</span>
           <span class="btn-text">Live</span>
         </button>
@@ -135,7 +140,7 @@
       <input type="file" id="trace-file-input" accept=".json" style="display: none;" @change="handleTraceFile($event)">
       <button onclick="document.getElementById('trace-file-input').click()"
               style="color: var(--accent);"
-              title="Load an export.trace.json file into Trace Simulation Mode">
+              title="Load an export.trace.json file into Trace Simulation Mode" aria-label="Load execution trace">
         <span class="btn-icon">📂</span>
         <span class="btn-text">Load</span>
       </button>
@@ -228,9 +233,11 @@
         <div v-else style="display: contents;">
           <div v-for="item in state.displayQueue" :key="item.key" style="display: contents;">
             <!-- Batch Group Card -->
-            <div v-if="item.isBatch"
+            <button v-if="item.isBatch" type="button"
                  class="batch-card"
                  :id="'packet-item-' + item.id"
+                 :aria-label="'Inspect packet batch ' + item.batchIds.join(', ')"
+                 :aria-pressed="!!(item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.some(bid => item.batchIds.includes(bid))))))"
                  :class="{
                    active: item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.some(bid => item.batchIds.includes(bid))))),
                    completed: item.isCompleted
@@ -259,12 +266,14 @@
                   <span style="font-family: monospace;">{{ p.size }}B</span>
                 </div>
               </div>
-            </div>
+            </button>
 
             <!-- Single Individual Packet Item -->
-            <div v-else
+            <button v-else type="button"
                  class="list-item"
                  :id="'packet-item-' + item.id"
+                 :aria-label="'Inspect packet ' + item.id + ' from ' + item.packet.srcIp + ':' + item.packet.srcPort + ' to ' + item.packet.dstIp + ':' + item.packet.dstPort"
+                 :aria-pressed="!!(item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.includes(item.id)))))"
                  :class="{
                    active: item.isActive || (state.selectedPacket && (state.selectedPacket.id === item.id || (state.selectedPacket.batchIds && state.selectedPacket.batchIds.includes(item.id)))),
                    completed: item.isCompleted
@@ -281,7 +290,7 @@
               </div>
               <div class="log-desc">{{ item.packet.srcIp }}:{{ item.packet.srcPort }} ➔ {{ item.packet.dstIp }}:{{ item.packet.dstPort }}</div>
               <div class="packet-payload-summary" style="font-size: 10px; font-family: monospace; color: var(--text-muted);">{{ item.packet.payloadSummary }}</div>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -320,9 +329,9 @@
 
         <!-- Canvas Floating Controls (Zoom / Pan Reset) -->
         <div class="canvas-controls">
-          <button @click="canvasRenderer.zoomIn()" title="Zoom In">+</button>
-          <button @click="canvasRenderer.zoomOut()" title="Zoom Out">-</button>
-          <button @click="canvasRenderer.resetView()" title="Fit / Reset View">⌂</button>
+          <button @click="canvasRenderer.zoomIn()" title="Zoom In" aria-label="Zoom in">+</button>
+          <button @click="canvasRenderer.zoomOut()" title="Zoom Out" aria-label="Zoom out">-</button>
+          <button @click="canvasRenderer.resetView()" title="Fit / Reset View" aria-label="Fit pipeline view">⌂</button>
         </div>
       </div>
 
@@ -447,20 +456,27 @@
         <div v-for="(ev, idx) in (mode === 'trace' ? traceAllEvents : state.events)" :key="ev.eventId || idx"
              class="list-tree-group">
           <div class="list-item"
+               role="button"
+               tabindex="0"
+               :aria-label="'Inspect trace step ' + (idx + 1) + ', packet ' + ev.msgId"
                :class="{
                  active: state.selectedTraceEventId === ev.eventId && !state.selectedSubTraceId,
                  dropped: ev.type === 'drop',
                  completed: ev.type === 'egress'
                }"
                :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }"
-               @click="selectTraceItem(ev, idx)">
+               @click="selectTraceItem(ev, idx)"
+               @keydown.enter.stop.prevent="selectTraceItem(ev, idx)"
+               @keydown.space.stop.prevent="selectTraceItem(ev, idx)">
             <div class="item-top">
               <div style="display: flex; align-items: center; gap: 6px;">
                 <button v-if="ev.traces && ev.traces.length > 1"
                         class="tree-toggle-btn"
                         :class="{ open: isTraceExpanded(ev) }"
                         @click="toggleTraceExpanded(ev, $event)"
-                        title="Toggle individual traces">
+                        @keydown.stop
+                        title="Toggle individual traces"
+                        :aria-label="isTraceExpanded(ev) ? 'Collapse individual traces' : 'Expand individual traces'">
                   {{ isTraceExpanded(ev) ? '▾' : '▸' }}
                 </button>
                 <span class="log-tag" :class="'tag-' + ev.type">
@@ -503,8 +519,13 @@
                :style="{ opacity: mode === 'trace' && idx >= traceStepIdx ? '0.38' : '1.0' }">
             <div v-for="tr in ev.traces" :key="tr.traceId"
                  class="subtrace-item"
+                 role="button"
+                 tabindex="0"
+                 :aria-label="'Inspect branch ' + tr.traceId + ' on ' + (tr.outputChannel || tr.inputChannel || tr.channel)"
                  :class="{ active: state.selectedTraceEventId === ev.eventId && state.selectedSubTraceId === tr.traceId }"
-                 @click="selectSubTraceItem(ev, tr, idx, $event)">
+                 @click="selectSubTraceItem(ev, tr, idx, $event)"
+                 @keydown.enter.prevent="selectSubTraceItem(ev, tr, idx, $event)"
+                 @keydown.space.prevent="selectSubTraceItem(ev, tr, idx, $event)">
               <div class="subtrace-header">
                 <span class="subtrace-branch-icon">↳</span>
                 <span class="subtrace-channel">Branch #{{ tr.traceId }}: <strong>{{ tr.outputChannel || tr.inputChannel || tr.channel }}</strong></span>
@@ -532,7 +553,7 @@
             {{ payloadModalNode?.name }}
           </span>
         </span>
-        <button class="modal-close-btn" @click="closeCustomPayloadModal()" title="Close (Esc)">✕</button>
+        <button class="modal-close-btn" @click="closeCustomPayloadModal()" title="Close (Esc)" aria-label="Close custom payload dialog">✕</button>
       </div>
 
       <div class="modal-body">
@@ -570,17 +591,7 @@
   </div>
 
   <!-- ES6 App Module Bootstrapper -->
-  <script src="/studio/context.js"></script>
-  <script>
-    window.toggleWorkspaceDropdown = function (e) {
-      e.stopPropagation();
-      const dd = e.currentTarget.closest('.workspace-dropdown');
-      if (dd) dd.classList.toggle('open');
-    };
-    document.addEventListener('click', () => {
-      document.querySelectorAll('.workspace-dropdown.open').forEach(el => el.classList.remove('open'));
-    });
-  </script>
+  <script src="/studio/context.js?v=2"></script>
   <script type="module">
     import { createSimulationApp } from "./js/app.js?v=13";
 

@@ -210,7 +210,7 @@
     <header style="height: 52px; background: #0f172a; border-bottom: 1px solid #334155; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; box-sizing: border-box; width: 100%;">
         <div style="display: flex; align-items: center; gap: 12px;">
             <div class="workspace-dropdown">
-                <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace">
+                <button class="workspace-badge-btn" onclick="toggleWorkspaceDropdown(event)" title="Switch Workspace" aria-label="Switch workspace: Live Telemetry">
                     <span class="badge-icon">📊</span>
                     <span class="badge-text">LIVE TELEMETRY</span>
                     <span class="badge-caret">▾</span>
@@ -419,7 +419,7 @@
         </section>
     </div>
 
-    <script src="/studio/context.js"></script>
+    <script src="/studio/context.js?v=2"></script>
     <script>
         const throughputHistory = new Array(30).fill(0);
         let activeTab = "all";
@@ -1253,14 +1253,6 @@
         }
         pollMetrics();
 
-        window.toggleWorkspaceDropdown = function (e) {
-            e.stopPropagation();
-            const dd = e.currentTarget.closest('.workspace-dropdown');
-            if (dd) dd.classList.toggle('open');
-        };
-        document.addEventListener('click', () => {
-            document.querySelectorAll('.workspace-dropdown.open').forEach(el => el.classList.remove('open'));
-        });
     </script>
 </body>
 </html>

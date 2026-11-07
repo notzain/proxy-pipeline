@@ -349,6 +349,8 @@ button.danger:hover {
 }
 
 .palette-group-title {
+  width: 100%;
+  font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
@@ -361,6 +363,9 @@ button.danger:hover {
   justify-content: space-between;
   border-radius: 4px;
   transition: background-color 0.15s, color 0.15s;
+  text-align: left;
+  background: transparent;
+  border: 0;
 }
 
 .palette-group-title:hover {
@@ -374,6 +379,10 @@ button.danger:hover {
 }
 
 .palette-card {
+  width: 100%;
+  font-family: inherit;
+  color: var(--text-main);
+  text-align: left;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -383,6 +392,7 @@ button.danger:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  white-space: normal;
 }
 
 .palette-card:hover {
@@ -1751,4 +1761,3 @@ button.danger-outline:hover {
   white-space: pre-wrap;
   user-select: text;
 }
-

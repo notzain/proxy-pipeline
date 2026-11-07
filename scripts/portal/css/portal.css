@@ -782,3 +782,19 @@ footer.portal-footer {
   color: var(--accent-cyan);
   font-weight: 600;
 }
+
+@media (max-width: 720px) {
+  .modules-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .btn-group {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .btn-action {
+    flex: 1 1 calc(50% - 10px);
+    justify-content: center;
+  }
+}
