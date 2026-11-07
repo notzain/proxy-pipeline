@@ -65,6 +65,7 @@
         style="font-size: 11px; color: var(--accent-green); background: #064e3b; padding: 2px 8px; border-radius: 4px; border: 1px solid #059669;">
         {{ statusMsg }}
       </span>
+      <span v-if="hasUnsavedChanges" class="unsaved-indicator" role="status">Unsaved changes</span>
     </div>
 
     <div class="header-actions">
@@ -342,7 +343,21 @@
         </div>
         <div class="field-group" style="margin-bottom: 12px;">
           <label class="field-label">Filename (.toml)</label>
-          <input type="text" v-model="saveFilename" placeholder="custom_chain.toml">
+          <input type="text" v-model="saveFilename" placeholder="custom_chain.toml" :disabled="Boolean(currentChainPath)">
+          <div v-if="currentChainPath" style="font-size: 10px; color: var(--text-muted);">
+            Saving this chain keeps its existing path.
+          </div>
+        </div>
+        <div v-if="overwriteRequired" class="save-warning" role="alert">
+          This will replace <strong>{{ currentChainPath || saveFilename }}</strong>.
+          <label>
+            <input type="checkbox" v-model="overwriteConfirmed">
+            I understand this existing chain will be overwritten.
+          </label>
+        </div>
+        <div v-if="saveError" class="save-error" role="alert">
+          {{ saveError }}
+          <span>Correct the problem or confirm overwrite, then retry.</span>
         </div>
         <div class="field-group" style="margin-bottom: 12px;">
           <label class="field-label">Transport Backend</label>
@@ -359,8 +374,11 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button @click="closeSaveModal()">Cancel</button>
-        <button class="primary" @click="confirmSaveToDisk()">Save to Disk</button>
+        <button @click="closeSaveModal()" :disabled="saving">Cancel</button>
+        <button class="primary" @click="confirmSaveToDisk()"
+                :disabled="saving || (overwriteRequired && !overwriteConfirmed)">
+          {{ saving ? 'Saving…' : 'Save to Disk' }}
+        </button>
       </div>
     </div>
   </div>
@@ -411,6 +429,7 @@
       </div>
 
       <div class="modal-body" style="padding: 12px 16px; gap: 10px; display: flex; flex-direction: column; overflow: hidden; max-height: calc(85vh - 120px);">
+        <div v-if="runningSimulation" class="save-warning" role="status">Starting simulation with the current pipeline definition…</div>
         <!-- Error Banner if failed -->
         <div v-if="chainViewerError" class="chain-viewer-error-banner">
           <span style="font-size: 16px;">❌</span>
@@ -441,6 +460,9 @@
       <div class="modal-footer">
         <button @click="copyChainViewerText()" style="margin-right: auto;" title="Copy entire TOML to clipboard">
           📋 Copy TOML
+        </button>
+        <button v-if="runError" class="primary" @click="runSimulation()" :disabled="runningSimulation">
+          {{ runningSimulation ? 'Starting…' : 'Retry Run' }}
         </button>
         <button @click="closeChainViewer()">Close</button>
       </div>

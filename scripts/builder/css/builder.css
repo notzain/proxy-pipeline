@@ -505,6 +505,39 @@ select:focus, input:focus {
   font-size: 16px;
 }
 
+.unsaved-indicator {
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.save-warning,
+.save-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, .45);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, .08);
+  color: #fcd34d;
+  font-size: 12px;
+}
+
+.save-warning label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.save-error {
+  border-color: rgba(239, 68, 68, .45);
+  background: rgba(239, 68, 68, .08);
+  color: #fca5a5;
+}
+
 svg.canvas-svg {
   position: absolute;
   top: 0;
@@ -1718,5 +1751,4 @@ button.danger-outline:hover {
   white-space: pre-wrap;
   user-select: text;
 }
-
 

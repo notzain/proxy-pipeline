@@ -713,9 +713,18 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
                 return self._send_json(400, {"status": "error", "message": "Chain path must be inside chains/"})
             if target_path.suffix.lower() != ".toml":
                 return self._send_json(400, {"status": "error", "message": "Builder saves must use a .toml filename"})
+            if target_path.exists() and payload.get("overwrite") is not True:
+                return self._send_json(409, {
+                    "status": "error",
+                    "message": "This chain file already exists. Confirm overwrite to replace it.",
+                    "path": str(target_path.relative_to(self.root_dir)),
+                })
             toml_content = serialize_chain_to_toml(payload)
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.write_text(toml_content, encoding="utf-8")
+            try:
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                target_path.write_text(toml_content, encoding="utf-8")
+            except OSError as e:
+                return self._send_json(500, {"status": "error", "message": f"Could not save chain: {e}"})
             relative_path = str(target_path.relative_to(self.root_dir))
             return self._send_json(200, {"status": "ok", "path": relative_path, "toml": toml_content})
 

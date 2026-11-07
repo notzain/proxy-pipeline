@@ -130,8 +130,10 @@ PetiteVue.createApp({
           }
         });
       }
+      return true;
     } catch (e) {
       this.runnerError = e.message || String(e);
+      return false;
     }
   },
 
@@ -181,7 +183,10 @@ PetiteVue.createApp({
       if (!resp.ok) {
         throw new Error(res.message || `Stop failed (HTTP ${resp.status})`);
       } else {
-        await this.pollStatus();
+        if (!await this.pollStatus()) return false;
+        if (this.status.state === "running") {
+          throw new Error("The runner is still active; restart was not attempted.");
+        }
         this.actionMessage = "Chain stop requested.";
         return true;
       }
@@ -194,9 +199,7 @@ PetiteVue.createApp({
   },
 
   async restartChain() {
-    if (await this.stopChain()) {
-      setTimeout(() => this.startChain(), 500);
-    }
+    if (await this.stopChain()) await this.startChain();
   },
 
   editSelectedChain() {

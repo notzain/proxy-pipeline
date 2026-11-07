@@ -103,6 +103,7 @@ class FrontendRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "chains", prefix="ux_test_") as temp_dir:
             relative_dir = Path(temp_dir).relative_to(ROOT)
             chain_path = relative_dir / "saved.toml"
+            (ROOT / chain_path).write_text("backend = \"file\"\n", encoding="utf-8")
             payload = {
                 "chainPath": str(chain_path),
                 "name": "saved_chain",
@@ -116,10 +117,22 @@ class FrontendRunnerTests(unittest.TestCase):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
+            with self.assertRaises(HTTPError) as context:
+                urlopen(req)
+            self.assertEqual(context.exception.code, 409)
+            context.exception.close()
+
+            payload["overwrite"] = True
+            req = Request(
+                f"{self.base_url}/api/chain/save",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
             with urlopen(req) as resp:
                 self.assertEqual(resp.status, 200)
                 self.assertEqual(json.loads(resp.read().decode("utf-8"))["path"], str(chain_path))
-            self.assertTrue((ROOT / chain_path).is_file())
+            self.assertIn("saved_chain", (ROOT / chain_path).read_text(encoding="utf-8"))
 
         payload["chainPath"] = "../outside.toml"
         req = Request(

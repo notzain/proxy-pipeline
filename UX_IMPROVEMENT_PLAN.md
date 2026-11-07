@@ -31,10 +31,10 @@ Make Proxy feel like one understandable workflow rather than a collection of cap
 
 ### Phase 3 — Make editing and operation safer
 
-- [ ] Add an unsaved-changes indicator and warn before navigating away from builder edits.
-- [ ] Keep save and run context visible when an operation fails, with actionable retry guidance.
-- [ ] Require clear confirmation before overwriting an existing chain and report the resulting file location.
-- [ ] Ensure restart only starts again after a successful stop.
+- [x] Add an unsaved-changes indicator and warn before navigating away from builder edits.
+- [x] Keep save and run context visible when an operation fails, with actionable retry guidance.
+- [x] Require clear confirmation before overwriting an existing chain and report the resulting file location.
+- [x] Ensure restart only starts again after a successful stop.
 
 ### Phase 4 — Unify interaction and accessibility
 
@@ -69,3 +69,7 @@ The deferred items will be evaluated after the planned workflow phases. The firs
 ## Phase 2 implementation summary
 
 The README now provides a first-pipeline path using existing presets and sample chains. The portal explains the workflow between workspaces, and builder, simulation, PCAP, and telemetry empty states recommend a next action.
+
+## Phase 3 implementation summary
+
+The builder tracks edits against the last loaded/saved definition, warns before leaving, keeps save failures in the open dialog, and provides a run retry in the error viewer. Existing files require explicit overwrite confirmation in the UI and API. Runner restart now waits for a successful stop/status check before starting again.

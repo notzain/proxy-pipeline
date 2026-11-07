@@ -11,7 +11,15 @@ function createApp() {
     chainName: 'custom_chain',
     currentChainPath: null,
     saveFilename: 'custom_chain.toml',
+    savedDefinitionSnapshot: null,
     showSaveModal: false,
+    saving: false,
+    saveError: '',
+    overwriteRequired: false,
+    overwriteConfirmed: false,
+    runningSimulation: false,
+    runError: '',
+    allowUnload: false,
     showExportModal: false,
     showChainViewerModal: false,
     chainViewerTitle: 'Generated Pipeline Definition',
@@ -47,11 +55,17 @@ function createApp() {
     statusMsg: '',
     canvasInstance: null,
 
+    get hasUnsavedChanges() {
+      return this.savedDefinitionSnapshot !== null
+        && this.getDefinitionSnapshot() !== this.savedDefinitionSnapshot;
+    },
+
     async init() {
       await this.loadSchemas();
       this.initCanvas();
       await this.loadInitialChain();
       this.validateChain();
+      this.savedDefinitionSnapshot = this.getDefinitionSnapshot();
 
       // Keyboard shortcuts
       window.addEventListener('keydown', (e) => {
@@ -64,6 +78,12 @@ function createApp() {
             this.deleteWire(this.selectedWireId);
           }
         }
+      });
+
+      window.addEventListener('beforeunload', (event) => {
+        if (!this.hasUnsavedChanges || this.allowUnload) return;
+        event.preventDefault();
+        event.returnValue = '';
       });
     },
 
@@ -914,6 +934,10 @@ function createApp() {
       };
     },
 
+    getDefinitionSnapshot() {
+      return JSON.stringify(this.exportChainDefinition());
+    },
+
     importChainDefinition(chainDef) {
       this.nodes = [];
       this.wires = [];
@@ -1328,11 +1352,19 @@ function createApp() {
     },
 
     openSaveModal() {
-      this.onChainNameChanged();
+      if (this.currentChainPath) {
+        this.saveFilename = this.currentChainPath.split(/[\\/]/).pop();
+      } else {
+        this.onChainNameChanged();
+      }
+      this.saveError = '';
+      this.overwriteRequired = Boolean(this.currentChainPath);
+      this.overwriteConfirmed = false;
       this.showSaveModal = true;
     },
 
     closeSaveModal() {
+      if (this.saving) return;
       this.showSaveModal = false;
     },
 
@@ -1362,10 +1394,13 @@ function createApp() {
     },
 
     async confirmSaveToDisk() {
-      this.closeSaveModal();
+      if (this.saving || (this.overwriteRequired && !this.overwriteConfirmed)) return;
+      this.saving = true;
+      this.saveError = '';
       const chainDef = this.exportChainDefinition();
       chainDef.filename = this.saveFilename || 'custom_chain.toml';
       chainDef.chainPath = this.currentChainPath;
+      chainDef.overwrite = this.overwriteConfirmed;
       try {
         const res = await fetch('/api/chain/save', {
           method: 'POST',
@@ -1373,18 +1408,24 @@ function createApp() {
           body: JSON.stringify(chainDef),
         });
         const data = await res.json();
-        if (res.ok) {
-          this.currentChainPath = data.path;
-          window.ProxyStudioContext?.set(this.currentChainPath, this.backend);
-          const nextUrl = new URL(window.location.href);
-          nextUrl.searchParams.set('chain', this.currentChainPath);
-          history.replaceState(null, '', nextUrl);
-          this.flashStatus(`Saved to ${data.path || 'disk'}`);
-        } else {
-          alert('Save failed: ' + (data.message || 'Unknown error'));
+        if (!res.ok) {
+          if (res.status === 409) {
+            this.overwriteRequired = true;
+          }
+          throw new Error(data.message || `Save failed (HTTP ${res.status})`);
         }
+        this.currentChainPath = data.path;
+        window.ProxyStudioContext?.set(this.currentChainPath, this.backend);
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('chain', this.currentChainPath);
+        history.replaceState(null, '', nextUrl);
+        this.savedDefinitionSnapshot = this.getDefinitionSnapshot();
+        this.showSaveModal = false;
+        this.flashStatus(`Saved to ${data.path || 'disk'}`);
       } catch (err) {
-        alert('Save request failed: ' + err);
+        this.saveError = err.message || String(err);
+      } finally {
+        this.saving = false;
       }
     },
 
@@ -1393,6 +1434,9 @@ function createApp() {
     },
 
     async runSimulation() {
+      if (this.runningSimulation) return;
+      this.runningSimulation = true;
+      this.runError = '';
       const chainDef = this.exportChainDefinition();
       chainDef.chainPath = this.currentChainPath;
       const localToml = this.toTomlString(chainDef);
@@ -1404,6 +1448,7 @@ function createApp() {
         });
         const data = await res.json();
         if (res.ok) {
+          this.allowUnload = true;
           this.flashStatus('Chain runner launched in simulation mode!');
           if (data.url) {
             window.location.href = data.url;
@@ -1411,10 +1456,14 @@ function createApp() {
         } else {
           const errText = data.message || 'Unknown error';
           const tomlText = data.toml || localToml;
+          this.runError = errText;
           this.openChainViewer('Simulation Launch Failed', tomlText, errText);
         }
       } catch (err) {
+        this.runError = err.message || String(err);
         this.openChainViewer('Network / Request Failed', localToml, String(err));
+      } finally {
+        this.runningSimulation = false;
       }
     },
 
