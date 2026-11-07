@@ -1,9 +1,17 @@
 #include "backend/vendor/VendorRelayNode.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
+#include <atomic>
 #include <filesystem>
 #include <system_error>
 
 namespace Backend::Vendor {
+
+namespace {
+
+    std::atomic<std::uint64_t> s_payloadPreparationFailureCount { 0 };
+
+} // namespace
 
 Common::Compat::span<const std::byte> VendorRelayNode::payloadView() const noexcept
 {
@@ -27,16 +35,22 @@ bool VendorRelayNode::preparePayload() noexcept
     std::error_code ec;
     const auto fileSize = static_cast<std::size_t>(std::filesystem::file_size(filePath, ec));
     if (ec) {
-        Proxy::Log::error("[VendorRelayNode] Failed to read payload file '{}' for message ID {}",
-            filePath, message.getId());
+        const auto count = s_payloadPreparationFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::error("[VendorRelayNode] Failed to read payload file '{}' for message ID {} (total failures: {})",
+                filePath, message.getId(), count);
+        }
         return false;
     }
 
     if (fileSize > 0) {
         mapping = Common::Io::MappedFile::open(filePath);
         if (!mapping) {
-            Proxy::Log::error("[VendorRelayNode] Failed to map payload file '{}' for message ID {}",
-                filePath, message.getId());
+            const auto count = s_payloadPreparationFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (Common::Diagnostics::shouldLogEventCount(count)) {
+                Proxy::Log::error("[VendorRelayNode] Failed to map payload file '{}' for message ID {} (total failures: {})",
+                    filePath, message.getId(), count);
+            }
             return false;
         }
     }

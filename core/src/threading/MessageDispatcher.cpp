@@ -1,5 +1,6 @@
 #include "MessageDispatcher.hpp"
 #include "backend/message/MessageView.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "common/memory/ParallelArray.hpp"
 #include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
@@ -43,7 +44,7 @@ void dispatchReceivedBatch(
             }
             ++invalidEnvelopeCount;
             s_droppedCounter.increment();
-            if (invalidEnvelopeCount <= 8 || (invalidEnvelopeCount & 1023) == 0) {
+            if (Common::Diagnostics::shouldLogEventCount(invalidEnvelopeCount)) {
                 Proxy::Log::warn("[MessageDispatcher] Channel '{}' received invalid envelope ({} bytes, total dropped: {}).",
                     channelName, rawMessage.size(), invalidEnvelopeCount);
             }

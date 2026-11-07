@@ -1,4 +1,5 @@
 #include "backend/uds/UdsOutputChannel.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 
 #include <cerrno>
@@ -155,7 +156,11 @@ bool UdsOutputChannel::send(Common::Compat::span<const std::byte> message)
     }
 
     if (sent < 0) {
-        Proxy::Log::error("[UdsOutputChannel] Failed to send {} bytes to {} ({})", message.size(), m_destPath, std::strerror(errno));
+        const auto count = m_sendFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::error("[UdsOutputChannel] Failed to send {} bytes to {} ({}, total failures: {})",
+                message.size(), m_destPath, std::strerror(errno), count);
+        }
         return false;
     }
 

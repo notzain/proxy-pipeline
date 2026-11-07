@@ -98,6 +98,40 @@ public:
     }
 
     /**
+     * @brief Attempts to enqueue a batch without waiting for producer access or free capacity.
+     *
+     * The producer callback is not invoked if the producer lock is contended or the queue lacks
+     * capacity for the entire batch.
+     */
+    template <typename ProducerFn>
+    bool tryPushBatch(std::size_t count, ProducerFn&& producerFn)
+    {
+        if (count == 0 || count > Capacity) {
+            return false;
+        }
+
+        std::unique_lock<std::mutex> lock(m_producerMutex, std::try_to_lock);
+        if (!lock.owns_lock()) {
+            return false;
+        }
+
+        const std::size_t currentTail = m_tail.load(std::memory_order_relaxed);
+        const std::size_t currentHead = m_head.load(std::memory_order_acquire);
+        if (currentTail - currentHead + count > Capacity) {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < count; ++i) {
+            producerFn(m_ring[(currentTail + i) & Mask], i);
+        }
+
+        m_tail.store(currentTail + count, std::memory_order_release);
+        m_tailVersion.fetch_add(1, std::memory_order_release);
+        Common::Compat::atomic_notify_one(m_tailVersion);
+        return true;
+    }
+
+    /**
      * @brief Exposes a contiguous run of free ring slots for in-place (zero-copy) population.
      *
      * Blocks until at least one slot is free. The filler receives a writable span of up to

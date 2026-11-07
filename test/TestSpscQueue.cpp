@@ -82,6 +82,23 @@ TEST_CASE("Common::Queue::SpscQueue rejects invalid batch sizes", "[spsc]")
     CHECK(q.empty());
 }
 
+TEST_CASE("Common::Queue::SpscQueue tryPushBatch never blocks or partially invokes the producer", "[spsc]")
+{
+    Common::Queue::SpscQueue<int, 4> q;
+    REQUIRE(q.pushBatch(3, [](int& slot, std::size_t i) { slot = static_cast<int>(i); }));
+
+    bool producerCalled = false;
+    CHECK_FALSE(q.tryPushBatch(2, [&](int&, std::size_t) { producerCalled = true; }));
+    CHECK_FALSE(producerCalled);
+
+    REQUIRE(q.tryPushBatch(1, [&](int& slot, std::size_t) {
+        producerCalled = true;
+        slot = 9;
+    }));
+    CHECK(producerCalled);
+    CHECK(drainAll(q, 4) == std::vector<int> { 0, 1, 2, 9 });
+}
+
 TEST_CASE("Common::Queue::SpscQueue producer blocks when full and resumes after drain", "[spsc]")
 {
     Common::Queue::SpscQueue<int, 4> q;

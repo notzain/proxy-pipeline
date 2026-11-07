@@ -105,9 +105,9 @@ Safe framing is mandatory regardless of whether a channel enables integrity or a
   * **Handler Deadline Monitoring**: Add execution-time telemetry or watchdogs only with a defined recovery policy; detecting a slow handler does not safely terminate or recover it.
 
 ### 5.2 I/O Storm Protection (Rate-Limited Logging)
-* **Existing Control and Remaining Work**: `MessageDispatcher` already rate-limits invalid-envelope warnings and increments a general dropped-message counter. Other transport/parser error paths may still log per event.
+* **Existing Control and Remaining Work**: `MessageDispatcher` already rate-limits invalid-envelope warnings and increments a malformed-message counter. The runtime hardening slice now applies the same bounded log cadence to repeated vendor, file, UDP, UDS, and SHM delivery failures. Thread-pool queue enqueue attempts that need the blocking path are exported as `queue_enqueue_backpressure_events_total`. The counter is aggregate (no channel labels) to avoid high-cardinality metrics. Backend-local failure counts appear in sampled log messages because backend modules do not depend on core telemetry. Per-transport capacity/high-water metrics and explicit overload policies remain open work.
 * **Hardening Opportunities**:
-  * **Consistent Rate Limits**: Reuse the existing bounded-warning pattern or a shared limiter for attacker-triggerable errors. Keep aggregate counts and avoid attacker-controlled/high-cardinality metric labels.
+  * **Consistent Rate Limits**: Reuse the shared event-count sampling policy for attacker-triggerable errors. Keep aggregate counts and avoid attacker-controlled/high-cardinality metric labels.
 
 ---
 
@@ -122,7 +122,7 @@ Use the following order across both hardening documents. P0 and P1 are correctne
 | **P1** | Parsers | **Input-size and depth/work limits; verify XML external-resource policy** | Medium | Measure |
 | **P1** | Policy | **Document trust boundaries and behavior for raw/unverified payloads** | Low | None |
 | **P2** | Wire | **Authenticated messages and replay window, if required by deployment** | High | Measure |
-| **P2** | Runtime | **Queue/network quotas, explicit overload behavior, consistent bounded logging** | Medium | Depends on policy |
+| **P2** | Runtime | **Queue/network quotas and explicit overload behavior; initial queue backpressure metric and bounded logs implemented** | Medium | Depends on policy |
 | **P3** | IPC | **Platform-appropriate UDS peer identity and path hardening** | Medium | Setup / connection |
 | **P3** | Defense in depth | **Guard pages after bounds checks, if justified** | Medium | Measure |
 | **P3** | Validation | **Benchmarks, compatibility/versioning guidance, and operator documentation** | Low | None |

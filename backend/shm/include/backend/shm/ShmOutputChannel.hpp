@@ -1,6 +1,8 @@
 #pragma once
 
 #include "backend/channel/IOutputChannel.hpp"
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -37,6 +39,7 @@ public:
 private:
     std::string m_destPath;
     std::unique_ptr<ShmRingBuffer> m_ring;
+    std::atomic<std::uint64_t> m_backpressureTimeoutCount { 0 };
 };
 
 } // namespace Proxy::Backend::Shm

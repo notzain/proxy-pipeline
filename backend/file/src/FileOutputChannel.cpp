@@ -1,4 +1,5 @@
 #include "backend/file/FileOutputChannel.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 #include <chrono>
 #include <fmt/core.h>
@@ -34,7 +35,11 @@ bool FileOutputChannel::send(Common::Compat::span<const std::byte> message)
 
     std::ofstream out(filePath, std::ios::binary);
     if (!out.is_open()) {
-        Proxy::Log::error("[FileOutputChannel] Failed to write message file {}", filePath.string());
+        const auto count = m_writeFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::error("[FileOutputChannel] Failed to write message file {} (total failures: {})",
+                filePath.string(), count);
+        }
         return false;
     }
 

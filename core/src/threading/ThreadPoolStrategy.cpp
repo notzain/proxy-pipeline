@@ -7,6 +7,7 @@
 #include "common/memory/ByteView.hpp"
 #include "common/memory/ParallelArray.hpp"
 #include "core/handler/IHandler.hpp"
+#include "core/telemetry/MetricsRegistry.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <array>
@@ -172,6 +173,7 @@ namespace {
         SharedQueueType& sharedQueue,
         const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
         Detail::IngressBatchScratch<16>& scratch,
+        Core::Telemetry::Counter& enqueueBackpressureCounter,
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
@@ -189,6 +191,7 @@ namespace {
             MessageTask task;
             populateTaskFromSlot(task, channelName, batchSlots[i], scratch.slice(i));
             if (!sharedQueue.tryPush(std::move(task))) {
+                enqueueBackpressureCounter.increment();
                 sharedQueue.push(std::move(task), stoken);
             }
         }
@@ -205,6 +208,7 @@ namespace {
         Common::Compat::span<const std::unique_ptr<QueueType>> queues,
         const std::shared_ptr<Common::Memory::BufferPool>& bufferPool,
         Detail::IngressBatchScratch<16>& scratch,
+        Core::Telemetry::Counter& enqueueBackpressureCounter,
         Handler::IHandler::Timeout timeout,
         Common::Compat::stop_token stoken)
     {
@@ -234,13 +238,14 @@ namespace {
             const std::size_t runEnd = findContiguousFlowRun(runStart, received, channelIdx, batchSlots, workerIdx, numWorkers);
             const std::size_t runCount = runEnd - runStart;
 
-            queues[workerIdx]->pushBatch(
-                runCount,
-                [&](MessageTask& slot, std::size_t idx) {
-                    const std::size_t pktIdx = runStart + idx;
-                    populateTaskFromSlot(slot, channelName, batchSlots[pktIdx], scratch.slice(pktIdx));
-                },
-                stoken);
+            auto populateTasks = [&](MessageTask& slot, std::size_t idx) {
+                const std::size_t pktIdx = runStart + idx;
+                populateTaskFromSlot(slot, channelName, batchSlots[pktIdx], scratch.slice(pktIdx));
+            };
+            if (!queues[workerIdx]->tryPushBatch(runCount, populateTasks)) {
+                enqueueBackpressureCounter.increment();
+                queues[workerIdx]->pushBatch(runCount, populateTasks, stoken);
+            }
 
             runStart = runEnd;
         }
@@ -297,6 +302,9 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
+    auto* enqueueBackpressureCounter = &Core::Telemetry::MetricsRegistry::instance().counter(
+        "queue_enqueue_backpressure_events_total",
+        "Queue enqueue attempts that required the blocking path because capacity was unavailable or a producer was contending");
     Proxy::Log::info("[ThreadPoolStrategy] Starting with {} pool workers and {} channel poller(s)...",
         m_numWorkerThreads, channelCount);
 
@@ -350,19 +358,19 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     // 2. Launch channel poller threads to enqueue message tasks
     const bool enforceFifo = m_strictFifo;
     std::size_t channelIdx = 0;
-    handler.forEachInputChannel([this, channelTimeout, enforceFifo, &channelIdx](::Backend::IInputChannel& channel) {
+    handler.forEachInputChannel([this, channelTimeout, enforceFifo, &channelIdx, enqueueBackpressureCounter](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
         const auto currentChannelIdx = channelIdx++;
-        m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo](Common::Compat::stop_token stoken) {
+        m_channelThreads.emplace_back([this, channelName = channel.name(), channelPtr, currentChannelIdx, channelTimeout, enforceFifo, enqueueBackpressureCounter](Common::Compat::stop_token stoken) {
             Detail::IngressBatchScratch<16> scratch;
 
             while (!stoken.stop_requested() && m_running.load(std::memory_order_acquire)) {
                 if (!enforceFifo) {
-                    if (!pollUnconstrained(channelName, *channelPtr, *m_sharedQueue, m_bufferPool, scratch, channelTimeout, stoken)) {
+                    if (!pollUnconstrained(channelName, *channelPtr, *m_sharedQueue, m_bufferPool, scratch, *enqueueBackpressureCounter, channelTimeout, stoken)) {
                         break;
                     }
                 } else {
-                    if (!pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, scratch, channelTimeout, stoken)) {
+                    if (!pollStrictFifo(channelName, *channelPtr, currentChannelIdx, m_workerQueues, m_bufferPool, scratch, *enqueueBackpressureCounter, channelTimeout, stoken)) {
                         break;
                     }
                 }

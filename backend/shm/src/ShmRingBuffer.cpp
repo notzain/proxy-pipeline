@@ -1,4 +1,5 @@
 #include "backend/shm/ShmRingBuffer.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 #include <algorithm>
 #include <cerrno>
@@ -391,7 +392,7 @@ const std::string& ShmRingBuffer::getPath() const noexcept
 void ShmRingBuffer::logInvalidSlot(std::string_view message, std::size_t length, std::size_t capacity)
 {
     const uint64_t count = m_invalidSlotCount.fetch_add(1, std::memory_order_relaxed) + 1;
-    if (count <= 8 || (count & 1023) == 0) {
+    if (Common::Diagnostics::shouldLogEventCount(count)) {
         Proxy::Log::warn("[ShmRingBuffer] {} (length: {}, capacity: {}, total dropped: {})",
             message, length, capacity, count);
     }

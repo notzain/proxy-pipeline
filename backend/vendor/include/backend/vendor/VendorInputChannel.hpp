@@ -4,7 +4,9 @@
 #include "backend/vendor/VendorRelayNode.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
 #include "common/memory/ObjectPool.hpp"
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -56,6 +58,7 @@ private:
     std::shared_ptr<Sdk::VendorManager> m_manager;
     std::shared_ptr<Sdk::VendorReceiver> m_receiver;
     Common::Memory::ObjectPool<VendorRelayNode> m_relayPool;
+    std::atomic<std::uint64_t> m_poolExhaustionCount { 0 };
 };
 
 } // namespace Backend::Vendor

@@ -2,6 +2,8 @@
 
 #include "backend/channel/IOutputChannel.hpp"
 #include "backend/vendor/VendorSdkStub.hpp"
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -34,6 +36,7 @@ public:
 private:
     std::shared_ptr<Sdk::VendorManager> m_manager;
     std::shared_ptr<Sdk::VendorSender> m_sender;
+    std::atomic<std::uint64_t> m_unavailableSenderCount { 0 };
 };
 
 } // namespace Backend::Vendor

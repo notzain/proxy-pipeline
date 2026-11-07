@@ -1,4 +1,5 @@
 #include "backend/socket/SocketOutputChannel.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 #include <arpa/inet.h>
 #include <cerrno>
@@ -164,7 +165,11 @@ bool SocketOutputChannel::send(Common::Compat::span<const std::byte> message)
     }
 
     if (sent < 0) {
-        Proxy::Log::error("[SocketOutputChannel] Failed to send {} bytes to {}:{} ({})", message.size(), m_destHost, m_destPort, std::strerror(errno));
+        const auto count = m_sendFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::error("[SocketOutputChannel] Failed to send {} bytes to {}:{} ({}, total failures: {})",
+                message.size(), m_destHost, m_destPort, std::strerror(errno), count);
+        }
         return false;
     }
 

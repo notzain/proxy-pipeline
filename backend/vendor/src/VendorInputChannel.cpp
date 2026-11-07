@@ -2,6 +2,7 @@
 #include "backend/memory/SettlementToken.hpp"
 #include "backend/vendor/VendorBackend.hpp"
 #include "backend/vendor/VendorRelayNode.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
@@ -67,8 +68,11 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
     // or error, node's destructor automatically recycles it back to the pool!
     auto node = m_relayPool.acquire();
     if (!node) {
-        Proxy::Log::warn("[VendorInputChannel] Relay pool capacity reached on channel '{}'; applying ingress backpressure",
-            name());
+        const auto count = m_poolExhaustionCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::warn("[VendorInputChannel] Relay pool capacity reached on channel '{}'; applying ingress backpressure (total events: {})",
+                name(), count);
+        }
         return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });
     }
 

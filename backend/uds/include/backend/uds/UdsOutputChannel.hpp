@@ -28,6 +28,7 @@ private:
     sockaddr_un m_destAddr { };
     int m_socketFd { -1 };
     std::atomic<bool> m_connected { false };
+    std::atomic<std::uint64_t> m_sendFailureCount { 0 };
 
     void closeSocket();
     void openSocket();

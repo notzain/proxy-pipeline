@@ -1,5 +1,7 @@
 #include "backend/shm/ShmOutputChannel.hpp"
 #include "backend/shm/ShmRingBuffer.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
+#include "log/Log.hpp"
 #include <thread>
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -72,6 +74,11 @@ bool ShmOutputChannel::send(Common::Compat::span<const std::byte> message)
         }
     }
 
+    const auto count = m_backpressureTimeoutCount.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (Common::Diagnostics::shouldLogEventCount(count)) {
+        Proxy::Log::warn("[ShmOutputChannel] Backpressure timeout on channel '{}' (total events: {})",
+            name(), count);
+    }
     return false;
 }
 
@@ -110,6 +117,13 @@ std::size_t ShmOutputChannel::sendBatch(Common::Compat::span<const Common::Compa
         total += chunk;
     }
 
+    if (total < messages.size()) {
+        const auto count = m_backpressureTimeoutCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::warn("[ShmOutputChannel] Backpressure timeout on channel '{}' after sending {}/{} messages (total events: {})",
+                name(), total, messages.size(), count);
+        }
+    }
     return total;
 }
 

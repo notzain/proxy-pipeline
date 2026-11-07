@@ -1,6 +1,7 @@
 #include "backend/vendor/VendorOutputChannel.hpp"
 #include "backend/message/MessageView.hpp"
 #include "backend/vendor/VendorRelayNode.hpp"
+#include "common/diagnostics/RateLimitedLogging.hpp"
 #include "log/Log.hpp"
 #include <utility>
 
@@ -24,7 +25,11 @@ void VendorOutputChannel::setSender(std::shared_ptr<Sdk::VendorSender> sender)
 bool VendorOutputChannel::send(Common::Compat::span<const std::byte> message)
 {
     if (!m_sender) {
-        Proxy::Log::warn("[VendorOutputChannel] send() called without initialized VendorSender on channel '{}'", name());
+        const auto count = m_unavailableSenderCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::warn("[VendorOutputChannel] send() called without initialized VendorSender on channel '{}' (total events: {})",
+                name(), count);
+        }
         return false;
     }
 
@@ -44,7 +49,11 @@ bool VendorOutputChannel::send(Common::Compat::span<const std::byte> message)
 bool VendorOutputChannel::send(const ::Backend::MessageView& message)
 {
     if (!m_sender) {
-        Proxy::Log::warn("[VendorOutputChannel] send() called without initialized VendorSender on channel '{}'", name());
+        const auto count = m_unavailableSenderCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (Common::Diagnostics::shouldLogEventCount(count)) {
+            Proxy::Log::warn("[VendorOutputChannel] send() called without initialized VendorSender on channel '{}' (total events: {})",
+                name(), count);
+        }
         return false;
     }
 
