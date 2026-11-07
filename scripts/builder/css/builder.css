@@ -479,6 +479,32 @@ select:focus, input:focus {
   overflow: visible !important;
 }
 
+.canvas-empty-state {
+  position: absolute;
+  z-index: 8;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, calc(100vw - 360px));
+  padding: 22px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, .94);
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.canvas-empty-state strong {
+  color: var(--text-main);
+  font-size: 16px;
+}
+
 svg.canvas-svg {
   position: absolute;
   top: 0;
@@ -1692,6 +1718,5 @@ button.danger-outline:hover {
   white-space: pre-wrap;
   user-select: text;
 }
-
 
 

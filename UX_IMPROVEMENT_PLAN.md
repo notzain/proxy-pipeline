@@ -25,9 +25,9 @@ Make Proxy feel like one understandable workflow rather than a collection of cap
 
 ### Phase 2 — Improve first-use success
 
-- [ ] Add a concise “first pipeline” quickstart from prerequisites through a successful sample run.
-- [ ] Provide guided empty states with a recommended next action for chains, PCAPs, simulation, and telemetry.
-- [ ] Explain the relationship between the portal, builder, simulator, and telemetry dashboard in-product.
+- [x] Add a concise “first pipeline” quickstart from prerequisites through a successful sample run.
+- [x] Provide guided empty states with a recommended next action for chains, PCAPs, simulation, and telemetry.
+- [x] Explain the relationship between the portal, builder, simulator, and telemetry dashboard in-product.
 
 ### Phase 3 — Make editing and operation safer
 
@@ -42,9 +42,9 @@ Make Proxy feel like one understandable workflow rather than a collection of cap
 - [ ] Audit keyboard access, focus order, accessible names, live announcements, and small-screen layouts.
 - [ ] Replace clickable non-semantic controls with buttons and links where appropriate.
 
-## Current implementation slice
+## Phase 1 implementation summary
 
-This phase makes the portal's chain selection actionable and surfaces request state where users need it. A selected chain can be opened in the builder, saved back to the same repository-relative path, run in simulation, and carried through workspace links. Each workspace shows a shared runner status summary. The server constrains chain reads and writes to `chains/`.
+Phase 1 made the portal's chain selection actionable and surfaces request state where users need it. A selected chain can be opened in the builder, saved back to the same repository-relative path, run in simulation, and carried through workspace links. Each workspace shows a shared runner status summary. The server constrains chain reads and writes to `chains/`.
 
 ## Acceptance criteria
 
@@ -61,3 +61,11 @@ This phase makes the portal's chain selection actionable and surfaces request st
 - A full redesign or replacement of the existing visual style.
 - Changing chain execution semantics or backend defaults.
 - Adding a new frontend framework or dependency.
+
+## Deferred-scope investigation
+
+The deferred items will be evaluated after the planned workflow phases. The first implementation pass uses the current framework and visual system; it does not yet justify a full redesign or behavior-changing backend defaults.
+
+## Phase 2 implementation summary
+
+The README now provides a first-pipeline path using existing presets and sample chains. The portal explains the workflow between workspaces, and builder, simulation, PCAP, and telemetry empty states recommend a next action.

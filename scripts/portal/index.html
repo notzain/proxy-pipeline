@@ -92,6 +92,12 @@
       </div>
     </section>
 
+    <ol class="workflow-steps" aria-label="Typical pipeline workflow">
+      <li><strong>Choose or build</strong><span>Select a chain here or create one in the Visual Builder.</span></li>
+      <li><strong>Run and inspect</strong><span>Start it to follow messages in the Simulator.</span></li>
+      <li><strong>Monitor</strong><span>Check throughput, latency, and topology in Live Telemetry.</span></li>
+    </ol>
+
     <!-- Interactive Navigation Cards -->
     <section>
       <div class="section-title">
@@ -237,6 +243,13 @@
         </div>
         <div v-if="actionError">{{ actionError }}</div>
         <div v-if="actionMessage">{{ actionMessage }}</div>
+      </div>
+      <div v-if="!chainsLoading && !chainsError && chains.length === 0" class="portal-feedback">
+        No chain configurations are available yet. Create one in the Visual Builder, then save it to the project.
+        <a href="/builder/" class="feedback-link">Open Visual Builder</a>
+      </div>
+      <div v-if="!pcapsLoading && !pcapsError && pcaps.length === 0" class="portal-hint">
+        No PCAP files found. You can still run chains with generator handlers.
       </div>
 
       <!-- Live Runner Status Strip -->

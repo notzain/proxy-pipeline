@@ -14,15 +14,16 @@ The system decouples message processing business logic from underlying transport
 4. [Coding Styles & Design Decisions](#coding-styles--design-decisions)
 5. [Prerequisites & Dependencies](#prerequisites--dependencies)
 6. [Building the Project](#building-the-project)
-7. [Running Handlers & Pipelines](#running-handlers--pipelines)
+7. [First Pipeline Quickstart](#first-pipeline-quickstart)
+8. [Running Handlers & Pipelines](#running-handlers--pipelines)
    - [Individual Handlers](#individual-handlers)
    - [Pipeline Orchestration (`chain_runner.py`)](#pipeline-orchestration-chain_runnerpy)
-8. [Script Tooling & Developer Workflows](#script-tooling--developer-workflows)
+9. [Script Tooling & Developer Workflows](#script-tooling--developer-workflows)
    - [Interactive Step-wise Simulation & Web UI (`proxy_runner`)](#interactive-step-wise-simulation--web-ui-proxy_runner)
    - [Live Telemetry & Dashboard (`read_telemetry.py`)](#live-telemetry--dashboard-read_telemetrypy)
    - [Ingress Traffic Generator (`send_ingress.py`)](#ingress-traffic-generator-send_ingresspy)
    - [OCI Container Packaging (`build-oci.sh`)](#oci-container-packaging-build-ocish)
-9. [Documentation Index](#documentation-index)
+10. [Documentation Index](#documentation-index)
 
 ---
 
@@ -230,6 +231,38 @@ cmake --build --preset debug
 ```
 
 `PROXY_CONAN_OFFLINE=ON` makes Conan fail if a required artifact is missing instead of trying a remote. For C++17, restore `thirdparty/proxy-conan-cache-debug-cpp17.tgz`, configure with the `debug-cpp17` preset, and use the `ubuntu-x86_64-gcc-11-cpp17` host and build profiles. Bundles contain Linux binaries built in the container; use Ubuntu 22.04 or a compatible newer Ubuntu system. See [the offline bundle guide](docs/features/infrastructure/004-infrastructure-offline-conan-cache-bundles.md) for details.
+
+---
+
+## First Pipeline Quickstart
+
+This quick path builds the handlers, starts the unified studio, and runs an example chain in the simulator. It does not require a PCAP capture or a separate telemetry collector.
+
+1. **Build the handlers** (from the repository root):
+
+   ```bash
+   cmake --preset debug
+   cmake --build --preset debug
+   ```
+
+2. **Start the web studio** in a terminal:
+
+   ```bash
+   ./scripts/frontend_runner.py --open portal
+   ```
+
+3. **Run an example chain:**
+
+   - In the Control Plane, select `example_file_chain.toml`.
+   - Leave the backend set to `sim`.
+   - Select **Start Chain**. The browser opens the Simulator with the active chain.
+   - Use **Step** or **Play** to inspect message flow, then open **Live Telemetry** to view runner status and metrics.
+
+4. **Stop the chain** from the Control Plane when finished. Stop the studio with `Ctrl+C` in its terminal.
+
+To design your own chain instead, open **Visual Chain Builder**, add a generator and receiver from the palette, connect their channels, then use **Run in Simulation**.
+
+If the studio cannot start a chain, confirm that the build completed and that the selected backend's handler binaries exist in the build output. See [Running Handlers & Pipelines](#running-handlers--pipelines) for direct runner commands and backend details.
 
 ---
 

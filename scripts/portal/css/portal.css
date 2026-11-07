@@ -240,6 +240,10 @@ header.portal-header {
   .brand-title {
     display: none;
   }
+
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
 }
 
 .dot {
@@ -739,4 +743,42 @@ footer.portal-footer {
   font-size: 12px;
   color: var(--text-muted);
   background-color: var(--bg-secondary);
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+}
+
+.workflow-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-size: 13px;
+}
+
+.workflow-steps li strong {
+  color: var(--accent-cyan);
+}
+
+.workflow-steps li span,
+.portal-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.portal-hint {
+  margin-top: -12px;
+}
+
+.feedback-link {
+  width: fit-content;
+  color: var(--accent-cyan);
+  font-weight: 600;
 }

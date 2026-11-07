@@ -207,9 +207,20 @@
             Use <strong>⏮ Step Back</strong> and <strong>⏭ Step Forward</strong> or click any event on the right to step through the trace.
           </div>
           <div v-else>
-            <div style="font-size: 20px; margin-bottom: 8px;">⚡</div>
-            <strong style="color: var(--accent);">Generator Driven Chain</strong><br>
-            Click <strong>⚡ Trigger Emit</strong> on any generator node in the canvas to emit a message into the chain.
+            <div v-if="!state.chain.handlers || state.chain.handlers.length === 0">
+              <strong style="color: var(--accent);">No simulation loaded</strong><br>
+              Start a chain from the <a href="/" style="color: var(--accent);">Control Plane</a> or build one in the
+              <a href="/builder/" style="color: var(--accent);">Visual Builder</a>.
+            </div>
+            <div v-else-if="state.chain.handlers.some(handler => handler.role === 'generator')">
+              <div style="font-size: 20px; margin-bottom: 8px;">⚡</div>
+              <strong style="color: var(--accent);">Waiting for generated messages</strong><br>
+              Click <strong>⚡ Trigger Emit</strong> on a generator node or use the Play control.
+            </div>
+            <div v-else>
+              <strong style="color: var(--accent);">No packets loaded</strong><br>
+              Start with a PCAP input or send traffic to a configured ingress handler, then step the pipeline.
+            </div>
           </div>
         </div>
 

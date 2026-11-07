@@ -272,7 +272,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-xl font-semibold">Live chain overview</h2>
-                    <p class="text-xs text-[var(--muted)] mt-1" id="topology-description">Waiting for chain topology from the chain runner.</p>
+                    <p class="text-xs text-[var(--muted)] mt-1" id="topology-description">Start a chain from the Control Plane to publish its topology and view live metrics here.</p>
                 </div>
                 <span class="text-xs text-[var(--muted)]" id="topology-freshness">Awaiting telemetry</span>
             </div>
@@ -285,7 +285,7 @@
             <div class="topology-layout">
                 <div>
                     <div class="topology-frame" id="topology-frame">
-                        <div class="topology-note" id="topology-status">No production topology has been published. Start the chain runner with a telemetry collector URL to display its topology.</div>
+                        <div class="topology-note" id="topology-status">No chain is publishing telemetry yet. Start a chain from the Control Plane; its topology will appear here automatically.</div>
                         <svg class="topology-svg" id="topology-svg" role="img" aria-label="Live chain topology" hidden></svg>
                     </div>
                     <div class="topology-note mt-2">Flow edges use a capped visual indicator. Labels show aggregated counter-derived rates; each handler is not a per-message animation.</div>
@@ -557,6 +557,10 @@
                 : "connection-offline px-3 py-1 text-xs rounded border border-amber-800 bg-amber-950 text-amber-400 flex items-center gap-1.5";
         }
 
+        function setTopologyVisibility(svg, visible) {
+            if (svg) svg.hidden = !visible;
+        }
+
         function svgElement(name, attributes = {}, text = null) {
             const element = document.createElementNS("http://www.w3.org/2000/svg", name);
             for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
@@ -639,8 +643,8 @@
             if (!latestTopology) {
                 status.hidden = false;
                 setTopologyVisibility(svg, false);
-                status.textContent = "No production topology has been published. Start the chain runner with --telemetry-url to display its chain.";
-                description.textContent = "Topology unavailable; metrics diagnostics remain available.";
+                status.textContent = "No chain is publishing telemetry yet. Start a chain from the Control Plane; its topology will appear here automatically.";
+                description.textContent = "Start a chain from the Control Plane to publish its topology. Metrics diagnostics remain available.";
                 document.getElementById("topology-freshness").textContent = "Topology unavailable";
                 updateOverviewMetrics(data, null);
                 updateMetricsSummary(data, null, recordSample);

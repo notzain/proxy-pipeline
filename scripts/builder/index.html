@@ -140,6 +140,13 @@
 
       <!-- Zoom / Pan Viewport -->
       <div class="canvas-viewport" id="canvas-viewport">
+        <div v-if="nodes.length === 0" class="canvas-empty-state">
+          <strong>Start building your pipeline</strong>
+          <span>Choose a handler from the palette or add a generator to create a runnable example.</span>
+          <button type="button" class="primary" @click="createNodeFromSchema('dummy_send', 250, 150)">
+            Add a message generator
+          </button>
+        </div>
         <!-- SVG Wire Overlay placed inside viewport so coordinates match node positions -->
         <svg class="canvas-svg" id="canvas-svg"></svg>
 
