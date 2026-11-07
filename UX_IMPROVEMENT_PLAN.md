@@ -67,7 +67,25 @@ Phase 1 made the portal's chain selection actionable and surfaces request state 
 
 ## Deferred-scope investigation
 
-The deferred items will be evaluated after the planned workflow phases. The first implementation pass uses the current framework and visual system; it does not yet justify a full redesign or behavior-changing backend defaults.
+### Full redesign or replacement of the visual style — defer
+
+- **Potential value:** A broader information-architecture and visual-hierarchy redesign could further reduce cognitive load across the four workspaces.
+- **Evidence and cost:** The current gaps found in this pass were addressable with clearer workflow guidance, shared status/navigation, safe recovery, and targeted responsive/accessibility fixes. No user research or task-completion data currently demonstrates that the visual system itself is the remaining blocker. A redesign would be high-cost and risks replacing familiar workflows without evidence.
+- **Recommendation:** Do not start a redesign now. First test the documented quickstart and common edit/run/inspect tasks with representative users; revisit only if recurring friction remains after these improvements.
+
+### Changing chain execution semantics or backend defaults — defer behavior changes
+
+- **Evidence:** Chains generally declare their backend explicitly, the builder serializer falls back to `file` when one is absent (`scripts/proxy_runner/config.py`), and the quickstart explicitly asks users to select `sim` for an interactive run (`README.md`). The chain examples cover `file`, `socket`, `shm`, and `sim`, each with different transport configuration.
+- **Potential value and risk:** A better default or automatic recommendation could reduce setup friction for a specific workflow. A silent global change could instead select incompatible handler binaries or transport settings and change established chain behavior.
+- **Recommendation:** Preserve current defaults and execution behavior. If evidence later shows backend selection is a repeated source of failure, prototype an explicit workflow preset or context-aware recommendation before considering any default change.
+
+### Replacing the frontend framework or adding a dependency — not justified
+
+- **Evidence:** The UI is served as static HTML/JavaScript through the existing studio runner, uses vendored Petite Vue, and has no frontend package manifest or build pipeline. The improvements in this plan were implemented without a new dependency.
+- **Potential value and cost:** A component framework could help if shared state and repeated UI become difficult to maintain, but replacement alone would not resolve the observed workflow friction. It would add build, dependency, packaging, and offline-maintenance requirements.
+- **Recommendation:** Do not replace the current stack for this UX effort. Revisit only when a concrete capability or maintainability problem cannot be solved cleanly within the existing approach.
+
+**Decision summary:** Defer the full redesign and behavior-changing defaults; do not pursue a framework replacement without new evidence. Prefer measured, task-specific changes if future usability testing identifies remaining problems.
 
 ## Phase 2 implementation summary
 
