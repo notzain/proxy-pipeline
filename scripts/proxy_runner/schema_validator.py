@@ -273,6 +273,7 @@ def validate_chain_topology(
         return {"valid": False, "errors": errors, "warnings": warnings}
 
     handler_names = set()
+    handler_schemas_by_name: dict[str, dict[str, Any]] = {}
     output_channels: dict[str, list[str]] = {}  # channel -> producing handlers
     input_channels: dict[str, list[str]] = {}   # channel -> consuming handlers
 
@@ -294,6 +295,7 @@ def validate_chain_topology(
         if not schema:
             warnings.append(f"No schema found for handler type '{h_type}'. Skipping schema field validation.")
         else:
+            handler_schemas_by_name[name] = schema
             inst_errors = validate_handler_instance(h, schema)
             errors.extend(inst_errors)
 
@@ -359,6 +361,27 @@ def validate_chain_topology(
             warnings.append(
                 f"Output channel '{ch}' produced by {producers} is not consumed by any handler in this chain"
             )
+
+    # Check wire version compatibility across producer-consumer channel connections
+    for ch, producers in output_channels.items():
+        consumers = input_channels.get(ch, [])
+        for p_name in producers:
+            p_schema = handler_schemas_by_name.get(p_name, {})
+            p_min_ver = p_schema.get("min_wire_version", 1)
+            p_max_ver = p_schema.get("max_wire_version", 1)
+
+            for c_name in consumers:
+                c_schema = handler_schemas_by_name.get(c_name, {})
+                c_min_ver = c_schema.get("min_wire_version", 1)
+                c_max_ver = c_schema.get("max_wire_version", 1)
+
+                # Check if there is an overlapping compatible wire version
+                if p_min_ver > c_max_ver or c_min_ver > p_max_ver:
+                    errors.append(
+                        f"Wire version incompatibility on channel '{ch}': "
+                        f"Producer '{p_name}' supports versions [{p_min_ver}..{p_max_ver}], "
+                        f"but Consumer '{c_name}' requires versions [{c_min_ver}..{c_max_ver}]."
+                    )
 
     return {
         "valid": len(errors) == 0,

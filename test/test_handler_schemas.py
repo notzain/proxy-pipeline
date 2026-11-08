@@ -214,6 +214,47 @@ class TestHandlerSchemas(unittest.TestCase):
         self.assertTrue(any("does not match pattern" in e for e in regex_errors))
         self.assertTrue(any("value 50 < min" in e for e in regex_errors))
 
+    def test_wire_version_compatibility_validation(self):
+        # Chain where producer emits wire version 2..2 but consumer requires 1..1
+        custom_schemas = {
+            "producer_v2": {
+                "name": "producer_v2",
+                "role": "generator",
+                "protocol": "none",
+                "min_wire_version": 2,
+                "max_wire_version": 2,
+                "ports": {"inputs": [], "outputs": [{"name": "output_channel"}]},
+                "parameters": {}
+            },
+            "consumer_v1": {
+                "name": "consumer_v1",
+                "role": "sink",
+                "protocol": "none",
+                "min_wire_version": 1,
+                "max_wire_version": 1,
+                "ports": {"inputs": [{"name": "input_channel"}], "outputs": []},
+                "parameters": {}
+            }
+        }
+        incompatible_chain = {
+            "backend": "shm",
+            "handlers": [
+                {
+                    "name": "node_v2",
+                    "type": "producer_v2",
+                    "output_channel": "shared_wire"
+                },
+                {
+                    "name": "node_v1",
+                    "type": "consumer_v1",
+                    "input_channel": "shared_wire"
+                }
+            ]
+        }
+        res = validate_chain_topology(incompatible_chain, custom_schemas)
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("Wire version incompatibility" in e for e in res["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

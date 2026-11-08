@@ -134,8 +134,8 @@ The control plane orchestrator (`chain_runner.py` / `frontend_runner.py`):
 
 ## 6. Actionable Implementation Checklist
 
-- [ ] **Wire Framing Version Check**: Verify that `MessageView::from()` validates `EnvelopeHeader::version` and enforces version dispatch bounds.
-- [ ] **Passthrough Preservation**: Ensure `MessageView` exposes accessors for unparsed metadata extensions and that `packInto()` preserves them upon re-wrapping.
-- [ ] **Zero-Copy Forwarding**: Verify that non-mutating routing handlers (`RouteHandler`, `SplitHandler`, `MergeHandler`) forward raw slices without re-encoding.
-- [ ] **Orchestrator Validation**: Update `chain_runner.py` topology validator to verify channel wire version compatibility during DAG initialization.
-- [ ] **Schema Evolution Rules in CI**: Add CI checks to detect incompatible binary layout shifts in headers without corresponding major version bumps.
+- [x] **Wire Framing Version Check**: Verify that `MessageView::from()` validates `EnvelopeHeader::version` and enforces version dispatch bounds.
+- [x] **Passthrough Preservation**: Ensure `MessageView` exposes accessors for unparsed metadata extensions and that `packInto()` preserves them upon re-wrapping.
+- [x] **Zero-Copy Forwarding**: Verify that non-mutating routing handlers (`RouteHandler`, `SplitHandler`, `MergeHandler`) forward raw slices without re-encoding.
+- [x] **Orchestrator Validation**: Update `chain_runner.py` topology validator to verify channel wire version compatibility during DAG initialization.
+- [x] **Schema Evolution Rules in CI**: Add CI checks to detect incompatible binary layout shifts in headers without corresponding major version bumps.

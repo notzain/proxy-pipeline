@@ -217,6 +217,7 @@ public:
     bool send(Common::Compat::span<const std::byte> message) override
     {
         std::lock_guard lock(m_mutex);
+        rawSentBytes.emplace_back(message.begin(), message.end());
         auto optView = Backend::MessageView::from(message);
         std::string str = optView
             ? std::string(reinterpret_cast<const char*>(optView->payload().data()), optView->payload().size())
@@ -227,6 +228,7 @@ public:
 
     std::mutex m_mutex;
     std::vector<std::string> sentMessages;
+    std::vector<std::vector<std::byte>> rawSentBytes;
 };
 
 class TestChainedHandler : public Core::Handler::IHandler {
@@ -1034,6 +1036,27 @@ TEST_CASE("ThreadPool execution model preserves strict FIFO message ordering per
     CHECK(handler.received == expected);
 }
 
+TEST_CASE("EnvelopeHeader wire binary layout invariance", "[backend][envelope][layout]")
+{
+    // These static assertions guarantee that wire binary layout cannot silently shift
+    STATIC_REQUIRE(sizeof(Backend::V1::EnvelopeHeader) == 18);
+    STATIC_REQUIRE(sizeof(Backend::EnvelopeHeader) == 18);
+    STATIC_REQUIRE(alignof(Backend::EnvelopeHeader) == 1);
+
+    // Field offsets matching the canonical wire specification
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, magic) == 0);
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, version) == 2);
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, protocol) == 3);
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, metadataLength) == 4);
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, payloadLength) == 6);
+    STATIC_REQUIRE(offsetof(Backend::EnvelopeHeader, timestampNs) == 10);
+
+    // Canonical constants
+    STATIC_REQUIRE(Backend::EnvelopeMagic == 0x5058);
+    STATIC_REQUIRE(Backend::EnvelopeVersion == 1);
+    STATIC_REQUIRE(Backend::V1::Version == 1);
+}
+
 TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelope]")
 {
     std::array<std::byte, 18> buffer { };
@@ -1182,6 +1205,39 @@ TEST_CASE("MessageView preserves version and unparsed metadata across withPayloa
     CHECK(downstreamView->payload().size() == newPayload.size());
     CHECK(downstreamView->metadata().size() == originalMeta.size());
     CHECK(std::memcmp(downstreamView->metadata().data(), originalMeta.data(), originalMeta.size()) == 0);
+}
+
+TEST_CASE("Output channels take zero-copy fast path when MessageView has wire envelope", "[backend][envelope][zerocopy]")
+{
+    const std::vector<std::byte> meta = { std::byte { 0xDE }, std::byte { 0xAD } };
+    const std::vector<std::byte> payload = { std::byte { 'P' }, std::byte { 'A' }, std::byte { 'S' }, std::byte { 'S' } };
+    auto packed = Backend::MessageView::pack(
+        Backend::RawProtocol,
+        Common::Compat::span<const std::byte>(meta.data(), meta.size()),
+        Common::Compat::span<const std::byte>(payload.data(), payload.size()),
+        999ULL);
+    REQUIRE(packed.has_value());
+
+    auto parsedView = Backend::MessageView::from(*packed);
+    REQUIRE(parsedView.has_value());
+    REQUIRE(parsedView->hasWireEnvelope());
+
+    MockOutputChannel channel;
+    REQUIRE(channel.send(*parsedView));
+    REQUIRE(channel.rawSentBytes.size() == 1);
+
+    // Verify byte-exact bitwise equality of the forwarded raw frame (zero-copy fast path)
+    const auto& sentRaw = channel.rawSentBytes.front();
+    REQUIRE(sentRaw.size() == packed->size());
+    CHECK(std::memcmp(sentRaw.data(), packed->data(), packed->size()) == 0);
+
+    // Batch zero-copy forwarding
+    std::vector<Backend::MessageView> batch = { *parsedView, *parsedView };
+    channel.rawSentBytes.clear();
+    REQUIRE(channel.sendBatch(batch) == 2);
+    REQUIRE(channel.rawSentBytes.size() == 2);
+    CHECK(std::memcmp(channel.rawSentBytes[0].data(), packed->data(), packed->size()) == 0);
+    CHECK(std::memcmp(channel.rawSentBytes[1].data(), packed->data(), packed->size()) == 0);
 }
 
 TEST_CASE("Output channels reject oversized MessageViews without throwing", "[backend][envelope][hardening]")
