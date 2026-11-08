@@ -527,6 +527,80 @@ function createApp() {
       return items;
     },
 
+    getUpstreamDslContributions(targetNode) {
+      if (!targetNode) return [];
+      const contributions = [];
+      const visited = new Set();
+      const queue = [targetNode.id];
+
+      while (queue.length > 0) {
+        const currId = queue.shift();
+        if (visited.has(currId)) continue;
+        visited.add(currId);
+
+        const currNode = this.nodes.find((n) => n.id === currId);
+        if (currNode && currNode.id !== targetNode.id) {
+          const schema = this.schemas[currNode.type];
+          if (schema) {
+            const entry = {
+              nodeName: currNode.name,
+              nodeType: currNode.type,
+              contributions: schema.dslContributions || {},
+              payloadContract: schema.payloadContract || null,
+              config: currNode.config || {},
+            };
+            if (entry.contributions.protocol || entry.payloadContract) {
+              contributions.push(entry);
+            }
+          }
+        }
+
+        // Traverse upstream wires into this node
+        const upstreamWires = this.wires.filter((w) => w.toNodeId === currId);
+        for (const w of upstreamWires) {
+          if (!visited.has(w.fromNodeId)) {
+            queue.push(w.fromNodeId);
+          }
+        }
+      }
+
+      return contributions;
+    },
+
+    getInferredProtocol(targetNode) {
+      if (!targetNode) return 'none';
+      // Traverse upstream wires to locate the ingress node supplying traffic
+      const visited = new Set();
+      const queue = [targetNode.id];
+
+      while (queue.length > 0) {
+        const currId = queue.shift();
+        if (visited.has(currId)) continue;
+        visited.add(currId);
+
+        const currNode = this.nodes.find((n) => n.id === currId);
+        if (currNode) {
+          const schema = this.schemas[currNode.type];
+          if (schema && schema.protocol && schema.protocol !== 'none') {
+            return schema.protocol;
+          }
+          if (schema && (schema.role === 'external_ingress' || schema.role === 'generator')) {
+            return schema.protocol || 'none';
+          }
+        }
+
+        // Find incoming wires to this node
+        const upstreamWires = this.wires.filter((w) => w.toNodeId === currId);
+        for (const w of upstreamWires) {
+          if (!visited.has(w.fromNodeId)) {
+            queue.push(w.fromNodeId);
+          }
+        }
+      }
+
+      return 'none';
+    },
+
     openParamDrawer(node, paramKey, paramDef) {
       this.drawerNode = node;
       this.drawerParamKey = paramKey;
@@ -536,6 +610,64 @@ function createApp() {
       } else if (paramDef.type === 'object' && (!node.config[paramKey] || typeof node.config[paramKey] !== 'object')) {
         node.config[paramKey] = {};
       }
+      setTimeout(() => this.mountDslEditors(), 50);
+    },
+
+    mountDslEditors() {
+      if (!window.DSLEditor) return;
+      const mounts = document.querySelectorAll('[data-dsl-mount]');
+      mounts.forEach((mountEl) => {
+        if (mountEl._dslEditorMounted) return;
+        const itemIdx = parseInt(mountEl.getAttribute('data-item-idx'), 10);
+        const propKey = mountEl.getAttribute('data-prop-key');
+        if (isNaN(itemIdx) || !propKey || !this.drawerNode) return;
+
+        const list = this.drawerNode.config[this.drawerParamKey];
+        if (!list || !list[itemIdx]) return;
+        const item = list[itemIdx];
+
+        // Find prop definition to extract DSL config
+        let dslConfig = { type: 'expression' };
+        let placeholder = '';
+        let rows = 2;
+        if (
+          this.drawerParamDef &&
+          this.drawerParamDef.items &&
+          this.drawerParamDef.items.properties &&
+          this.drawerParamDef.items.properties[propKey]
+        ) {
+          const propDef = this.drawerParamDef.items.properties[propKey];
+          if (propDef.dsl) {
+            dslConfig = propDef.dsl;
+          } else if (propDef['ui:language'] === 'lua' || propKey === 'script') {
+            dslConfig = { type: 'lua' };
+          }
+          placeholder = propDef['ui:placeholder'] || propDef.description || '';
+          if (propDef['ui:widget'] === 'code-editor' || dslConfig.type === 'lua') {
+            rows = 4;
+          }
+        }
+
+        mountEl._dslEditorMounted = true;
+        const inferredProto = this.getInferredProtocol(this.drawerNode);
+        const upstreamContributions = this.getUpstreamDslContributions(this.drawerNode);
+        const hasUpstreamWires = this.wires.some((w) => w.toNodeId === this.drawerNode.id);
+
+        const editor = new window.DSLEditor(mountEl, {
+          dsl: dslConfig,
+          inferredProtocol: inferredProto,
+          upstreamContributions: upstreamContributions,
+          hasUpstreamWires: hasUpstreamWires,
+          value: item[propKey] || '',
+          placeholder: placeholder,
+          rows: rows,
+          onChange: (val) => {
+            item[propKey] = val;
+            this.validateChain();
+          },
+        });
+        mountEl._dslEditorInstance = editor;
+      });
     },
 
     closeParamDrawer() {
@@ -611,12 +743,14 @@ function createApp() {
       }
       node.config[paramKey].push(newItem);
       this.validateChain();
+      setTimeout(() => this.mountDslEditors(), 50);
     },
 
     removeArrayItem(arr, index) {
       if (!Array.isArray(arr)) return;
       arr.splice(index, 1);
       this.validateChain();
+      setTimeout(() => this.mountDslEditors(), 50);
     },
 
     moveArrayItem(arr, index, delta) {
@@ -627,6 +761,7 @@ function createApp() {
       arr[index] = arr[targetIdx];
       arr[targetIdx] = temp;
       this.validateChain();
+      setTimeout(() => this.mountDslEditors(), 50);
     },
 
     addChannelItem(node, direction, portName) {

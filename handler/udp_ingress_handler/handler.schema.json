@@ -40,6 +40,41 @@
       "min": 4096,
       "description": "Operating system kernel socket receive buffer size."
     }
+  },
+  "dslContributions": {
+    "protocol": {
+      "name": "udp",
+      "id": 17,
+      "struct": "UdpMetadata",
+      "doc": "Network transport metadata captured by UDP Ingress and restored at UDP Egress.",
+      "fields": [
+        {
+          "name": "src_ip",
+          "type": "uint32",
+          "doc": "Originating client IPv4 address (network byte order integer or dotted quad string)"
+        },
+        {
+          "name": "src_port",
+          "type": "uint16",
+          "doc": "Originating client UDP port (1..65535)"
+        },
+        {
+          "name": "dst_port",
+          "type": "uint16",
+          "doc": "Target / ingress UDP port (1..65535)"
+        },
+        {
+          "name": "dst_ip",
+          "type": "uint32",
+          "doc": "Target / ingress IPv4 address (network byte order integer)"
+        },
+        {
+          "name": "address_family",
+          "type": "uint8",
+          "doc": "IP address family (4 for IPv4, 6 for IPv6)"
+        }
+      ]
+    }
   }
 }
 

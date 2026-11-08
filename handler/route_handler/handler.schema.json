@@ -66,9 +66,52 @@
             "label": "Boolean Expression",
             "description": "Composite expression with boolean operators, predicates, and metadata comparisons.",
             "ui:widget": "code",
-            "ui:placeholder": "metadata.price > 100 and (contains(\"VIP\") or port == 8080)",
+            "ui:placeholder": "metadata.src_port == 8080 and contains(\"VIP\")",
             "ui:help": "Supported syntax:\n• contains(\"txt\" [, count]), prefix(\"hdr\"), exact(\"full\")\n• metadata.<field> [==, !=, <, <=, >, >=] <value>\n• port == <num> or port(<num>), protocol == <id>\n• Operators: and / &&, or / ||, not / !, parentheses ( )",
-            "ui:visible_if": { "type": "expression" }
+            "ui:visible_if": { "type": "expression" },
+            "dsl": {
+              "type": "expression",
+              "functions": [
+                {
+                  "name": "contains",
+                  "signature": "contains(\"text\" [, count])",
+                  "return": "bool",
+                  "doc": "Matches if payload contains substring (optionally matching count times)."
+                },
+                {
+                  "name": "prefix",
+                  "signature": "prefix(\"text\")",
+                  "return": "bool",
+                  "doc": "Matches if payload begins with prefix text."
+                },
+                {
+                  "name": "exact",
+                  "signature": "exact(\"text\")",
+                  "return": "bool",
+                  "doc": "Matches if payload equals exact text."
+                },
+                {
+                  "name": "port",
+                  "signature": "port(num)",
+                  "return": "bool",
+                  "doc": "Matches originating client UDP port."
+                },
+                {
+                  "name": "protocol",
+                  "signature": "protocol(id)",
+                  "return": "bool",
+                  "doc": "Matches numeric protocol identifier."
+                }
+              ],
+              "operators": ["and", "or", "not", "&&", "||", "!", "==", "!=", "<", "<=", ">", ">="],
+              "scopes": [
+                {
+                  "name": "metadata",
+                  "source": "metadata_catalog",
+                  "doc": "Protocol metadata attributes reflected from C++"
+                }
+              ]
+            }
           },
           "script": {
             "type": "string",
@@ -76,9 +119,29 @@
             "description": "Custom Lua script block evaluated against incoming message.",
             "ui:widget": "code-editor",
             "ui:language": "lua",
-            "ui:placeholder": "return function(msg)\n  return msg.payload:find(\"CRITICAL\") ~= nil or msg.meta.priority == 1\nend",
-            "ui:help": "Provide a script returning function(msg) -> bool (or function route(msg)).\n• msg.payload: raw ASCII string of payload\n• msg.protocol: numeric protocol ID\n• msg.meta.<field>: parsed metadata fields from catalog",
-            "ui:visible_if": { "type": "lua" }
+            "ui:placeholder": "return function(msg)\n  return msg.payload:find(\"CRITICAL\") ~= nil or msg.meta.dst_port == 8080\nend",
+            "ui:help": "Provide a script returning function(msg) -> bool (or function route(msg)).\n• msg.payload: raw ASCII string of payload\n• msg.protocol: numeric protocol ID\n• msg.port: source UDP port\n• msg.meta.<field>: parsed metadata fields from catalog",
+            "ui:visible_if": { "type": "lua" },
+            "dsl": {
+              "type": "lua",
+              "globals": [
+                {
+                  "name": "msg",
+                  "type": "object",
+                  "doc": "Incoming message envelope",
+                  "members": [
+                    { "name": "payload", "type": "string", "doc": "Raw payload string" },
+                    { "name": "protocol", "type": "number", "doc": "Numeric protocol identifier" },
+                    { "name": "port", "type": "number", "doc": "Originating client UDP port" },
+                    { "name": "meta", "type": "object", "source": "metadata_catalog", "doc": "Parsed protocol metadata fields" }
+                  ]
+                }
+              ],
+              "keywords": [
+                "function", "return", "end", "if", "then", "else", "elseif", "local",
+                "nil", "true", "false", "and", "or", "not"
+              ]
+            }
           },
           "action": {
             "type": "string",

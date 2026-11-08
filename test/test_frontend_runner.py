@@ -249,6 +249,18 @@ class FrontendRunnerTests(unittest.TestCase):
             coord.close()
             self.manager.coordinator = None
 
+    def test_api_metadata_endpoint(self):
+        with urlopen(f"{self.base_url}/api/metadata") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertIn("protocols", data)
+            self.assertIn("common_fields", data)
+            field_names = [f["name"] for f in data["common_fields"]]
+            self.assertIn("src_port", field_names)
+            self.assertIn("dst_port", field_names)
+            self.assertIn("src_ip", field_names)
+            self.assertIn("address_family", field_names)
+
 
 if __name__ == "__main__":
     unittest.main()

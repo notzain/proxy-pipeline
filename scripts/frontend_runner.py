@@ -424,6 +424,18 @@ class FrontendStudioHandler(http.server.SimpleHTTPRequestHandler):
             self.__class__.schemas = discover_handler_schemas()
             return self._send_json(200, self.schemas)
 
+        if clean_path == "/api/metadata":
+            from proxy_runner.metadata import get_metadata_catalog_definitions
+            return self._send_json(200, get_metadata_catalog_definitions())
+
+        if clean_path == "/api/payload_contract":
+            from proxy_runner.payload_contracts import inspect_payload_contract
+            query = parse_qs(request.query, keep_blank_values=True)
+            fmt = query.get("format", [""])[0]
+            file_path = query.get("file", [""])[0]
+            resolved = (self.root_dir / file_path).resolve()
+            return self._send_json(200, inspect_payload_contract(fmt, resolved))
+
         if clean_path == "/api/chain":
             requested_paths = parse_qs(request.query, keep_blank_values=True).get("path")
             if requested_paths is not None:
