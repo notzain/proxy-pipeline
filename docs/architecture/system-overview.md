@@ -103,6 +103,12 @@ The codebase builds by default under C++20 while maintaining strict C++17 compat
 - Primitives (`span`, `jthread`, `stop_token`, `latch`, `atomic_wait`) map directly to `std::` under C++20, and fall back to zero-dependency polyfills under C++17.
 - Types remain qualified strictly under `Common::Compat::` and are never injected into `namespace std`.
 
+### Pillar VI: Extensible Wire Evolution & Full-Chain Compatibility
+As message headers and interfaces evolve across distributed deployments:
+- **Framing Versioning**: The binary `EnvelopeHeader` explicitly includes a format version byte, enabling safe protocol dispatch and bounding backward/forward parsing rules.
+- **Full-Chain Passthrough Preservation**: Intermediate routing, filtering, or inspection handlers guarantee lossless forwarding—either via zero-copy buffer slicing or by preserving unparsed metadata extensions during re-serialization—preventing older hops from stripping newer metadata from downstream consumers.
+- **Tolerant Readers**: Handlers adhere to additive schema evolution with fallback defaults for missing fields and safe omission of unrecognized tags.
+
 ---
 
 ## 3. High-Level Architectural Decisions

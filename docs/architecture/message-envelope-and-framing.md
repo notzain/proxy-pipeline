@@ -103,4 +103,19 @@ Datagram pollers use receive flags that expose truncation. A truncated datagram 
 
 For file-backed shared memory, a mapping is accepted only when its backing file and validated header/capacity match the configured layout. Invalid mappings are rejected rather than resized or reinitialized. Slots with invalid lengths are rejected instead of copied as truncated messages.
 
-These checks provide framing and bounds safety only. They do not authenticate a sender, prevent replay, or detect all accidental corruption.
+## 7. Versioning, Protocol Evolution & Full-Chain Compatibility
+
+Wire formats and message headers adhere strictly to Semantic Versioning (`MAJOR.MINOR.PATCH`) to allow heterogeneous deployments across distributed pipelines:
+
+### 1. Wire Framing Versioning
+- **`EnvelopeHeader::version`**: Byte 2 of the 18-byte header defines the wire framing format version (currently `1`).
+- **Major Bumps (`X.0.0`)**: Triggered by changes to byte alignments, structural field removals/renames, or redefinition of header field units (e.g. modifying `timestampNs` domain). Handlers reading incompatible major versions discard or dead-letter frames with explicit error codes rather than parsing corrupted offsets.
+- **Minor Additions (`0.Y.0`)**: Handled via extensible metadata sections or Tag-Length-Value (TLV) extension blocks. New protocol IDs registered in `MetadataCatalog` are backward-compatible.
+
+### 2. Full-Chain Compatibility & The Transit Problem
+In multi-stage pipelines ($\text{Producer } v2 \to \text{Handler } v1 \to \text{Consumer } v2$):
+- **Unknown Extensions Preservation**: Intermediate handlers on older versions ($v1$) that deserialize frames must preserve unparsed metadata extension bytes in `MessageView` and re-attach them intact upon re-serialization, preventing downstream $v2$ consumers from losing critical routing or tracing metadata.
+- **Zero-Copy Pass-Through**: Routing, filtering, and inspection handlers (`RouteHandler`, `SplitHandler`, `ScatterHandler`) forward original byte spans (`BufferSlice` / `MessageView`) directly without deserialization/re-serialization cycles, guaranteeing byte-exact preservation across version hops.
+- **Tolerant Reader**: All deserializers ignore unrecognized trailing metadata or payload fields, and apply sensible fallback defaults when encountering older frames missing newly introduced optional fields.
+- **Detailed Reference**: See [docs/features/message/021-message-versioning-wire-evolution-and-chain-compatibility.md](../features/message/021-message-versioning-wire-evolution-and-chain-compatibility.md).
+
