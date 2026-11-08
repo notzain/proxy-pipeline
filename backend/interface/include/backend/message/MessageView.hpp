@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/memory/Lease.hpp"
+#include "backend/message/EnvelopeHeader.hpp"
 #include "backend/message/MetadataTraits.hpp"
 #include "backend/message/ProtocolId.hpp"
 #include "common/compat/Span.hpp"
@@ -176,6 +177,8 @@ public:
 
     [[nodiscard]] std::uint64_t timestampNs() const noexcept;
 
+    [[nodiscard]] std::uint8_t version() const noexcept;
+
     /**
      * @brief Binds the in-flight transport lease associated with this message view.
      */
@@ -205,12 +208,21 @@ public:
     }
 
 private:
+    MessageView(
+        Common::Compat::span<const std::byte> rawBuffer,
+        Common::Compat::span<const std::byte> metadata,
+        Common::Compat::span<const std::byte> payload,
+        ProtocolId protocol,
+        std::uint64_t timestampNs,
+        std::uint8_t version) noexcept;
+
     Common::Compat::span<const std::byte> m_rawBuffer { };
     Common::Compat::span<const std::byte> m_metadata { };
     Common::Compat::span<const std::byte> m_payload { };
     std::uint64_t m_timestampNs { 0 };
     ProtocolId m_protocol { RawProtocol };
     Common::Memory::ObserverPtr<Lease> m_lease { };
+    std::uint8_t m_version { EnvelopeVersion };
 };
 
 } // namespace Backend

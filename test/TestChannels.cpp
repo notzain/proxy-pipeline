@@ -1067,10 +1067,26 @@ TEST_CASE("writeEnvelopeHeader serializes valid wire header", "[backend][envelop
     std::memcpy(fullFrame.data(), buffer.data(), 18);
     auto optView = Backend::MessageView::from(fullFrame);
     REQUIRE(optView.has_value());
+    CHECK(optView->version() == Backend::EnvelopeVersion);
     CHECK(optView->protocol() == protocol);
     CHECK(optView->metadata().size() == metaLen);
     CHECK(optView->payload().size() == payloadLen);
     CHECK(optView->timestampNs() == timestamp);
+
+    // Verify rejection of invalid wire versions (version 99 and version 0)
+    std::array<std::byte, 18> v2Buffer { };
+    std::memcpy(v2Buffer.data(), buffer.data(), 18);
+    v2Buffer[2] = static_cast<std::byte>(99);
+    std::vector<std::byte> unsupportedFrame(18 + metaLen + payloadLen);
+    std::memcpy(unsupportedFrame.data(), v2Buffer.data(), 18);
+    CHECK_FALSE(Backend::MessageView::from(unsupportedFrame).has_value());
+
+    std::array<std::byte, 18> v0Buffer { };
+    std::memcpy(v0Buffer.data(), buffer.data(), 18);
+    v0Buffer[2] = static_cast<std::byte>(0);
+    std::vector<std::byte> v0Frame(18 + metaLen + payloadLen);
+    std::memcpy(v0Frame.data(), v0Buffer.data(), 18);
+    CHECK_FALSE(Backend::MessageView::from(v0Frame).has_value());
 
     // Verify UtcTimePoint overload and default timestamp parameter
     const auto beforeUtc = Common::Compat::nowUtc();
@@ -1119,6 +1135,53 @@ TEST_CASE("Envelope packing and parsing enforce frame bounds", "[backend][envelo
 
     std::vector<std::byte> oversized(Backend::MaxEnvelopeFrameBytes + 1);
     CHECK_FALSE(Backend::MessageView::from(oversized).has_value());
+}
+
+TEST_CASE("MessageView preserves version and unparsed metadata across withPayload", "[backend][envelope][compatibility]")
+{
+    const std::vector<std::byte> originalMeta = {
+        std::byte { 0x01 }, std::byte { 0x02 }, std::byte { 0xAA }, std::byte { 0xBB },
+        std::byte { 0xDE }, std::byte { 0xAD }, std::byte { 0xBE }, std::byte { 0xEF }
+    };
+    const std::vector<std::byte> originalPayload = { std::byte { 'O' }, std::byte { 'L' }, std::byte { 'D' } };
+    const std::uint64_t ingressTimestamp = 1234567890ULL;
+
+    auto packed = Backend::MessageView::pack(
+        Backend::RawProtocol,
+        Common::Compat::span<const std::byte>(originalMeta.data(), originalMeta.size()),
+        Common::Compat::span<const std::byte>(originalPayload.data(), originalPayload.size()),
+        ingressTimestamp);
+    REQUIRE(packed.has_value());
+
+    auto view = Backend::MessageView::from(*packed);
+    REQUIRE(view.has_value());
+    CHECK(view->version() == Backend::EnvelopeVersion);
+    CHECK(view->metadata().size() == originalMeta.size());
+    CHECK(std::memcmp(view->metadata().data(), originalMeta.data(), originalMeta.size()) == 0);
+
+    // Rebound view with new mutated payload (intermediate processing hop)
+    const std::vector<std::byte> newPayload = { std::byte { 'N' }, std::byte { 'E' }, std::byte { 'W' }, std::byte { '!' } };
+    auto reboundView = view->withPayload(Common::Compat::span<const std::byte>(newPayload.data(), newPayload.size()));
+
+    CHECK(reboundView.version() == view->version());
+    CHECK(reboundView.protocol() == view->protocol());
+    CHECK(reboundView.timestampNs() == view->timestampNs());
+    CHECK(reboundView.payload().size() == newPayload.size());
+    CHECK(reboundView.metadata().size() == originalMeta.size());
+    CHECK(std::memcmp(reboundView.metadata().data(), originalMeta.data(), originalMeta.size()) == 0);
+
+    // Pack rebound view and verify downstream unpacks identical metadata
+    auto repacked = Backend::MessageView::withPayload(*view, Common::Compat::span<const std::byte>(newPayload.data(), newPayload.size()));
+    REQUIRE(repacked.has_value());
+
+    auto downstreamView = Backend::MessageView::from(*repacked);
+    REQUIRE(downstreamView.has_value());
+    CHECK(downstreamView->version() == Backend::EnvelopeVersion);
+    CHECK(downstreamView->protocol() == Backend::RawProtocol);
+    CHECK(downstreamView->timestampNs() == ingressTimestamp);
+    CHECK(downstreamView->payload().size() == newPayload.size());
+    CHECK(downstreamView->metadata().size() == originalMeta.size());
+    CHECK(std::memcmp(downstreamView->metadata().data(), originalMeta.data(), originalMeta.size()) == 0);
 }
 
 TEST_CASE("Output channels reject oversized MessageViews without throwing", "[backend][envelope][hardening]")

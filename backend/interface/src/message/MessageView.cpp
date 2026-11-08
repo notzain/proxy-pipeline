@@ -1,4 +1,5 @@
 #include "backend/message/MessageView.hpp"
+#include "EnvelopeHeaderInternal.hpp"
 #include "backend/message/EnvelopeHeader.hpp"
 #include "common/io/WireFormat.hpp"
 #include <chrono>
@@ -50,7 +51,8 @@ std::size_t MessageView::packInto(
             destination,
             protocol,
             static_cast<std::uint16_t>(metadata.size()),
-            static_cast<std::uint32_t>(payload.size()));
+            static_cast<std::uint32_t>(payload.size()),
+            Common::Compat::nowUtc());
     }
 
     std::byte* dst = destination.data();
@@ -93,12 +95,38 @@ std::optional<std::vector<std::byte>> MessageView::withPayload(
     const MessageView& view,
     Common::Compat::span<const std::byte> newPayload)
 {
-    return pack(view.protocol(), view.metadata(), newPayload, view.timestampNs());
+    if (!isFrameSizeValid(view.metadata().size(), newPayload.size())) {
+        return std::nullopt;
+    }
+
+    const std::size_t totalSize = sizeof(EnvelopeHeader) + view.metadata().size() + newPayload.size();
+    std::vector<std::byte> buffer(totalSize);
+
+    const std::size_t written = Detail::writeEnvelopeHeaderWithVersion(
+        buffer,
+        view.protocol(),
+        static_cast<std::uint16_t>(view.metadata().size()),
+        static_cast<std::uint32_t>(newPayload.size()),
+        Common::Compat::fromEpochNs(view.timestampNs()),
+        view.version());
+    if (written == 0) {
+        return std::nullopt;
+    }
+
+    std::byte* dst = buffer.data();
+    if (!view.metadata().empty()) {
+        std::memcpy(dst + sizeof(EnvelopeHeader), view.metadata().data(), view.metadata().size());
+    }
+    if (!newPayload.empty()) {
+        std::memcpy(dst + sizeof(EnvelopeHeader) + view.metadata().size(), newPayload.data(), newPayload.size());
+    }
+
+    return buffer;
 }
 
 MessageView MessageView::withPayload(Common::Compat::span<const std::byte> newPayload) const noexcept
 {
-    MessageView rebound({ }, m_metadata, newPayload, m_protocol, m_timestampNs);
+    MessageView rebound({ }, m_metadata, newPayload, m_protocol, m_timestampNs, m_version);
     rebound.m_lease = m_lease;
     return rebound;
 }
@@ -118,7 +146,7 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
     const std::byte* data = buffer.data();
     std::uint16_t magic = Common::IO::Wire::readUint16Be(data);
     std::uint8_t version = static_cast<std::uint8_t>(data[2]);
-    if (magic != EnvelopeMagic || version != EnvelopeVersion) {
+    if (magic != EnvelopeMagic || version < Detail::MinSupportedEnvelopeVersion || version > Detail::MaxSupportedEnvelopeVersion) {
         return std::nullopt;
     }
 
@@ -141,7 +169,7 @@ std::optional<MessageView> MessageView::from(Common::Compat::span<const std::byt
     auto metadataSpan = Common::Compat::span<const std::byte>(base, metadataLength);
     auto payloadSpan = Common::Compat::span<const std::byte>(base + metadataLength, payloadLength);
 
-    return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs);
+    return MessageView(frameSpan, metadataSpan, payloadSpan, protocol, timestampNs, version);
 }
 
 MessageView::MessageView(
@@ -155,6 +183,7 @@ MessageView::MessageView(
     , m_payload(payload)
     , m_timestampNs(timestampNs)
     , m_protocol(protocol)
+    , m_version(EnvelopeVersion)
 {
 }
 
@@ -169,6 +198,23 @@ MessageView::MessageView(
     , m_payload(payload)
     , m_timestampNs(timestampNs)
     , m_protocol(protocol)
+    , m_version(EnvelopeVersion)
+{
+}
+
+MessageView::MessageView(
+    Common::Compat::span<const std::byte> rawBuffer,
+    Common::Compat::span<const std::byte> metadata,
+    Common::Compat::span<const std::byte> payload,
+    ProtocolId protocol,
+    std::uint64_t timestampNs,
+    std::uint8_t version) noexcept
+    : m_rawBuffer(rawBuffer)
+    , m_metadata(metadata)
+    , m_payload(payload)
+    , m_timestampNs(timestampNs)
+    , m_protocol(protocol)
+    , m_version(version)
 {
 }
 
@@ -195,6 +241,11 @@ ProtocolId MessageView::protocol() const noexcept
 std::uint64_t MessageView::timestampNs() const noexcept
 {
     return m_timestampNs;
+}
+
+std::uint8_t MessageView::version() const noexcept
+{
+    return m_version;
 }
 
 void MessageView::attachLease(Common::Memory::Borrow<Lease> lease) noexcept
