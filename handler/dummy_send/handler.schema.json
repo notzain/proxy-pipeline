@@ -30,6 +30,7 @@
       "label": "Emission Interval (ms)",
       "default": 1000,
       "min": 1,
+      "max": 86400000,
       "description": "Interval between generated messages in milliseconds."
     }
   }

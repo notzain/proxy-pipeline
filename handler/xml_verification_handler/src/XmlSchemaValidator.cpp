@@ -2,6 +2,7 @@
 
 #if defined(PROXY_HAS_LIBXML2) && PROXY_HAS_LIBXML2
 
+#include "core/config/EmbeddedFile.hpp"
 #include "log/Log.hpp"
 
 #include <libxml/parser.h>
@@ -18,6 +19,15 @@ extern "C" void xmlSilentWarningCallback(void*, const char*, ...)
 } // namespace
 
 namespace Proxy::Handler {
+
+XmlSchemaValidator::XmlSchemaValidator(const Core::Config::EmbeddedFile& file)
+{
+    if (file.isEmbedded()) {
+        *this = XmlSchemaValidator(file.content());
+    } else {
+        *this = XmlSchemaValidator(file.path());
+    }
+}
 
 XmlSchemaValidator::XmlSchemaValidator(const std::filesystem::path& schemaPath)
 {
@@ -41,13 +51,41 @@ XmlSchemaValidator::XmlSchemaValidator(const std::filesystem::path& schemaPath)
     Proxy::Log::info("[XmlSchemaValidator] Loaded and compiled XSD schema: {}", schemaPath.string());
 }
 
+XmlSchemaValidator::XmlSchemaValidator(std::string_view schemaContent)
+{
+    xmlInitParser();
+
+    if (schemaContent.empty()) {
+        Proxy::Log::error("[XmlSchemaValidator] Cannot parse empty schema content");
+        return;
+    }
+
+    xmlSchemaParserCtxtPtr parserCtxt = xmlSchemaNewMemParserCtxt(
+        schemaContent.data(),
+        static_cast<int>(schemaContent.size()));
+    if (!parserCtxt) {
+        Proxy::Log::error("[XmlSchemaValidator] Failed to create in-memory XSD parser context");
+        return;
+    }
+
+    m_schema = xmlSchemaParse(parserCtxt);
+    xmlSchemaFreeParserCtxt(parserCtxt);
+
+    if (!m_schema) {
+        Proxy::Log::error("[XmlSchemaValidator] Failed to parse in-memory XSD schema");
+        return;
+    }
+
+    m_loaded = true;
+    Proxy::Log::info("[XmlSchemaValidator] Loaded and compiled in-memory XSD schema ({} bytes)", schemaContent.size());
+}
+
 XmlSchemaValidator::~XmlSchemaValidator()
 {
     if (m_schema) {
         xmlSchemaFree(m_schema);
         m_schema = nullptr;
     }
-    xmlCleanupParser();
 }
 
 XmlSchemaValidator::XmlSchemaValidator(XmlSchemaValidator&& other) noexcept

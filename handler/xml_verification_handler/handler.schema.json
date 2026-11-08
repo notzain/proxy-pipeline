@@ -28,11 +28,14 @@
   },
   "parameters": {
     "xml.xsd_path": {
-      "type": "filepath",
-      "label": "XSD Schema Path",
+      "type": "file",
+      "label": "XSD Schema",
       "required": true,
       "default": "chains/order.xsd",
-      "description": "Filesystem path to the XSD validation schema file."
+      "allow_embed": true,
+      "embed_param": "xml.xsd_content",
+      "extensions": [".xsd", ".xml"],
+      "description": "Filesystem path to the XSD validation schema file, or embedded schema content via xml.xsd_content."
     }
   },
   "payloadContract": {

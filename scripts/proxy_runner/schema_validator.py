@@ -5,6 +5,7 @@ schema_validator.py - Dynamic discovery, schema validation, and topology verific
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -105,9 +106,43 @@ def _validate_value(
                 f"Handler '{h_name}' parameter '{path_name}' must be an integer, got: {val}"
             )
 
+    elif param_type in ("string", "filepath", "file"):
+        str_val = str(val)
+        min_len = param_meta.get("min_length") or param_meta.get("minLength")
+        max_len = param_meta.get("max_length") or param_meta.get("maxLength")
+        if min_len is not None and len(str_val) < min_len:
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' length {len(str_val)} < min_length ({min_len})"
+            )
+        if max_len is not None and len(str_val) > max_len:
+            errors.append(
+                f"Handler '{h_name}' parameter '{path_name}' length {len(str_val)} > max_length ({max_len})"
+            )
+        regex_pattern = param_meta.get("pattern")
+        if regex_pattern:
+            try:
+                if not re.search(regex_pattern, str_val):
+                    errors.append(
+                        f"Handler '{h_name}' parameter '{path_name}' value '{str_val}' does not match pattern: {regex_pattern}"
+                    )
+            except re.error as e:
+                errors.append(
+                    f"Handler '{h_name}' parameter '{path_name}' has invalid regex pattern '{regex_pattern}': {e}"
+                )
+
     elif param_type in ("number", "float"):
         try:
-            float(val)
+            num_val = float(val)
+            min_v = param_meta.get("min")
+            max_v = param_meta.get("max")
+            if min_v is not None and num_val < min_v:
+                errors.append(
+                    f"Handler '{h_name}' parameter '{path_name}' value {num_val} < min ({min_v})"
+                )
+            if max_v is not None and num_val > max_v:
+                errors.append(
+                    f"Handler '{h_name}' parameter '{path_name}' value {num_val} > max ({max_v})"
+                )
         except (ValueError, TypeError):
             errors.append(
                 f"Handler '{h_name}' parameter '{path_name}' must be a number, got: {val}"
@@ -203,6 +238,12 @@ def validate_handler_instance(
 
     for param_key, param_meta in params_schema.items():
         val = instance_config.get(param_key)
+        # Check if alternative embedded content key is provided (e.g. embed_param: "xml.xsd_content")
+        embed_param = param_meta.get("embed_param")
+        if val is None or val == "":
+            if embed_param and instance_config.get(embed_param):
+                # Embedded content was provided instead of the file path
+                val = instance_config.get(embed_param)
         _validate_value(val, param_meta, h_name, param_key, errors)
 
     return errors
@@ -289,6 +330,15 @@ def validate_chain_topology(
                     c_clean = str(ch).strip()
                     if c_clean:
                         input_channels.setdefault(c_clean, []).append(name)
+
+    # Channel name pattern check (alphanumeric, dots, dashes, underscores)
+    channel_name_regex = re.compile(r"^[a-zA-Z0-9_.-]+$")
+    all_channels = set(output_channels.keys()).union(set(input_channels.keys()))
+    for ch in all_channels:
+        if not channel_name_regex.match(ch):
+            errors.append(
+                f"Channel wire identifier '{ch}' contains invalid characters. Must match pattern ^[a-zA-Z0-9_.-]+$"
+            )
 
     # Check for duplicate output channels across handlers (each connection wire / output channel must be uniquely named)
     for ch, producers in output_channels.items():

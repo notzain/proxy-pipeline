@@ -3,6 +3,11 @@
 #include "common/compat/Span.hpp"
 #include <cstddef>
 #include <filesystem>
+#include <string_view>
+
+namespace Core::Config {
+class EmbeddedFile;
+}
 
 // Forward declarations for libxml2 types to keep concrete C headers out of the class declaration
 typedef struct _xmlSchema* xmlSchemaPtr;
@@ -17,11 +22,27 @@ namespace Proxy::Handler {
 class XmlSchemaValidator {
 public:
     /**
+     * @brief Constructs and compiles an XSD schema from an EmbeddedFile resource.
+     *
+     * Automatically compiles from memory if embedded, or from the filesystem if path-backed.
+     *
+     * @param file EmbeddedFile instance.
+     */
+    explicit XmlSchemaValidator(const Core::Config::EmbeddedFile& file);
+
+    /**
      * @brief Constructs and compiles an XSD schema from a file path.
      *
      * @param schemaPath Path to the .xsd file.
      */
     explicit XmlSchemaValidator(const std::filesystem::path& schemaPath);
+
+    /**
+     * @brief Constructs and compiles an XSD schema directly from in-memory string content.
+     *
+     * @param schemaContent Raw XSD XML schema text content.
+     */
+    explicit XmlSchemaValidator(std::string_view schemaContent);
 
     /**
      * @brief Destructor releasing compiled schema resources and freeing parser state.

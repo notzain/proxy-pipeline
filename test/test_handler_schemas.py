@@ -165,6 +165,55 @@ class TestHandlerSchemas(unittest.TestCase):
             discovered = discover_handler_schemas([Path(tmp_dir)])
             self.assertIn("custom_filter", discovered)
 
+    def test_embedded_file_and_regex_pattern_validation(self):
+        schema = self.schemas.get("xml_verification_handler")
+        self.assertIsNotNone(schema)
+
+        # 1. Valid with embedded schema content instead of xsd_path
+        valid_embedded_spec = {
+            "name": "xml_node",
+            "type": "xml_verification_handler",
+            "input_channel": "in",
+            "output_channel": "out",
+            "config": {
+                "xml.xsd_content": "<xs:schema></xs:schema>"
+            },
+        }
+        errors = validate_handler_instance(valid_embedded_spec, schema)
+        self.assertEqual(errors, [])
+
+        # 2. String pattern regex validation check
+        mock_schema_with_regex = {
+            "name": "test_node",
+            "role": "processor",
+            "ports": {"inputs": [{"name": "in"}], "outputs": [{"name": "out"}]},
+            "parameters": {
+                "endpoint.ip": {
+                    "type": "string",
+                    "pattern": r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$",
+                    "required": True,
+                },
+                "buffer_size": {
+                    "type": "integer",
+                    "min": 100,
+                    "max": 1000,
+                }
+            }
+        }
+        bad_regex_spec = {
+            "name": "node1",
+            "type": "test_node",
+            "input_channel": "in",
+            "output_channel": "out",
+            "config": {
+                "endpoint.ip": "not_an_ip",
+                "buffer_size": 50,
+            }
+        }
+        regex_errors = validate_handler_instance(bad_regex_spec, mock_schema_with_regex)
+        self.assertTrue(any("does not match pattern" in e for e in regex_errors))
+        self.assertTrue(any("value 50 < min" in e for e in regex_errors))
+
 
 if __name__ == "__main__":
     unittest.main()

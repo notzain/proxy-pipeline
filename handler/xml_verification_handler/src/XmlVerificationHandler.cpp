@@ -7,6 +7,7 @@
 #include "backend/message/MessageView.hpp"
 #include "common/memory/SmallSpanBuffer.hpp"
 #include "core/config/Configuration.hpp"
+#include "core/config/EmbeddedFile.hpp"
 #include "log/Log.hpp"
 
 namespace Proxy::Handler {
@@ -16,28 +17,20 @@ XmlVerificationHandler::XmlVerificationHandler(::Backend::IBackend& backend)
 {
 }
 
-XmlVerificationHandler::XmlVerificationHandler(
-    ::Backend::IBackend& backend,
-    std::filesystem::path schemaPath)
-    : Core::Handler::IHandler(backend)
-    , m_schemaPath(std::move(schemaPath))
-    , m_validator(std::make_unique<XmlSchemaValidator>(m_schemaPath))
-{
-}
-
 XmlVerificationHandler::~XmlVerificationHandler() = default;
 
 bool XmlVerificationHandler::onConfigure(const Core::Config::Configuration& config)
 {
-    std::string xsdPath = config.getOr<std::string>("xml.xsd_path", "");
-    if (xsdPath.empty()) {
-        Proxy::Log::error("[XmlVerificationHandler] Missing mandatory configuration: 'xml.xsd_path'");
+    auto schemaResource = Core::Config::EmbeddedFile::fromConfig(config, "xml.xsd");
+    if (!schemaResource.has_value()) {
+        Proxy::Log::error("[XmlVerificationHandler] Missing mandatory configuration: 'xml.xsd_content' or 'xml.xsd_path'");
         return false;
     }
-    m_schemaPath = xsdPath;
-    m_validator = std::make_unique<XmlSchemaValidator>(m_schemaPath);
+
+    m_validator = std::make_unique<XmlSchemaValidator>(*schemaResource);
+
     if (!isSchemaLoaded()) {
-        Proxy::Log::error("[XmlVerificationHandler] Failed to load XSD schema from '{}'.", xsdPath);
+        Proxy::Log::error("[XmlVerificationHandler] Failed to compile XSD schema.");
         return false;
     }
 
@@ -90,8 +83,8 @@ Backend::MessageResult XmlVerificationHandler::onMessageReceived(std::string_vie
         return Backend::Forwarded { .channel = outputChannelName };
     }
 
-    Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
-        channelName, message.payload().size(), m_schemaPath.string());
+    Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema. Discarding message.",
+        channelName, message.payload().size());
     return Backend::Dropped {
         .reason = "Rejected: XSD schema validation failure",
         .errorCode = 400
@@ -123,8 +116,8 @@ void XmlVerificationHandler::onBatchReceived(
                 };
             }
         } else {
-            Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema '{}'. Discarding message.",
-                channelName, msg.payload().size(), m_schemaPath.string());
+            Proxy::Log::warn("[XmlVerificationHandler] Message from '{}' ({} bytes payload) REJECTED by XSD schema. Discarding message.",
+                channelName, msg.payload().size());
             outResults[i] = Backend::Dropped {
                 .reason = "Rejected: XSD schema validation failure",
                 .errorCode = 400

@@ -2,6 +2,7 @@
 
 #include "XmlVerificationHandler.hpp"
 #include "common/memory/ByteView.hpp"
+#include "core/config/Configuration.hpp"
 #include "core/simulation/SimulationBackend.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
@@ -48,8 +49,14 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
 {
     TempSchemaFile schema(sampleXsd);
     Core::Simulation::SimulationBackend backend;
-    Proxy::Handler::XmlVerificationHandler handler(backend, schema.path);
+    Proxy::Handler::XmlVerificationHandler handler(backend);
 
+    Core::Config::Configuration config;
+    config.set("xml.xsd_path", schema.path.string());
+    config.set("xml.input_channel", "test_in");
+    config.set("xml.output_channel", "test_out");
+
+    REQUIRE(handler.onConfigure(config));
     REQUIRE(handler.isSchemaLoaded());
 
     std::string validXml = R"(<?xml version="1.0"?>
@@ -72,6 +79,36 @@ TEST_CASE("XmlVerificationHandler validates compliant XML and rejects non-compli
     CHECK_FALSE(handler.validate(Common::Memory::ByteView(invalidXml)));
     CHECK_FALSE(handler.validate(Common::Memory::ByteView(malformedXml)));
     CHECK_FALSE(handler.validate({ }));
+}
+
+TEST_CASE("XmlVerificationHandler validates using embedded in-memory schema", "[handler][xml]")
+{
+    Core::Simulation::SimulationBackend backend;
+    Proxy::Handler::XmlVerificationHandler handler(backend);
+
+    Core::Config::Configuration config;
+    config.set("xml.xsd_content", sampleXsd);
+    config.set("xml.input_channel", "test_in");
+    config.set("xml.output_channel", "test_out");
+
+    REQUIRE(handler.onConfigure(config));
+    REQUIRE(handler.isSchemaLoaded());
+
+    std::string validXml = R"(<?xml version="1.0"?>
+<note>
+    <to>Alice</to>
+    <from>Bob</from>
+    <heading>Reminder</heading>
+    <body>Don't forget the meeting!</body>
+</note>)";
+
+    std::string invalidXml = R"(<?xml version="1.0"?>
+<note>
+    <to>Alice</to>
+</note>)";
+
+    CHECK(handler.validate(Common::Memory::ByteView(validXml)));
+    CHECK_FALSE(handler.validate(Common::Memory::ByteView(invalidXml)));
 }
 
 #endif // PROXY_HAS_LIBXML2

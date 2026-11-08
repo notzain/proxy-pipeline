@@ -30,6 +30,7 @@
       "type": "string",
       "label": "Destination Host",
       "default": "127.0.0.1",
+      "pattern": "^(127\\.0\\.0\\.1|localhost|([0-9]{1,3}\\.){3}[0-9]{1,3})$",
       "description": "Target IPv4/IPv6 address when mode is fixed_destination."
     },
     "egress.dest_port": {
