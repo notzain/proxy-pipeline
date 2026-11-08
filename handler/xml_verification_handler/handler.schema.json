@@ -34,6 +34,12 @@
       "default": "chains/order.xsd",
       "description": "Filesystem path to the XSD validation schema file."
     }
+  },
+  "payloadContract": {
+    "format": "xsd",
+    "sourceParam": "xml.xsd_path",
+    "scope": "xml",
+    "doc": "Validated XML document payload schema"
   }
 }
 

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Proxy :: Visual Chain Builder</title>
   <link rel="stylesheet" href="css/builder.css?v=2">
+  <link rel="stylesheet" href="css/dsl_editor.css?v=1">
   <script src="vendor/petite-vue.iife.js"></script>
 </head>
 
@@ -532,11 +533,13 @@
                   <option v-for="opt in prop.def.enum" :key="opt" :value="opt">{{ opt }}</option>
                 </select>
 
-                <!-- Code / Monospace Editor -->
-                <textarea v-else-if="prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor'"
-                          v-model="item[prop.key]" @input="validateChain()"
-                          :placeholder="prop.def['ui:placeholder'] || prop.def.description || ''"
-                          class="rule-field-input rule-field-code" spellcheck="false" rows="2"></textarea>
+                <!-- Generic DSL / Code / Monospace Editor -->
+                <div v-else-if="prop.def['ui:widget'] === 'code' || prop.def['ui:widget'] === 'code-editor'"
+                     data-dsl-mount
+                     :data-item-idx="itemIdx"
+                     :data-prop-key="prop.key"
+                     style="width: 100%;">
+                </div>
 
                 <!-- Number input -->
                 <input v-else-if="prop.def.type === 'integer' || prop.def.type === 'int' || prop.def.type === 'number'"
@@ -600,6 +603,8 @@
   </div>
 
   <script src="/studio/context.js?v=2"></script>
+  <script src="js/editor/lua_stdlib.js?v=1"></script>
+  <script src="js/editor/dsl_editor.js?v=1"></script>
   <script src="js/builder_canvas.js"></script>
   <script src="js/builder_app.js?v=2"></script>
   <script>

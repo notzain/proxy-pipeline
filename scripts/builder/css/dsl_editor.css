@@ -1,0 +1,196 @@
+/* Code Editor & LSP Widget Styles */
+
+.dsl-editor-container {
+  position: relative;
+  width: 100%;
+  font-family: var(--font-mono, 'JetBrains Mono', 'Fira Code', monospace);
+  font-size: 12px;
+  background: var(--bg-card, #1e1e2e);
+  border: 1px solid var(--border, #313244);
+  border-radius: 6px;
+  overflow: visible;
+  transition: border-color 0.15s ease;
+}
+
+.dsl-editor-container:focus-within {
+  border-color: var(--accent-blue, #89b4fa);
+  box-shadow: 0 0 0 2px rgba(137, 180, 250, 0.2);
+}
+
+.dsl-editor-container.has-error {
+  border-color: var(--accent-rose, #f38ba8);
+}
+
+.dsl-editor-wrapper {
+  position: relative;
+  min-height: 48px;
+  max-height: 240px;
+  overflow: hidden;
+}
+
+.dsl-editor-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: transparent;
+  pointer-events: none;
+  overflow-y: auto;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.dsl-editor-input {
+  position: relative;
+  width: 100%;
+  min-height: 48px;
+  max-height: 240px;
+  margin: 0;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--text-main, #cdd6f4);
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+  box-sizing: border-box;
+  caret-color: var(--accent-blue, #89b4fa);
+  z-index: 1;
+}
+
+/* Syntax Token Colors (Catppuccin Macchiato Palette matching Studio) */
+.dsl-tok-keyword {
+  color: #cba6f7; /* Mauve */
+  font-weight: 600;
+}
+
+.dsl-tok-function {
+  color: #89b4fa; /* Blue */
+  font-weight: 500;
+}
+
+.dsl-tok-operator {
+  color: #89dceb; /* Sky */
+}
+
+.dsl-tok-string {
+  color: #a6e3a1; /* Green */
+}
+
+.dsl-tok-number {
+  color: #fab387; /* Peach */
+}
+
+.dsl-tok-scope {
+  color: #f9e2af; /* Yellow */
+}
+
+.dsl-tok-member {
+  color: #b4befe; /* Lavender */
+}
+
+.dsl-tok-comment {
+  color: #6c7086; /* Overlay0 */
+  font-style: italic;
+}
+
+.dsl-tok-error {
+  text-decoration: underline wavy #f38ba8;
+  background: rgba(243, 139, 168, 0.15);
+}
+
+/* Completion Dropdown Menu */
+.dsl-completion-popup {
+  position: absolute;
+  z-index: 1000;
+  background: #181825;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  max-height: 220px;
+  width: 320px;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.dsl-completion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 8px;
+}
+
+.dsl-completion-item:hover,
+.dsl-completion-item.active {
+  background: #313244;
+}
+
+.dsl-completion-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsl-completion-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.dsl-badge-fn { background: rgba(137, 180, 250, 0.2); color: #89b4fa; }
+.dsl-badge-op { background: rgba(137, 220, 235, 0.2); color: #89dceb; }
+.dsl-badge-field { background: rgba(249, 226, 175, 0.2); color: #f9e2af; }
+.dsl-badge-kw { background: rgba(203, 166, 247, 0.2); color: #cba6f7; }
+.dsl-badge-var { background: rgba(180, 190, 254, 0.2); color: #b4befe; }
+.dsl-badge-mod { background: rgba(166, 227, 161, 0.2); color: #a6e3a1; }
+
+.dsl-completion-name {
+  color: #cdd6f4;
+  font-weight: 600;
+}
+
+.dsl-completion-type {
+  color: #a6adc8;
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.dsl-completion-doc {
+  padding: 6px 8px;
+  background: #11111b;
+  border-top: 1px solid #313244;
+  color: #bac2de;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* Linter Diagnostics Bar */
+.dsl-editor-diagnostics {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(243, 139, 168, 0.12);
+  border-top: 1px solid rgba(243, 139, 168, 0.3);
+  color: #f38ba8;
+  font-size: 10px;
+}

@@ -89,6 +89,21 @@ class ChainBuilderHTTPHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(200, self.schemas)
             return
 
+        elif self.path == "/api/metadata":
+            from proxy_runner.metadata import get_metadata_catalog_definitions
+            self._send_json(200, get_metadata_catalog_definitions())
+            return
+
+        elif self.path.startswith("/api/payload_contract"):
+            from urllib.parse import parse_qs, urlparse
+            from proxy_runner.payload_contracts import inspect_payload_contract
+            query = parse_qs(urlparse(self.path).query)
+            fmt = query.get("format", [""])[0]
+            file_path = query.get("file", [""])[0]
+            resolved = (self.root_dir / file_path).resolve()
+            self._send_json(200, inspect_payload_contract(fmt, resolved))
+            return
+
         elif self.path == "/api/chain":
             self._send_json(200, self.current_chain)
             return

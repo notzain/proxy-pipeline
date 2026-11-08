@@ -9,6 +9,7 @@ import threading
 
 from .coordinator import InteractiveSimulationCoordinator
 from .handlers import load_handler_descriptor
+from .metadata import get_metadata_catalog_definitions
 from .trace import TraceManager
 
 
@@ -237,6 +238,16 @@ class SimDashboardHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path == "/api/schemas":
             from .schema_validator import discover_handler_schemas
             self._send_json(200, discover_handler_schemas())
+        elif self.path == "/api/metadata":
+            self._send_json(200, get_metadata_catalog_definitions())
+        elif self.path.startswith("/api/payload_contract"):
+            from urllib.parse import parse_qs, urlparse
+            from .payload_contracts import inspect_payload_contract
+            query = parse_qs(urlparse(self.path).query)
+            fmt = query.get("format", [""])[0]
+            file_path = query.get("file", [""])[0]
+            resolved_path = (Path(__file__).resolve().parent.parent.parent / file_path).resolve()
+            self._send_json(200, inspect_payload_contract(fmt, resolved_path))
         elif self.path == "/api/chain":
             self._send_json(200, self.coordinator.chain_config)
         else:
