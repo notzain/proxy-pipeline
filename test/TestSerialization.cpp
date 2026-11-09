@@ -1,5 +1,7 @@
+#include "core/serialization/DebugTraits.hpp"
 #include "core/serialization/Serializer.hpp"
 #include "core/serialization/TypeTraits.hpp"
+#include "core/serialization/fmt/DebugFormat.hpp"
 #include "core/serialization/ir/Converter.hpp"
 #include "core/serialization/ir/Value.hpp"
 #include "core/serialization/json/JsonSerializer.hpp"
@@ -84,6 +86,16 @@ struct UserProfile {
 };
 
 } // namespace
+
+template <>
+struct Core::Serialization::DebugTraits<Point> {
+    static constexpr std::string_view name = "Point";
+};
+
+template <>
+struct Core::Serialization::DebugTraits<Circle> {
+    static constexpr std::string_view name = "Circle";
+};
 
 template <>
 struct Core::Serialization::TypeTraits<Point> {
@@ -471,4 +483,82 @@ TEST_CASE("MetadataCatalog direct field extraction and JSON formatting", "[metad
     std::string json = Core::Metadata::MetadataCatalog::formatJson(
         Backend::MetadataTraits<Core::Net::UdpMetadata>::protocol, bytes);
     CHECK(json.find(fmt::format("\"dst_port\":{}", htons(8080))) != std::string::npos);
+}
+
+TEST_CASE("DebugFormat and fmt integration for reflected types", "[serialization][fmt][debug]")
+{
+    Point p { 10, 20 };
+
+    SECTION("Default compact formatting with DebugTraits name")
+    {
+        std::string formatted = fmt::format("{}", p);
+        CHECK(formatted == "Point { x: 10, y: 20 }");
+    }
+
+    SECTION("Pretty multiline formatting using # specifier")
+    {
+        std::string formatted = fmt::format("{:#}", p);
+        CHECK(formatted == "Point {\n  x: 10,\n  y: 20\n}");
+    }
+
+    SECTION("Pretty multiline formatting using pretty specifier")
+    {
+        std::string formatted = fmt::format("{:pretty}", p);
+        CHECK(formatted == "Point {\n  x: 10,\n  y: 20\n}");
+    }
+
+    SECTION("Nested reflected structs debug formatting")
+    {
+        Circle c { { 1, 2 }, 5.5 };
+        std::string compact = fmt::format("{}", c);
+        CHECK(compact == "Circle { center: Point { x: 1, y: 2 }, radius: 5.5 }");
+
+        std::string pretty = fmt::format("{:#}", c);
+        std::string expectedPretty = "Circle {\n"
+                                     "  center: Point {\n"
+                                     "    x: 1,\n"
+                                     "    y: 2\n"
+                                     "  },\n"
+                                     "  radius: 5.5\n"
+                                     "}";
+        CHECK(pretty == expectedPretty);
+    }
+
+    SECTION("Color specifier formats without crashing")
+    {
+        std::string colorStr = fmt::format("{:color}", p);
+        CHECK_FALSE(colorStr.empty());
+        // Verify ANSI escape code presence
+        CHECK(colorStr.find("\033[") != std::string::npos);
+    }
+
+    SECTION("Complex model with std::vector, optional, and std::map")
+    {
+        ComplexModel model;
+        model.id = "model_1";
+        model.description = "detailed test model";
+        model.numbers = { 1, 2, 3 };
+        model.flags = { "alpha", "beta" };
+        model.scores = { { "score1", 10 } };
+        model.boundary = { { 5, 6 }, 12.0 };
+
+        std::string formatted = fmt::format("{}", model);
+        CHECK_FALSE(formatted.empty());
+        CHECK(formatted.find("detailed test model") != std::string::npos);
+        CHECK(formatted.find("score1") != std::string::npos);
+    }
+
+    SECTION("Console demonstration output")
+    {
+        fmt::print("\n--- [DebugFormat Demo] ---\n");
+        fmt::print("Compact:        {}\n", p);
+        fmt::print("Pretty / Tree:\n{:#}\n", p);
+        fmt::print("Color:\n{:color}\n", p);
+
+        Circle c { { 1, 2 }, 5.5 };
+        fmt::print("Nested Compact: {}\n", c);
+        fmt::print("Nested Pretty:\n{:#}\n", c);
+        fmt::print("Nested Color:\n{:pretty,color}\n", c);
+        fmt::print("--------------------------\n\n");
+    }
 }
