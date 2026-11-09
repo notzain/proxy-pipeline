@@ -26,6 +26,7 @@ public:
     ConsoleLogSink& operator=(ConsoleLogSink&&) noexcept;
 
     void log(Level level, std::string_view message) override;
+    void logStructured(const struct StructuredLogRecord& record) override;
     void flush() override;
     void setLevel(Level level) override;
     [[nodiscard]] Level getLevel() const override;

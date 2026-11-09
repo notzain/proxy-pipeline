@@ -1,6 +1,7 @@
 #pragma once
 
 #include "log/ILogSink.hpp"
+#include "log/Structured.hpp"
 #include <fmt/core.h>
 #include <memory>
 #include <string_view>
@@ -51,6 +52,13 @@ void flush();
  * @param message Pre-formatted message string view.
  */
 void log(Level level, std::string_view message);
+
+/**
+ * @brief Core logging function emitting a structured log record.
+ *
+ * @param record Structured log event record.
+ */
+void logStructured(const struct StructuredLogRecord& record);
 
 /**
  * @brief Logs a raw string message at Trace level.
@@ -157,3 +165,5 @@ void critical(fmt::format_string<Args...> fmtStr, Args&&... args)
 } // namespace Proxy::Log
 
 namespace ProxyLog = Proxy::Log;
+
+#include "log/LogMacros.hpp"
