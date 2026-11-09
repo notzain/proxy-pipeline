@@ -149,21 +149,31 @@ void JsonLogSink::logStructured(const StructuredLogRecord& record)
             escapeJsonStringTo(buf, field.key());
             buf.append(std::string_view("\":"));
 
-            std::visit([&buf](const auto& val) {
-                using T = std::decay_t<decltype(val)>;
-                if constexpr (std::is_same_v<T, std::monostate>) {
-                    buf.append(std::string_view("null"));
-                } else if constexpr (std::is_same_v<T, bool>) {
-                    buf.append(val ? std::string_view("true") : std::string_view("false"));
-                } else if constexpr (std::is_arithmetic_v<T>) {
-                    fmt::format_to(std::back_inserter(buf), "{}", val);
-                } else if constexpr (std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string>) {
-                    buf.push_back('"');
-                    escapeJsonStringTo(buf, val);
-                    buf.push_back('"');
-                }
-            },
-                field.value());
+            if (field.isRawJson()) {
+                std::visit([&buf](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string>) {
+                        buf.append(std::string_view(val));
+                    }
+                },
+                    field.value());
+            } else {
+                std::visit([&buf](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_same_v<T, std::monostate>) {
+                        buf.append(std::string_view("null"));
+                    } else if constexpr (std::is_same_v<T, bool>) {
+                        buf.append(val ? std::string_view("true") : std::string_view("false"));
+                    } else if constexpr (std::is_arithmetic_v<T>) {
+                        fmt::format_to(std::back_inserter(buf), "{}", val);
+                    } else if constexpr (std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string>) {
+                        buf.push_back('"');
+                        escapeJsonStringTo(buf, val);
+                        buf.push_back('"');
+                    }
+                },
+                    field.value());
+            }
         }
     }
 

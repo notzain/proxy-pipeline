@@ -2,9 +2,15 @@
 #include "core/serialization/Serializer.hpp"
 #include "core/serialization/TypeTraits.hpp"
 #include "core/serialization/fmt/DebugFormat.hpp"
+#include "log/JsonLogSink.hpp"
+#include "log/Log.hpp"
+#include "log/LogMacros.hpp"
 #include "core/serialization/ir/Converter.hpp"
 #include "core/serialization/ir/Value.hpp"
 #include "core/serialization/json/JsonSerializer.hpp"
+#include "log/JsonLogSink.hpp"
+#include "log/Log.hpp"
+#include "log/LogMacros.hpp"
 
 #if defined(PROXY_HAS_PUGIXML) && PROXY_HAS_PUGIXML
 #include "core/serialization/xml/XmlSerializer.hpp"
@@ -560,5 +566,82 @@ TEST_CASE("DebugFormat and fmt integration for reflected types", "[serialization
         fmt::print("Nested Pretty:\n{:#}\n", c);
         fmt::print("Nested Color:\n{:pretty,color}\n", c);
         fmt::print("--------------------------\n\n");
+    }
+
+    SECTION("Structured logging with TypeTraits does not produce stringified object")
+    {
+        class TestCapturingJsonSink : public Proxy::Log::ILogSink {
+        public:
+            void log(Proxy::Log::Level, std::string_view) override { }
+            void logStructured(const Proxy::Log::StructuredLogRecord& record) override
+            {
+                lastRecord = record;
+                if (record.fields && record.fieldCount > 0) {
+                    capturedFields.assign(record.fields, record.fields + record.fieldCount);
+                }
+            }
+            void flush() override { }
+            void setLevel(Proxy::Log::Level) override { }
+            [[nodiscard]] Proxy::Log::Level getLevel() const override { return Proxy::Log::Level::Debug; }
+
+            Proxy::Log::StructuredLogRecord lastRecord;
+            std::vector<Proxy::Log::LogField> capturedFields;
+        };
+
+        auto capturingSink = std::make_unique<TestCapturingJsonSink>();
+        auto* rawSink = capturingSink.get();
+        Proxy::Log::init(std::move(capturingSink));
+        Proxy::Log::setLevel(Proxy::Log::Level::Debug);
+
+        Point pt { 10, 20 };
+        PROXY_LOG_INFO("Processing {point}", pt);
+
+        REQUIRE(rawSink->capturedFields.size() == 1);
+        CHECK(rawSink->capturedFields[0].key() == "point");
+        CHECK(rawSink->capturedFields[0].isRawJson());
+        CHECK(std::get<std::string>(rawSink->capturedFields[0].value()) == "{\"x\":10,\"y\":20}");
+
+        // Now verify JsonLogSink serialization
+        const std::filesystem::path testDir = std::filesystem::path("/tmp") / "proxylog_struct_test";
+        const std::filesystem::path testFile = testDir / "point.log";
+        std::error_code ec;
+        std::filesystem::remove_all(testDir, ec);
+
+        Proxy::Log::init(std::make_unique<Proxy::Log::JsonLogSink>(testFile.string(), false));
+        Proxy::Log::setLevel(Proxy::Log::Level::Debug);
+
+        Circle circle { { 10, 20 }, 5.5 };
+        PROXY_LOG_INFO("Shape {circle}", circle);
+        Proxy::Log::flush();
+
+        REQUIRE(std::filesystem::exists(testFile));
+        std::ifstream stream(testFile);
+        REQUIRE(stream.is_open());
+        std::string jsonContent((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        stream.close();
+
+        // The structured JSON field "circle" must be true nested JSON, NOT a quoted string
+        CHECK(jsonContent.find("\"circle\":\"") == std::string::npos);
+
+        // MUST contain real nested JSON structure for the field
+        CHECK(jsonContent.find("\"circle\":{\"center\":{\"x\":10,\"y\":20},\"radius\":5.5}") != std::string::npos);
+
+        // Also test unformatted trailing variable auto-extraction
+        std::filesystem::remove_all(testDir, ec);
+        Proxy::Log::init(std::make_unique<Proxy::Log::JsonLogSink>(testFile.string(), false));
+        Proxy::Log::setLevel(Proxy::Log::Level::Debug);
+
+        PROXY_LOG_INFO("Unformatted inspection", circle);
+        Proxy::Log::flush();
+
+        std::ifstream stream2(testFile);
+        std::string jsonContent2((std::istreambuf_iterator<char>(stream2)), std::istreambuf_iterator<char>());
+        stream2.close();
+        CHECK(jsonContent2.find("\"message\":\"Unformatted inspection\"") != std::string::npos);
+        CHECK(jsonContent2.find("Point {") == std::string::npos);
+        CHECK(jsonContent2.find("Circle {") == std::string::npos);
+        CHECK(jsonContent2.find("\"circle\":{\"center\":{\"x\":10,\"y\":20},\"radius\":5.5}") != std::string::npos);
+
+        std::filesystem::remove_all(testDir, ec);
     }
 }

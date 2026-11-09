@@ -1,6 +1,7 @@
 #pragma once
 
 #include "log/ComponentTag.hpp"
+#include "log/JsonValueWriter.hpp"
 #include "log/Structured.hpp"
 #include <array>
 #include <fmt/format.h>
@@ -120,16 +121,27 @@ struct StaticString {
     }
 };
 
+template <typename T, typename = void>
+struct FieldBuilder {
+    static LogField build(std::string_view key, const T& val)
+    {
+        using CleanT = std::decay_t<T>;
+        if constexpr (std::is_same_v<CleanT, LogField>) {
+            return val;
+        } else if constexpr (IsReflectedEntity<CleanT>) {
+            return LogField::rawJson(key, serializeReflectedToJson(val));
+        } else if constexpr (std::is_constructible_v<LogField, std::string_view, T>) {
+            return LogField(key, val);
+        } else {
+            return LogField(key, fmt::format("{}", val));
+        }
+    }
+};
+
 template <typename T>
 LogField makeField(std::string_view key, const T& val)
 {
-    if constexpr (std::is_same_v<T, LogField>) {
-        return val;
-    } else if constexpr (std::is_constructible_v<LogField, std::string_view, T>) {
-        return LogField(key, val);
-    } else {
-        return LogField(key, fmt::format("{}", val));
-    }
+    return FieldBuilder<std::decay_t<T>>::build(key, val);
 }
 
 template <size_t N>

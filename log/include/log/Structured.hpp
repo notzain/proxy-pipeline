@@ -5,12 +5,14 @@
 #include <string>
 #include <string_view>
 #include <variant>
-#include <vector>
 
 namespace Proxy::Log {
 
 /**
  * @brief Represents a single key-value structured field attached to a log record.
+ *
+ * Designed as a lightweight, constexpr-friendly variant supporting primitive types,
+ * string views, and owned strings.
  */
 class LogField {
 public:
@@ -83,12 +85,34 @@ public:
     {
     }
 
+    /**
+     * @brief Factory creating a LogField marked as raw, pre-formatted JSON.
+     *
+     * In JsonLogSink, raw JSON fields are written directly as nested objects/arrays
+     * rather than being escaped and wrapped in string quotes.
+     */
+    static LogField rawJson(std::string_view key, std::string json) noexcept
+    {
+        LogField f(key, std::move(json));
+        f.m_isRawJson = true;
+        return f;
+    }
+
+    static constexpr LogField rawJson(std::string_view key, std::string_view json) noexcept
+    {
+        LogField f(key, json);
+        f.m_isRawJson = true;
+        return f;
+    }
+
     [[nodiscard]] constexpr std::string_view key() const noexcept { return m_key; }
     [[nodiscard]] const ValueType& value() const noexcept { return m_value; }
+    [[nodiscard]] constexpr bool isRawJson() const noexcept { return m_isRawJson; }
 
 private:
-    std::string_view m_key;
-    ValueType m_value;
+    std::string_view m_key { "" };
+    ValueType m_value { std::monostate { } };
+    bool m_isRawJson { false };
 };
 
 /**

@@ -121,9 +121,10 @@ PROXY_LOG_INFO("Processed inspection packet {header}", header);
   - [x] Implement named format string extraction (`{name}`) and variable binding.
   - [x] Implement Dual-Mode Auto-Extractor for unformatted trailing variables (`PROXY_LOG_WARN("msg", var1, var2)`).
   - [x] Compile-time validation and dispatch.
-- [ ] **4. Core & DebugTraits Integration (`core/include/core/log/StructuredTraits.hpp`)**
-  - [ ] Adapter that hooks `TypeTraits<T>` into structured `LogField` dictionary serialization.
-  - [ ] Verify nested reflected struct formatting in both text and JSON sinks.
+- [x] **4. Custom Type Logging & Formatter Agnosticism**
+  - [x] `LogField` remains a pure, constexpr-capable, allocation-free variant supporting primitives, `string_view`, and `std::string`.
+  - [x] Custom types with `TypeTraits<T>::fields()` are serialized directly via zero-dependency compile-time field iteration into true nested JSON structures (`{"x":10,"y":20}`) without depending on `JsonFormat` or external AST libraries.
 - [x] **5. Verification & Testing**
   - [x] Write unit tests for structured logging macros, JSON sink, and text formatting.
+  - [x] Add automated test verifying reflected struct logging outputs real JSON objects (`"circle":{"center":...}`) and prevents stringified debug outputs (`"point":"Point { ... }"`).
   - [x] Update existing handler logging to adopt `PROXY_LOG_*` macros.
