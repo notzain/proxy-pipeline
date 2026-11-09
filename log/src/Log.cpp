@@ -1,5 +1,6 @@
 #include "log/Log.hpp"
 #include "log/ConsoleLogSink.hpp"
+#include "log/Structured.hpp"
 #include <atomic>
 #include <mutex>
 
@@ -83,6 +84,15 @@ void log(Level level, std::string_view message)
     }
     std::lock_guard<std::mutex> lock(g_loggerMutex);
     getActiveSink().log(level, message);
+}
+
+void logStructured(const StructuredLogRecord& record)
+{
+    if (!shouldLog(record.level)) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_loggerMutex);
+    getActiveSink().logStructured(record);
 }
 
 void trace(std::string_view message)

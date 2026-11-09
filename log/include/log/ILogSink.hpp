@@ -34,6 +34,15 @@ public:
     virtual void log(Level level, std::string_view message) = 0;
 
     /**
+     * @brief Emits a structured log record with key-value fields and component tag.
+     *
+     * Default implementation delegates to log(level, message) for backward compatibility.
+     *
+     * @param record Structured log event description.
+     */
+    virtual void logStructured(const struct StructuredLogRecord& record);
+
+    /**
      * @brief Flushes buffered log messages to the underlying destination.
      */
     virtual void flush() = 0;

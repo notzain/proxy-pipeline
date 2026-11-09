@@ -1,5 +1,7 @@
 #include "log/ConsoleLogSink.hpp"
 #include "SpdlogUtils.hpp"
+#include "log/Structured.hpp"
+#include <fmt/format.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
@@ -25,6 +27,43 @@ ConsoleLogSink& ConsoleLogSink::operator=(ConsoleLogSink&&) noexcept = default;
 void ConsoleLogSink::log(Level level, std::string_view message)
 {
     m_impl->logger->log(Detail::toSpdlogLevel(level), "{}", message);
+}
+
+void ConsoleLogSink::logStructured(const StructuredLogRecord& record)
+{
+    fmt::memory_buffer buf;
+    if (!record.component.empty()) {
+        fmt::format_to(std::back_inserter(buf), "[{}] ", record.component);
+    }
+    buf.append(record.message);
+
+    if (record.fields && record.fieldCount > 0) {
+        buf.push_back(' ');
+        buf.push_back('[');
+        for (size_t i = 0; i < record.fieldCount; ++i) {
+            const auto& field = record.fields[i];
+            if (i > 0) {
+                buf.push_back(' ');
+            }
+            fmt::format_to(std::back_inserter(buf), "{}=", field.key());
+            std::visit([&buf](const auto& val) {
+                using T = std::decay_t<decltype(val)>;
+                if constexpr (std::is_same_v<T, std::monostate>) {
+                    buf.append(std::string_view("null"));
+                } else if constexpr (std::is_same_v<T, bool>) {
+                    buf.append(val ? std::string_view("true") : std::string_view("false"));
+                } else if constexpr (std::is_arithmetic_v<T>) {
+                    fmt::format_to(std::back_inserter(buf), "{}", val);
+                } else if constexpr (std::is_same_v<T, std::string_view> || std::is_same_v<T, std::string>) {
+                    buf.append(val);
+                }
+            },
+                field.value());
+        }
+        buf.push_back(']');
+    }
+
+    m_impl->logger->log(Detail::toSpdlogLevel(record.level), "{}", std::string_view(buf.data(), buf.size()));
 }
 
 void ConsoleLogSink::flush()
