@@ -32,7 +32,7 @@ void StatsDExporter::initSocket()
 {
     m_socketFd.reset(::socket(AF_INET, SOCK_DGRAM, 0));
     if (!m_socketFd) {
-        PROXY_LOG_ERROR("Failed to create UDP socket: {error_message}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDP socket: {errorMessage}", std::strerror(errno));
         return;
     }
 
@@ -46,7 +46,7 @@ void StatsDExporter::initSocket()
     }
 
     if (::connect(m_socketFd.get(), reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        PROXY_LOG_ERROR("Failed to connect UDP socket to {host}:{port}: {error_message}", m_host, m_port, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to connect UDP socket to {host}:{port}: {errorMessage}", m_host, m_port, std::strerror(errno));
         m_socketFd.reset();
     }
 }

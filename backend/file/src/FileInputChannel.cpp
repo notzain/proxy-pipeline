@@ -16,7 +16,7 @@ FileInputChannel::FileInputChannel(std::string name, std::filesystem::path watch
 {
     std::error_code ec;
     std::filesystem::create_directories(m_watchDir, ec);
-    PROXY_LOG_INFO("Watching directory: {}", m_watchDir.string());
+    PROXY_LOG_INFO("Watching directory: '{directory}'", m_watchDir.string());
 }
 
 BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)
@@ -62,7 +62,7 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
                 std::error_code removeError;
                 std::filesystem::remove(filePath, removeError);
                 if (removeError) {
-                    PROXY_LOG_ERROR("Could not remove oversized input file {}: {}",
+                    PROXY_LOG_ERROR("Could not remove oversized input file '{filePath}': {errorMessage}",
                         filePath.string(), removeError.message());
                 }
                 return BytesResult::err(Common::Net::ReceiveFailure {
@@ -80,9 +80,9 @@ BytesResult FileInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout t
             std::error_code rmEc;
             std::filesystem::remove(filePath, rmEc);
             if (rmEc) {
-                PROXY_LOG_WARN("Could not delete processed file {}: {}", filePath.string(), rmEc.message());
+                PROXY_LOG_WARN("Could not delete processed file '{filePath}': {errorMessage}", filePath.string(), rmEc.message());
             } else {
-                PROXY_LOG_DEBUG("Read and deleted processed file {}", filePath.string());
+                PROXY_LOG_DEBUG("Read and deleted processed file '{filePath}'", filePath.string());
             }
 
             slot.size = bytesToRead;

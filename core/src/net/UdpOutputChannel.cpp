@@ -60,7 +60,7 @@ int UdpOutputChannel::ensureSocketForFamily(Common::Net::AddressFamily family)
         if (!m_socketFdV6) {
             m_socketFdV6.reset(::socket(AF_INET6, SOCK_DGRAM, 0));
             if (!m_socketFdV6) {
-                PROXY_LOG_ERROR("Failed to create IPv6 UDP socket: {error_message}", std::strerror(errno));
+                PROXY_LOG_ERROR("Failed to create IPv6 UDP socket: {errorMessage}", std::strerror(errno));
                 return -1;
             }
             int sndbuf = static_cast<int>(m_sendBufferSize);
@@ -72,7 +72,7 @@ int UdpOutputChannel::ensureSocketForFamily(Common::Net::AddressFamily family)
     if (!m_socketFd) {
         m_socketFd.reset(::socket(AF_INET, SOCK_DGRAM, 0));
         if (!m_socketFd) {
-            PROXY_LOG_ERROR("Failed to create IPv4 UDP socket: {error_message}", std::strerror(errno));
+            PROXY_LOG_ERROR("Failed to create IPv4 UDP socket: {errorMessage}", std::strerror(errno));
             return -1;
         }
         int sndbuf = static_cast<int>(m_sendBufferSize);
@@ -91,9 +91,9 @@ void UdpOutputChannel::openSocket()
         if (m_defaultAddr.family() != Common::Net::AddressFamily::Unknown) {
             ensureSocketForFamily(m_defaultAddr.family());
             m_hasDefaultAddr = true;
-            PROXY_LOG_INFO("Configured default target UDP {target_host}:{target_port}", m_defaultHost, m_defaultPort);
+            PROXY_LOG_INFO("Configured default target UDP {targetHost}:{targetPort}", m_defaultHost, m_defaultPort);
         } else {
-            PROXY_LOG_ERROR("Invalid default target IP: {target_host}", m_defaultHost);
+            PROXY_LOG_ERROR("Invalid default target IP: {targetHost}", m_defaultHost);
         }
     }
 }
@@ -203,7 +203,7 @@ bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, con
         static_cast<socklen_t>(addrLen));
 
     if (sent < 0) {
-        PROXY_LOG_ERROR("sendTo failed: {error_message}", std::strerror(errno));
+        PROXY_LOG_ERROR("sendTo failed: {errorMessage}", std::strerror(errno));
         return false;
     }
 
@@ -219,7 +219,7 @@ bool UdpOutputChannel::sendTo(Common::Compat::span<const std::byte> message, con
 {
     auto addr = Common::Net::SocketAddress::fromString(host, port);
     if (addr.family() == Common::Net::AddressFamily::Unknown) {
-        PROXY_LOG_ERROR("Invalid target IP: {target_host}", host);
+        PROXY_LOG_ERROR("Invalid target IP: {targetHost}", host);
         return false;
     }
 

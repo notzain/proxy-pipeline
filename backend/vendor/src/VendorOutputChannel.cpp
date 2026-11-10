@@ -27,7 +27,7 @@ bool VendorOutputChannel::send(Common::Compat::span<const std::byte> message)
     if (!m_sender) {
         const auto count = m_unavailableSenderCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            PROXY_LOG_WARN("send() called without initialized VendorSender on channel '{}' (total events: {})",
+            PROXY_LOG_WARN("send() called without initialized VendorSender on channel '{channel}'",
                 name(), count);
         }
         return false;
@@ -51,7 +51,7 @@ bool VendorOutputChannel::send(const ::Backend::MessageView& message)
     if (!m_sender) {
         const auto count = m_unavailableSenderCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            PROXY_LOG_WARN("send() called without initialized VendorSender on channel '{}' (total events: {})",
+            PROXY_LOG_WARN("send() called without initialized VendorSender on channel '{channel}'",
                 name(), count);
         }
         return false;

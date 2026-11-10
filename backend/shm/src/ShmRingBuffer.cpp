@@ -18,7 +18,7 @@ ShmRingBuffer::ShmRingBuffer(std::string path, std::size_t capacity)
 {
     if (capacity == 0 || (capacity & (capacity - 1)) != 0
         || capacity > std::numeric_limits<uint32_t>::max()) {
-        PROXY_LOG_ERROR("Invalid capacity {} for '{}'", capacity, m_path);
+        PROXY_LOG_ERROR("Invalid shared memory capacity for '{filePath}'", m_path, capacity);
         return;
     }
     m_capacity = capacity;
@@ -84,13 +84,13 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
     unmapMemory();
 
     if (capacity > (std::numeric_limits<std::size_t>::max() - sizeof(ShmHeader)) / sizeof(ShmSlot)) {
-        PROXY_LOG_ERROR("Capacity {} overflows mapping size for '{}'", capacity, m_path);
+        PROXY_LOG_ERROR("Shared memory capacity overflows mapping size for '{filePath}'", m_path, capacity);
         return;
     }
 
     const std::size_t totalBytes = sizeof(ShmHeader) + capacity * sizeof(ShmSlot);
     if (totalBytes > static_cast<std::size_t>(std::numeric_limits<off_t>::max())) {
-        PROXY_LOG_ERROR("Mapping size {} is unsupported for '{}'", totalBytes, m_path);
+        PROXY_LOG_ERROR("Shared memory mapping size unsupported for '{filePath}'", m_path, totalBytes);
         return;
     }
 
@@ -110,12 +110,12 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
         m_fd = ::open(m_path.c_str(), openFlags);
     }
     if (m_fd < 0) {
-        PROXY_LOG_ERROR("Failed to open shared memory file '{}': {}", m_path, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to open shared memory file '{filePath}': {errorMessage}", m_path, std::strerror(errno));
         return;
     }
 
     if (::flock(m_fd, LOCK_EX) != 0) {
-        PROXY_LOG_ERROR("Failed to lock shared memory file '{}': {}", m_path, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to lock shared memory file '{filePath}': {errorMessage}", m_path, std::strerror(errno));
         unmapMemory();
         return;
     }
@@ -138,19 +138,19 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
 
     struct stat st { };
     if (::fstat(m_fd, &st) != 0) {
-        PROXY_LOG_ERROR("Failed to inspect shared memory file '{}': {}", m_path, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to inspect shared memory file '{filePath}': {errorMessage}", m_path, std::strerror(errno));
         fileLock.unlock();
         unmapMemory();
         return;
     }
     if (!S_ISREG(st.st_mode) || st.st_uid != ::geteuid()) {
-        PROXY_LOG_ERROR("Shared memory path '{}' is not a regular file owned by this user", m_path);
+        PROXY_LOG_ERROR("Shared memory path '{filePath}' is not a regular file owned by this user", m_path);
         fileLock.unlock();
         unmapMemory();
         return;
     }
     if (::fchmod(m_fd, S_IRUSR | S_IWUSR) != 0) {
-        PROXY_LOG_ERROR("Failed to restrict permissions on '{}': {}", m_path, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to restrict permissions on '{filePath}': {errorMessage}", m_path, std::strerror(errno));
         fileLock.unlock();
         unmapMemory();
         return;
@@ -158,14 +158,14 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
 
     if (isNewlyCreated) {
         if (::ftruncate(m_fd, static_cast<off_t>(totalBytes)) != 0) {
-            PROXY_LOG_ERROR("Failed to truncate shared memory file '{}' to {} bytes: {}",
-                m_path, totalBytes, std::strerror(errno));
+            PROXY_LOG_ERROR("Failed to truncate shared memory file '{filePath}': {errorMessage}",
+                m_path, std::strerror(errno), totalBytes);
             fileLock.unlock();
             unmapMemory();
             return;
         }
     } else if (st.st_size < 0 || static_cast<std::uintmax_t>(st.st_size) != totalBytes) {
-        PROXY_LOG_ERROR("Shared memory file '{}' has an incompatible size", m_path);
+        PROXY_LOG_ERROR("Shared memory file '{filePath}' has an incompatible size", m_path);
         fileLock.unlock();
         unmapMemory();
         return;
@@ -173,7 +173,7 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
 
     m_mappedMemory = ::mmap(nullptr, totalBytes, PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
     if (m_mappedMemory == MAP_FAILED) {
-        PROXY_LOG_ERROR("Failed to mmap shared memory file '{}': {}", m_path, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to mmap shared memory file '{filePath}': {errorMessage}", m_path, std::strerror(errno));
         m_mappedMemory = nullptr;
         fileLock.unlock();
         unmapMemory();
@@ -205,7 +205,7 @@ void ShmRingBuffer::mapMemory(std::size_t capacity)
         || m_header->capacity == 0
         || (m_header->capacity & (m_header->capacity - 1)) != 0
         || m_header->slotPayloadSize != MaxPayloadBytes) {
-        PROXY_LOG_ERROR("Shared memory file '{}' has an incompatible header", m_path);
+        PROXY_LOG_ERROR("Shared memory file '{filePath}' has an incompatible header", m_path);
         fileLock.unlock();
         unmapMemory();
     }
@@ -393,7 +393,7 @@ void ShmRingBuffer::logInvalidSlot(std::string_view message, std::size_t length,
 {
     const uint64_t count = m_invalidSlotCount.fetch_add(1, std::memory_order_relaxed) + 1;
     if (Common::Diagnostics::shouldLogEventCount(count)) {
-        PROXY_LOG_WARN("{} (length: {}, capacity: {}, total dropped: {})",
+        PROXY_LOG_WARN("Corrupted or invalid slot in shared memory ring buffer",
             message, length, capacity, count);
     }
 }

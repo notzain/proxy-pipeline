@@ -185,15 +185,34 @@ std::array<std::string_view, N> parseVariableNames(std::string_view str)
     return result;
 }
 
-template <typename... Args>
-void logNamed(Level level, std::string_view component, std::string_view fmtPattern,
+template <size_t FormatArgCount, typename... Args>
+void logHybrid(Level level, std::string_view component, std::string_view fmtPattern,
     const std::array<std::string_view, sizeof...(Args)>& names, const Args&... args)
 {
     if (!::Proxy::Log::shouldLog(level)) {
         return;
     }
 
-    std::string formattedMsg = fmt::vformat(fmtPattern, fmt::make_format_args(args...));
+    std::tuple<const Args&...> argsTuple(args...);
+    std::string formattedMsg;
+
+    if constexpr (FormatArgCount == 0) {
+        formattedMsg = std::string(fmtPattern);
+    } else {
+        auto formatWithTuple = [&]<size_t... Is>(std::index_sequence<Is...>) {
+            return fmt::vformat(fmtPattern, fmt::make_format_args(std::get<Is>(argsTuple)...));
+        };
+        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> {});
+    }
+
+    if constexpr (FormatArgCount == 0) {
+        formattedMsg = std::string(fmtPattern);
+    } else {
+        auto formatWithTuple = [&]<size_t... Is>(std::index_sequence<Is...>) {
+            return fmt::vformat(fmtPattern, fmt::make_format_args(std::get<Is>(argsTuple)...));
+        };
+        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> {});
+    }
 
     size_t idx = 0;
     std::array<LogField, sizeof...(Args)> fields { };
@@ -209,38 +228,26 @@ void logNamed(Level level, std::string_view component, std::string_view fmtPatte
     record.message = formattedMsg;
     record.fields = fields.data();
     record.fieldCount = sizeof...(Args);
-    record.isInterpolated = true;
+    record.trailingFieldStart = FormatArgCount;
+    record.isInterpolated = (FormatArgCount > 0);
 
     ::Proxy::Log::logStructured(record);
+}
+
+template <typename... Args>
+void logNamed(Level level, std::string_view component, std::string_view fmtPattern,
+    const std::array<std::string_view, sizeof...(Args)>& names, const Args&... args)
+{
+    logHybrid<sizeof...(Args)>(level, component, fmtPattern, names, args...);
 }
 
 template <typename... Args>
 void logPlain(Level level, std::string_view component, std::string_view message,
     std::string_view varNamesStr, const Args&... args)
 {
-    if (!::Proxy::Log::shouldLog(level)) {
-        return;
-    }
-
     constexpr size_t count = sizeof...(Args);
     std::array<std::string_view, count> names = parseVariableNames<count>(varNamesStr);
-    std::array<LogField, count> fields { };
-
-    size_t idx = 0;
-    (([&]() {
-        fields[idx] = makeField(names[idx], args);
-        ++idx;
-    }()),
-        ...);
-
-    StructuredLogRecord record;
-    record.level = level;
-    record.component = component;
-    record.message = message;
-    record.fields = fields.data();
-    record.fieldCount = count;
-
-    ::Proxy::Log::logStructured(record);
+    logHybrid<0>(level, component, message, names, args...);
 }
 
 inline void logSimple(Level level, std::string_view component, std::string_view message)
@@ -254,6 +261,8 @@ inline void logSimple(Level level, std::string_view component, std::string_view 
     record.message = message;
     record.fields = nullptr;
     record.fieldCount = 0;
+    record.trailingFieldStart = 0;
+    record.isInterpolated = false;
     ::Proxy::Log::logStructured(record);
 }
 
@@ -262,24 +271,26 @@ void dispatchFormat(Level level, std::string_view component, std::string_view va
 {
     constexpr size_t namedCount = RawFmt.countNamedPlaceholders();
     constexpr size_t totalCount = RawFmt.countTotalPlaceholders();
+    constexpr size_t totalArgs = sizeof...(Args);
 
-    if constexpr (namedCount == sizeof...(Args) && namedCount > 0) {
-        // Case 1: All arguments matched to named placeholders {field}
+    if constexpr (namedCount > 0 && namedCount <= totalArgs) {
+        // Case 1: Format string has {named} placeholders (and optionally trailing context args)
         static constexpr auto anonChars = RawFmt.toAnonymous();
-        constexpr auto names = []() {
-            std::array<std::string_view, namedCount> arr {};
-            for (size_t i = 0; i < namedCount; ++i) {
-                arr[i] = RawFmt.getPlaceholderName(i);
-            }
-            return arr;
-        }();
-        logNamed(level, component, std::string_view(anonChars.data()), names, args...);
-    } else if constexpr (totalCount == sizeof...(Args) && totalCount > 0) {
-        // Case 2: Anonymous (or mixed) placeholders: interpolate sentence, and use expression names as fields
-        std::array<std::string_view, sizeof...(Args)> names = parseVariableNames<sizeof...(Args)>(varNamesStr);
-        logNamed(level, component, std::string_view(RawFmt.data), names, args...);
+        std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
+        std::array<std::string_view, totalArgs> finalNames;
+        for (size_t i = 0; i < namedCount; ++i) {
+            finalNames[i] = RawFmt.getPlaceholderName(i);
+        }
+        for (size_t i = namedCount; i < totalArgs; ++i) {
+            finalNames[i] = exprNames[i];
+        }
+        logHybrid<namedCount>(level, component, std::string_view(anonChars.data()), finalNames, args...);
+    } else if constexpr (totalCount > 0 && totalCount <= totalArgs) {
+        // Case 2: Format string has anonymous {} placeholders (and optionally trailing context args)
+        std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
+        logHybrid<totalCount>(level, component, std::string_view(RawFmt.data), exprNames, args...);
     } else {
-        // Case 3: Plain message without placeholders; trailing arguments become fields
+        // Case 3: Plain message without placeholders; all trailing arguments become fields
         logPlain(level, component, std::string_view(RawFmt.data), varNamesStr, args...);
     }
 }

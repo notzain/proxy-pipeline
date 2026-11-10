@@ -59,7 +59,7 @@ std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> IHandler::tryBin
         }
         return registerInputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        PROXY_LOG_ERROR("Exception creating input channel '{channel}': {error_message}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating input channel '{channel}': {errorMessage}", channelName, e.what());
         return std::nullopt;
     }
 }
@@ -88,7 +88,7 @@ std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> IHandler::tryBi
         }
         return registerOutputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        PROXY_LOG_ERROR("Exception creating output channel '{channel}': {error_message}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating output channel '{channel}': {errorMessage}", channelName, e.what());
         return std::nullopt;
     }
 }

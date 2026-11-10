@@ -47,7 +47,7 @@ void UdsInputChannel::openAndBindSocket()
 
     m_socketFd = ::socket(AF_UNIX, SOCK_DGRAM, 0);
     if (m_socketFd < 0) {
-        PROXY_LOG_ERROR("Failed to create UDS socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDS socket: {errorMessage}", std::strerror(errno));
         return;
     }
 
@@ -55,7 +55,7 @@ void UdsInputChannel::openAndBindSocket()
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
     if (m_socketPath.size() >= sizeof(sockaddr_un::sun_path)) {
-        PROXY_LOG_ERROR("Socket path too long: {}", m_socketPath);
+        PROXY_LOG_ERROR("Socket path too long: '{socketPath}'", m_socketPath);
         closeSocket();
         return;
     }
@@ -75,12 +75,12 @@ void UdsInputChannel::openAndBindSocket()
     std::strncpy(addr.sun_path, m_socketPath.c_str(), sizeof(addr.sun_path) - 1);
 
     if (::bind(m_socketFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        PROXY_LOG_ERROR("Failed to bind UDS socket to {}: {}", m_socketPath, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to bind UDS socket to '{socketPath}': {errorMessage}", m_socketPath, std::strerror(errno));
         closeSocket();
         return;
     }
 
-    PROXY_LOG_INFO("Listening on UDS path {}", m_socketPath);
+    PROXY_LOG_INFO("Listening on UDS path '{socketPath}'", m_socketPath);
 }
 
 BytesResult UdsInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)

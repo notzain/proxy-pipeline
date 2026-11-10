@@ -82,7 +82,7 @@ std::string_view EmbeddedFile::content() const
 
     std::ifstream file(m_path, std::ios::in | std::ios::binary);
     if (!file.is_open()) {
-        PROXY_LOG_ERROR("Failed to open path: '{file_path}'", m_path.string());
+        PROXY_LOG_ERROR("Failed to open path: '{filePath}'", m_path.string());
         return { };
     }
 

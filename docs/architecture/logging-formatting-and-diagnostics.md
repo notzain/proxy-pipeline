@@ -227,33 +227,71 @@ To maintain clean module boundaries and fast compilation times:
 
 ---
 
-## 7. Structured Logging Philosophy: Machine-Readable First
+## 7. Structured Logging Philosophy: Balancing Human & Machine Readability
 
-The Proxy architecture adopts a **machine-readable first** structured logging philosophy. In high-throughput messaging proxies, log streams are ingested, indexed, and aggregated by automated systems (Datadog, ClickHouse, Elasticsearch, Grafana Loki). 
+The Proxy platform adopts a **machine-readable first, human-observable** structured logging architecture. In high-throughput messaging proxies, log streams are ingested, indexed, and aggregated by automated systems (Datadog, ClickHouse, Elasticsearch, Grafana Loki), while developers and operators simultaneously monitor console streams during incidents and development.
 
-### Architectural Core Principles
+### The 3 Roles of a Log Entry: "Subject vs. Metric"
 
-1. **Logs are Structured Events, Not Casual Prose**:
-   A log entry represents a structured telemetry event. The template text serves as a **canonical event classifier**, while variables supply indexed attributes.
-   - ❌ **Conversational**: `PROXY_LOG_WARN("Channel '{}' received invalid envelope ({} bytes, total dropped: {}).", ...)`
-   -  **Machine-Tuned**: `PROXY_LOG_WARN("Invalid envelope received on channel '{channel}' ({bytes} bytes, total dropped: {dropped_count})", ...)`
-2. **Greppable, Static Event Prefixes**:
-   The leading words of a message template should clearly identify the event type and remain easily searchable across the repository (`git grep "Invalid envelope received"`).
-3. **Consistent Field Schema Across Components**:
-   Structured placeholder names must remain standardized across all modules and threading strategies:
-   - Identifiers: `{channel}`, `{route_name}`, `{correlation_id}`
-   - Counts & Metrics: `{bytes}`, `{worker_count}`, `{dropped_count}`, `{channel_count}`
-   - Endpoints: `{host}`, `{port}`, `{target_host}`, `{target_port}`
-   - Diagnostics: `{error_message}`, `{file_path}`
+To achieve the ideal balance, every log statement decomposes into three clear roles:
+
+```
+[WHAT HAPPENED] on [WHICH ENTITY] with [MEASUREMENTS & CONTEXT]
+     │                    │                         │
+Static Event        Target Subject           Metadata & Metrics
+(Template)          (In Message)             (Trailing Fields)
+```
+
+1. **The Static Event (Template Prefix)**:
+   A greppable, static action or state classifier (e.g., `"Invalid envelope received"`, `"Starting thread pool"`).
+2. **The Target Subject (In Message `{named}`)**:
+   The primary resource or entity being acted upon (e.g., `'{channel}'`, `{host}:{port}`, `'{filePath}'`). This gives humans immediate context in console streams without clutter.
+3. **Measurements, Counters & Context (Structured Fields)**:
+   Dynamic counts, byte sizes, retry numbers, durations, and diagnostic errors (e.g., `bytes`, `droppedCount`, `workerCount`, `errorMessage`). These belong **in structured fields only** to avoid string duplication and keep log fingerprinting stable.
+
+#### Before vs. After Example
+
+- ❌ **Conversational / Unbalanced**:
+  ```cpp
+  PROXY_LOG_WARN("Channel '{}' received invalid envelope ({} bytes, total dropped: {}).",
+      channelName, rawMessage.size(), invalidEnvelopeCount);
+  ```
+  *Downside*: Full-text string duplicates the numbers; clustering engines struggle to group events.
+-  **Balanced Machine-First**:
+  ```cpp
+  PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'",
+      channelName, rawMessage.size(), invalidEnvelopeCount);
+  ```
+  - **Console Sink**: `[warning] [MessageDispatcher] Invalid envelope received on channel 'accounting' [bytes=16 droppedCount=1]`
+  - **JSON Sink**:
+    ```json
+    {
+      "message": "Invalid envelope received on channel 'accounting'",
+      "channel": "accounting",
+      "bytes": 16,
+      "droppedCount": 1
+    }
+    ```
 
 ### Placeholder Patterns Reference
 
 | Pattern | Syntax | When to Use | Output (Console vs JSON) |
 | :--- | :--- | :--- | :--- |
-| **Named Placeholders** *(Standard / Default)* | `PROXY_LOG_INFO("Invalid envelope received on channel '{channel}' ({bytes} bytes)", ch, n);` | **Default for production & core code.** Embeds key variables into a declarative statement using `{snake_case}` keys. | **Console**: Concise event prose.<br>**JSON**: Clean semantic fields (`{"channel": "eth0", "bytes": 512}`). |
-| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_WARN("Ingress backpressure triggered", channelName, eventCount);` | **Diagnostics and state dumps** where the prose defines the static event name and trailing parameters supply context. | **Console**: `Ingress backpressure triggered [channelName=eth0 eventCount=12]`<br>**JSON**: `{"message": "Ingress backpressure triggered", "channelName": "eth0", "eventCount": 12}` |
+| **Hybrid Named + Trailing** *(Standard / Default)* | `PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'", ch, bytes, dropped);` | **Default for events with a subject and metrics.** Subject is interpolated in prose; trailing parameters become bracketed fields in console and typed JSON fields. | **Console**: `... on channel 'eth0' [bytes=512 dropped=1]`<br>**JSON**: `{"message": "... on channel 'eth0'", "channel": "eth0", "bytes": 512, "dropped": 1}` |
+| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_INFO("Starting thread pool", workerCount, channelCount);` | **Pure event notifications** where the event is static and all variables are secondary metrics or state counters. | **Console**: `Starting thread pool [workers=4 pollers=2]`<br>**JSON**: `{"message": "Starting thread pool", "workers": 4, "pollers": 2}` |
 | **Plain Text** *(Milestones & Transitions)* | `PROXY_LOG_INFO("Event loop started");` | **Static milestones** without dynamic parameters (startup, shutdown, state transitions). | **Console**: `"Event loop started"`<br>**JSON**: `{"message": "Event loop started"}` |
 | **Anonymous `{}`** *(Internal Debugging Only)* | `PROXY_LOG_DEBUG("x = {}, y = {}", x, y);` | **Temporary development tracing only.** Discouraged in `core` and production handler paths because schema keys are inferred from local variable names. | **Console**: Formatted prose.<br>**JSON**: Best-effort inferred keys. |
+
+### Field Naming Conventions: Consistent `camelCase`
+
+To eliminate impedance mismatch between C++ source code, JSON configuration schemas, and structured logging attributes, all field names and placeholder keys throughout the Proxy platform strictly use **`camelCase`**:
+
+- Identifiers: `{channel}`, `{routeName}`, `{correlationId}`, `{filePath}`
+- Counts & Metrics: `bytes`, `workerCount`, `droppedCount`, `channelCount`, `pollerCount`
+- Endpoints: `{host}`, `{port}`, `{targetHost}`, `{targetPort}`, `{destinationPath}`
+- Diagnostics: `errorMessage`, `cause`
+
+This ensures trailing variables in C++ (`..., channelCount, bytesRead`) seamlessly match explicit format placeholders (`{channelCount}`) without requiring casing conversions or causing key bifurcation in log databases.
 
 ---
 

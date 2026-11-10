@@ -51,7 +51,7 @@ void HandlerRunner::configureTelemetry(const Config::Configuration& config)
         std::string prefix = config.getOr<std::string>("telemetry.prefix", "proxy");
         int intervalMs = config.getOr<int>("telemetry.interval_ms", 1000);
 
-        PROXY_LOG_INFO("StatsD exporter initialized to {host}:{port} (prefix: '{prefix}', flush interval: {interval_ms}ms)",
+        PROXY_LOG_INFO("StatsD exporter initialized to {host}:{port} (prefix: '{prefix}', flush interval: {intervalMs}ms)",
             statsdHost, statsdPort, prefix, intervalMs);
 
         m_telemetryExporter = std::make_unique<Telemetry::StatsDExporter>(statsdHost, statsdPort, prefix);
@@ -115,8 +115,7 @@ void HandlerRunner::startAsync(bool registerSignals)
         PosixSignalManager::acquire(this);
     }
     try {
-        PROXY_LOG_INFO("Event loop started (channels: {channel_count})",
-            m_handler.inputChannelCount());
+        PROXY_LOG_INFO("Event loop started", m_handler.inputChannelCount());
         m_strategy->start(m_handler);
         m_shutdownThread = Common::Compat::jthread([this, registerSignals](Common::Compat::stop_token stopToken) {
             while (!stopToken.stop_requested()) {

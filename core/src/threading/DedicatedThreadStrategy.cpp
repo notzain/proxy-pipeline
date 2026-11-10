@@ -30,7 +30,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Starting dedicated thread strategy (channels: {channel_count})", channelCount);
+    PROXY_LOG_INFO("Starting dedicated thread strategy", channelCount);
 
     handler.forEachInputChannel([this, &handler, channelTimeout](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
@@ -69,7 +69,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                     PROXY_LOG_ERROR("Input channel '{channel}' is closed", channelName);
                     break;
                 }
-                PROXY_LOG_ERROR("Input channel '{channel}' failed: {error_message}",
+                PROXY_LOG_ERROR("Input channel '{channel}' failed: {errorMessage}",
                     channelName, result.unwrapErr().cause.message());
                 break;
             }
@@ -90,7 +90,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         }
     });
 
-    PROXY_LOG_INFO("Dedicated worker threads active (workers: {worker_count})", m_workerThreads.size());
+    PROXY_LOG_INFO("Dedicated worker threads active", m_workerThreads.size());
 }
 
 void DedicatedThreadStrategy::stop()

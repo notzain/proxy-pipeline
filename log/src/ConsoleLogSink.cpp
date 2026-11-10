@@ -37,12 +37,12 @@ void ConsoleLogSink::logStructured(const StructuredLogRecord& record)
     }
     buf.append(record.message);
 
-    if (!record.isInterpolated && record.fields && record.fieldCount > 0) {
+    if (record.fields && record.fieldCount > record.trailingFieldStart) {
         buf.push_back(' ');
         buf.push_back('[');
-        for (size_t i = 0; i < record.fieldCount; ++i) {
+        for (size_t i = record.trailingFieldStart; i < record.fieldCount; ++i) {
             const auto& field = record.fields[i];
-            if (i > 0) {
+            if (i > record.trailingFieldStart) {
                 buf.push_back(' ');
             }
             fmt::format_to(std::back_inserter(buf), "{}=", field.key());

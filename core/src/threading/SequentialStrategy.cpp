@@ -28,7 +28,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Starting sequential loop (channels: {channel_count})", channelCount);
+    PROXY_LOG_INFO("Starting sequential loop", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Reuses one L2/L3-hot 16x64KB scratch buffer across all channels because each batch is
@@ -69,7 +69,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
                 if (result.unwrapErr().cause.is<Common::Net::ReceiveClosed>()) {
                     PROXY_LOG_ERROR("Input channel '{channel}' is closed", channel.name());
                 } else {
-                    PROXY_LOG_ERROR("Input channel '{channel}' failed: {error_message}",
+                    PROXY_LOG_ERROR("Input channel '{channel}' failed: {errorMessage}",
                         channel.name(), result.unwrapErr().cause.message());
                 }
                 m_running.store(false, std::memory_order_release);
