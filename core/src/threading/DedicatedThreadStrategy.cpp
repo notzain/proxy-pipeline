@@ -30,7 +30,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Launching dedicated threads for {channel_count} channel(s)...", channelCount);
+    PROXY_LOG_INFO("Starting dedicated thread strategy (channels: {channel_count})", channelCount);
 
     handler.forEachInputChannel([this, &handler, channelTimeout](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
@@ -90,7 +90,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         }
     });
 
-    PROXY_LOG_INFO("All {worker_count} worker thread(s) active.", m_workerThreads.size());
+    PROXY_LOG_INFO("Dedicated worker threads active (workers: {worker_count})", m_workerThreads.size());
 }
 
 void DedicatedThreadStrategy::stop()

@@ -227,26 +227,33 @@ To maintain clean module boundaries and fast compilation times:
 
 ---
 
-## 7. Structured Logging Guidelines & Placeholder Conventions
+## 7. Structured Logging Philosophy: Machine-Readable First
 
-To preserve clean terminal prose while emitting strongly-typed, predictable JSON schemas for downstream log aggregators (e.g., Datadog, ClickHouse, Elastic), all code in `core` and application handlers must adhere to the following logging conventions:
+The Proxy architecture adopts a **machine-readable first** structured logging philosophy. In high-throughput messaging proxies, log streams are ingested, indexed, and aggregated by automated systems (Datadog, ClickHouse, Elasticsearch, Grafana Loki). 
 
-### Placeholder Patterns
+### Architectural Core Principles
+
+1. **Logs are Structured Events, Not Casual Prose**:
+   A log entry represents a structured telemetry event. The template text serves as a **canonical event classifier**, while variables supply indexed attributes.
+   - ❌ **Conversational**: `PROXY_LOG_WARN("Channel '{}' received invalid envelope ({} bytes, total dropped: {}).", ...)`
+   -  **Machine-Tuned**: `PROXY_LOG_WARN("Invalid envelope received on channel '{channel}' ({bytes} bytes, total dropped: {dropped_count})", ...)`
+2. **Greppable, Static Event Prefixes**:
+   The leading words of a message template should clearly identify the event type and remain easily searchable across the repository (`git grep "Invalid envelope received"`).
+3. **Consistent Field Schema Across Components**:
+   Structured placeholder names must remain standardized across all modules and threading strategies:
+   - Identifiers: `{channel}`, `{route_name}`, `{correlation_id}`
+   - Counts & Metrics: `{bytes}`, `{worker_count}`, `{dropped_count}`, `{channel_count}`
+   - Endpoints: `{host}`, `{port}`, `{target_host}`, `{target_port}`
+   - Diagnostics: `{error_message}`, `{file_path}`
+
+### Placeholder Patterns Reference
 
 | Pattern | Syntax | When to Use | Output (Console vs JSON) |
 | :--- | :--- | :--- | :--- |
-| **Named Placeholders** *(Standard / Default)* | `PROXY_LOG_INFO("Channel {channel} received {bytes} bytes", ch, n);` | **Default for production & core code.** Whenever dynamic variables are woven into the sentence. Always use `{snake_case}` keys. | **Console**: Natural prose (`"Channel eth0 received 512 bytes"`).<br>**JSON**: Clean semantic fields (`{"channel": "eth0", "bytes": 512}`). |
-| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_WARN("Dropped invalid packet", reason, packetId);` | **Lifecycle events, error summaries, or state dumps** where the prose describes the *event*, and trailing parameters provide structured context. | **Console**: `Dropped invalid packet [reason=CORRUPT_CRC packetId=1024]`<br>**JSON**: `{"message": "Dropped invalid packet", "reason": "CORRUPT_CRC", "packetId": 1024}` |
-| **Plain Text** *(Milestones & Transitions)* | `PROXY_LOG_INFO("Event loop started");` | **Static milestones** without dynamic parameters (startup, shutdown, mode change). | **Console**: `"Event loop started"`<br>**JSON**: `{"message": "Event loop started"}` |
-| **Anonymous `{}`** *(Quick Debugging Only)* | `PROXY_LOG_DEBUG("x = {}, y = {}", x, y);` | **Temporary trace/debug during development.** The macro auto-extracts keys from C++ variable names. Discouraged in `core` production paths. | **Console**: Formatted prose.<br>**JSON**: Inferred keys (`{"x": 10, "y": 20}`). |
-
-### Guidelines for Core and Handlers
-1. **Always Use `{snake_case}` for Named Placeholders**:
-   Keys like `{channel_name}`, `{worker_count}`, `{error_message}` produce a clean, uniform schema across multiple modules and languages.
-2. **Never Expose Internal Variable Naming**:
-   Avoid anonymous `{}` when passing expressions like `m_workerThreads.size()`; use `All {worker_count} worker thread(s) active` to produce `{ "worker_count": 3 }` instead of `{ "workerThreads.size()": 3 }`.
-3. **Keep Format String Prose Grammatical**:
-   Placeholders should read naturally in English so terminal logs are immediately understandable without decoding brackets or JSON fields.
+| **Named Placeholders** *(Standard / Default)* | `PROXY_LOG_INFO("Invalid envelope received on channel '{channel}' ({bytes} bytes)", ch, n);` | **Default for production & core code.** Embeds key variables into a declarative statement using `{snake_case}` keys. | **Console**: Concise event prose.<br>**JSON**: Clean semantic fields (`{"channel": "eth0", "bytes": 512}`). |
+| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_WARN("Ingress backpressure triggered", channelName, eventCount);` | **Diagnostics and state dumps** where the prose defines the static event name and trailing parameters supply context. | **Console**: `Ingress backpressure triggered [channelName=eth0 eventCount=12]`<br>**JSON**: `{"message": "Ingress backpressure triggered", "channelName": "eth0", "eventCount": 12}` |
+| **Plain Text** *(Milestones & Transitions)* | `PROXY_LOG_INFO("Event loop started");` | **Static milestones** without dynamic parameters (startup, shutdown, state transitions). | **Console**: `"Event loop started"`<br>**JSON**: `{"message": "Event loop started"}` |
+| **Anonymous `{}`** *(Internal Debugging Only)* | `PROXY_LOG_DEBUG("x = {}, y = {}", x, y);` | **Temporary development tracing only.** Discouraged in `core` and production handler paths because schema keys are inferred from local variable names. | **Console**: Formatted prose.<br>**JSON**: Best-effort inferred keys. |
 
 ---
 

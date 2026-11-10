@@ -24,7 +24,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Starting deterministic polling loop for {channel_count} channel(s)", channelCount);
+    PROXY_LOG_INFO("Starting deterministic polling loop (channels: {channel_count})", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Single-slot scratch buffer reused across polls; skipped if the channel owns its memory (e.g. Vendor).

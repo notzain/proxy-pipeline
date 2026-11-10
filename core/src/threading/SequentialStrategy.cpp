@@ -28,7 +28,7 @@ void SequentialStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Started loop for {channel_count} channel(s)", channelCount);
+    PROXY_LOG_INFO("Starting sequential loop (channels: {channel_count})", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Reuses one L2/L3-hot 16x64KB scratch buffer across all channels because each batch is
