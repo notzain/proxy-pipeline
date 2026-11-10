@@ -41,7 +41,7 @@ Common::Memory::Borrow<::Backend::IInputChannel> IHandler::bindInputChannel(
 {
     auto channel = m_backend.createInputChannel(channelName, config);
     if (!channel) {
-        PROXY_LOG_ERROR("Failed to create input channel '{}'", channelName);
+        PROXY_LOG_ERROR("Failed to create input channel '{channel}'", channelName);
         throw std::runtime_error(std::string("Failed to create input channel: ") + std::string(channelName));
     }
     return registerInputChannel(std::move(channel));
@@ -54,12 +54,12 @@ std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> IHandler::tryBin
     try {
         auto channel = m_backend.createInputChannel(channelName, config);
         if (!channel) {
-            PROXY_LOG_ERROR("Failed to create input channel '{}'", channelName);
+            PROXY_LOG_ERROR("Failed to create input channel '{channel}'", channelName);
             return std::nullopt;
         }
         return registerInputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        PROXY_LOG_ERROR("Exception creating input channel '{}': {}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating input channel '{channel}': {error_message}", channelName, e.what());
         return std::nullopt;
     }
 }
@@ -70,7 +70,7 @@ Common::Memory::Borrow<::Backend::IOutputChannel> IHandler::bindOutputChannel(
 {
     auto channel = m_backend.createOutputChannel(channelName, config);
     if (!channel) {
-        PROXY_LOG_ERROR("Failed to create output channel '{}'", channelName);
+        PROXY_LOG_ERROR("Failed to create output channel '{channel}'", channelName);
         throw std::runtime_error(std::string("Failed to create output channel: ") + std::string(channelName));
     }
     return registerOutputChannel(std::move(channel));
@@ -83,12 +83,12 @@ std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> IHandler::tryBi
     try {
         auto channel = m_backend.createOutputChannel(channelName, config);
         if (!channel) {
-            PROXY_LOG_ERROR("Failed to create output channel '{}'", channelName);
+            PROXY_LOG_ERROR("Failed to create output channel '{channel}'", channelName);
             return std::nullopt;
         }
         return registerOutputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        PROXY_LOG_ERROR("Exception creating output channel '{}': {}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating output channel '{channel}': {error_message}", channelName, e.what());
         return std::nullopt;
     }
 }

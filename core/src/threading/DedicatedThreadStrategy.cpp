@@ -30,12 +30,12 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    PROXY_LOG_INFO("Launching dedicated threads for {} channel(s)...", channelCount);
+    PROXY_LOG_INFO("Launching dedicated threads for {channel_count} channel(s)...", channelCount);
 
     handler.forEachInputChannel([this, &handler, channelTimeout](::Backend::IInputChannel& channel) {
         auto* channelPtr = &channel;
         m_workerThreads.emplace_back([this, &handler, channelName = channel.name(), channelPtr, channelTimeout](Common::Compat::stop_token stoken) {
-            PROXY_LOG_DEBUG("Poller thread started for channel '{}'", channelName);
+            PROXY_LOG_DEBUG("Poller thread started for channel '{channel}'", channelName);
 
             // Thread-private 16-slot scratch buffer; never allocated if this channel provides its own memory.
             Detail::IngressBatchScratch<16> scratch;
@@ -66,15 +66,15 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
                     continue;
                 }
                 if (result.unwrapErr().cause.is<Common::Net::ReceiveClosed>()) {
-                    PROXY_LOG_ERROR("Input channel '{}' is closed", channelName);
+                    PROXY_LOG_ERROR("Input channel '{channel}' is closed", channelName);
                     break;
                 }
-                PROXY_LOG_ERROR("Input channel '{}' failed: {}",
+                PROXY_LOG_ERROR("Input channel '{channel}' failed: {error_message}",
                     channelName, result.unwrapErr().cause.message());
                 break;
             }
 
-            PROXY_LOG_DEBUG("Poller thread exited for channel '{}'", channelName);
+            PROXY_LOG_DEBUG("Poller thread exited for channel '{channel}'", channelName);
         });
     });
 
@@ -90,7 +90,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         }
     });
 
-    PROXY_LOG_INFO("All {} worker thread(s) active.", m_workerThreads.size());
+    PROXY_LOG_INFO("All {worker_count} worker thread(s) active.", m_workerThreads.size());
 }
 
 void DedicatedThreadStrategy::stop()

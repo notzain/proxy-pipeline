@@ -49,7 +49,7 @@ void PosixSignalManager::acquire(const void* owner)
     if (sigaction(SIGTERM, &action, &g_previousSigtermAction) != 0) {
         const int error = errno;
         if (sigaction(SIGINT, &g_previousSigintAction, nullptr) != 0) {
-            PROXY_LOG_ERROR("Failed to restore previous SIGINT handler: {}", std::strerror(errno));
+            PROXY_LOG_ERROR("Failed to restore previous SIGINT handler: {error_message}", std::strerror(errno));
         }
         throw std::system_error(error, std::generic_category(), "Failed to register SIGTERM handler");
     }
@@ -65,10 +65,10 @@ void PosixSignalManager::release(const void* owner) noexcept
     }
 
     if (sigaction(SIGINT, &g_previousSigintAction, nullptr) != 0) {
-        PROXY_LOG_ERROR("Failed to restore previous SIGINT handler: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to restore previous SIGINT handler: {error_message}", std::strerror(errno));
     }
     if (sigaction(SIGTERM, &g_previousSigtermAction, nullptr) != 0) {
-        PROXY_LOG_ERROR("Failed to restore previous SIGTERM handler: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to restore previous SIGTERM handler: {error_message}", std::strerror(errno));
     }
 
     g_activeOwner = nullptr;

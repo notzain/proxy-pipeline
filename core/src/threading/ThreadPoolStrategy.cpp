@@ -149,11 +149,11 @@ namespace {
             return false;
         }
         if (error.is<Common::Net::ReceiveClosed>()) {
-            PROXY_LOG_ERROR("Input channel '{}' is closed", channelName);
+            PROXY_LOG_ERROR("Input channel '{channel}' is closed", channelName);
             return true;
         }
         {
-            PROXY_LOG_ERROR("Input channel '{}' failed: {}",
+            PROXY_LOG_ERROR("Input channel '{channel}' failed: {error_message}",
                 channelName, error.message());
             return true;
         }
@@ -305,7 +305,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     auto* enqueueBackpressureCounter = &Core::Telemetry::MetricsRegistry::instance().counter(
         "queue_enqueue_backpressure_events_total",
         "Queue enqueue attempts that required the blocking path because capacity was unavailable or a producer was contending");
-    PROXY_LOG_INFO("Starting with {} pool workers and {} channel poller(s)...",
+    PROXY_LOG_INFO("Starting with {worker_count} pool workers and {poller_count} channel poller(s)...",
         m_numWorkerThreads, channelCount);
 
     // 1. Launch pool worker threads with partitioned queues
