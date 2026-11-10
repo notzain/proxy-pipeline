@@ -227,7 +227,30 @@ To maintain clean module boundaries and fast compilation times:
 
 ---
 
-## 7. Best Practices for Developers
+## 7. Structured Logging Guidelines & Placeholder Conventions
+
+To preserve clean terminal prose while emitting strongly-typed, predictable JSON schemas for downstream log aggregators (e.g., Datadog, ClickHouse, Elastic), all code in `core` and application handlers must adhere to the following logging conventions:
+
+### Placeholder Patterns
+
+| Pattern | Syntax | When to Use | Output (Console vs JSON) |
+| :--- | :--- | :--- | :--- |
+| **Named Placeholders** *(Standard / Default)* | `PROXY_LOG_INFO("Channel {channel} received {bytes} bytes", ch, n);` | **Default for production & core code.** Whenever dynamic variables are woven into the sentence. Always use `{snake_case}` keys. | **Console**: Natural prose (`"Channel eth0 received 512 bytes"`).<br>**JSON**: Clean semantic fields (`{"channel": "eth0", "bytes": 512}`). |
+| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_WARN("Dropped invalid packet", reason, packetId);` | **Lifecycle events, error summaries, or state dumps** where the prose describes the *event*, and trailing parameters provide structured context. | **Console**: `Dropped invalid packet [reason=CORRUPT_CRC packetId=1024]`<br>**JSON**: `{"message": "Dropped invalid packet", "reason": "CORRUPT_CRC", "packetId": 1024}` |
+| **Plain Text** *(Milestones & Transitions)* | `PROXY_LOG_INFO("Event loop started");` | **Static milestones** without dynamic parameters (startup, shutdown, mode change). | **Console**: `"Event loop started"`<br>**JSON**: `{"message": "Event loop started"}` |
+| **Anonymous `{}`** *(Quick Debugging Only)* | `PROXY_LOG_DEBUG("x = {}, y = {}", x, y);` | **Temporary trace/debug during development.** The macro auto-extracts keys from C++ variable names. Discouraged in `core` production paths. | **Console**: Formatted prose.<br>**JSON**: Inferred keys (`{"x": 10, "y": 20}`). |
+
+### Guidelines for Core and Handlers
+1. **Always Use `{snake_case}` for Named Placeholders**:
+   Keys like `{channel_name}`, `{worker_count}`, `{error_message}` produce a clean, uniform schema across multiple modules and languages.
+2. **Never Expose Internal Variable Naming**:
+   Avoid anonymous `{}` when passing expressions like `m_workerThreads.size()`; use `All {worker_count} worker thread(s) active` to produce `{ "worker_count": 3 }` instead of `{ "workerThreads.size()": 3 }`.
+3. **Keep Format String Prose Grammatical**:
+   Placeholders should read naturally in English so terminal logs are immediately understandable without decoding brackets or JSON fields.
+
+---
+
+## 8. Best Practices for Developers
 
 1. **Avoid Manual `to_string()`**: When creating new domain models, specialize `Core::Serialization::TypeTraits<T>`. This automatically provides serialization (JSON/XML) AND terminal debug printing (`fmt` / `Proxy::Log`).
 2. **Use Multi-Line `{:#}` for Diagnostics**: In error handling and warning logs, format complex structs with `{:#}` so nested objects and arrays render cleanly in log files.
