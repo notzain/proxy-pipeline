@@ -35,7 +35,7 @@ XmlSchemaValidator::XmlSchemaValidator(const std::filesystem::path& schemaPath)
 
     xmlSchemaParserCtxtPtr parserCtxt = xmlSchemaNewParserCtxt(schemaPath.c_str());
     if (!parserCtxt) {
-        Proxy::Log::error("[XmlSchemaValidator] Failed to create XSD parser context for '{}'", schemaPath.string());
+        PROXY_LOG_ERROR("Failed to create XSD parser context for '{}'", schemaPath.string());
         return;
     }
 
@@ -43,12 +43,12 @@ XmlSchemaValidator::XmlSchemaValidator(const std::filesystem::path& schemaPath)
     xmlSchemaFreeParserCtxt(parserCtxt);
 
     if (!m_schema) {
-        Proxy::Log::error("[XmlSchemaValidator] Failed to parse XSD schema from '{}'", schemaPath.string());
+        PROXY_LOG_ERROR("Failed to parse XSD schema from '{}'", schemaPath.string());
         return;
     }
 
     m_loaded = true;
-    Proxy::Log::info("[XmlSchemaValidator] Loaded and compiled XSD schema: {}", schemaPath.string());
+    PROXY_LOG_INFO("Loaded and compiled XSD schema: {}", schemaPath.string());
 }
 
 XmlSchemaValidator::XmlSchemaValidator(std::string_view schemaContent)
@@ -56,7 +56,7 @@ XmlSchemaValidator::XmlSchemaValidator(std::string_view schemaContent)
     xmlInitParser();
 
     if (schemaContent.empty()) {
-        Proxy::Log::error("[XmlSchemaValidator] Cannot parse empty schema content");
+        PROXY_LOG_ERROR("Cannot parse empty schema content");
         return;
     }
 
@@ -64,7 +64,7 @@ XmlSchemaValidator::XmlSchemaValidator(std::string_view schemaContent)
         schemaContent.data(),
         static_cast<int>(schemaContent.size()));
     if (!parserCtxt) {
-        Proxy::Log::error("[XmlSchemaValidator] Failed to create in-memory XSD parser context");
+        PROXY_LOG_ERROR("Failed to create in-memory XSD parser context");
         return;
     }
 
@@ -72,12 +72,12 @@ XmlSchemaValidator::XmlSchemaValidator(std::string_view schemaContent)
     xmlSchemaFreeParserCtxt(parserCtxt);
 
     if (!m_schema) {
-        Proxy::Log::error("[XmlSchemaValidator] Failed to parse in-memory XSD schema");
+        PROXY_LOG_ERROR("Failed to parse in-memory XSD schema");
         return;
     }
 
     m_loaded = true;
-    Proxy::Log::info("[XmlSchemaValidator] Loaded and compiled in-memory XSD schema ({} bytes)", schemaContent.size());
+    PROXY_LOG_INFO("Loaded and compiled in-memory XSD schema ({} bytes)", schemaContent.size());
 }
 
 XmlSchemaValidator::~XmlSchemaValidator()

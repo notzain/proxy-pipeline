@@ -37,7 +37,7 @@ void ConsoleLogSink::logStructured(const StructuredLogRecord& record)
     }
     buf.append(record.message);
 
-    if (record.fields && record.fieldCount > 0) {
+    if (!record.isInterpolated && record.fields && record.fieldCount > 0) {
         buf.push_back(' ');
         buf.push_back('[');
         for (size_t i = 0; i < record.fieldCount; ++i) {

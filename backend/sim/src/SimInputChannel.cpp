@@ -39,7 +39,7 @@ SimInputChannel::SimInputChannel(
         addr.sun_family = AF_UNIX;
         std::strncpy(addr.sun_path, m_socketPath.c_str(), sizeof(addr.sun_path) - 1);
         if (::bind(m_serverFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-            Proxy::Log::warn("[SimInputChannel] Failed to bind IPC socket '{}': {}", m_socketPath, strerror(errno));
+            PROXY_LOG_WARN("Failed to bind IPC socket '{}': {}", m_socketPath, strerror(errno));
             ::close(m_serverFd);
             m_serverFd = -1;
         } else {

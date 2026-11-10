@@ -151,7 +151,12 @@ int main(int argc, char* argv[])
     auto runDirectBenchmark = [&]() {
         fmt::print(fg(fmt::color::yellow), "[Benchmark] Running direct XML verification on {} messages...\n", numMessages);
         Proxy::Backend::Socket::SocketBackend backend;
-        Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath);
+        Proxy::Handler::XmlVerificationHandler verifier(backend);
+        Core::Config::Configuration directConfig;
+        directConfig.set("xml.xsd_path", xsdPath.string());
+        directConfig.set("xml.input_channel", "direct_in");
+        directConfig.set("xml.output_channel", "direct_out");
+        verifier.onConfigure(directConfig);
 
         Common::Memory::ByteView rawXmlSpan(validXmlMsg);
         auto envelope = Backend::MessageView::packRaw(rawXmlSpan).value();
@@ -235,7 +240,8 @@ int main(int argc, char* argv[])
         // Instantiate components
         auto verifierIn = backend->createInputChannel("udp_raw", config);
         auto verifierOut = backend->createOutputChannel("udp_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
+        Proxy::Handler::XmlVerificationHandler verifier(*backend);
+        verifier.onConfigure(config);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel(std::move(verifierIn));
@@ -355,7 +361,8 @@ int main(int argc, char* argv[])
 
         auto verifierIn = backend->createInputChannel("uds_raw", config);
         auto verifierOut = backend->createOutputChannel("uds_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
+        Proxy::Handler::XmlVerificationHandler verifier(*backend);
+        verifier.onConfigure(config);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel(std::move(verifierIn));
@@ -472,7 +479,8 @@ int main(int argc, char* argv[])
 
         auto verifierIn = backend->createInputChannel("shm_raw", config);
         auto verifierOut = backend->createOutputChannel("shm_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(*backend, xsdPath);
+        Proxy::Handler::XmlVerificationHandler verifier(*backend);
+        verifier.onConfigure(config);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel(std::move(verifierIn));
@@ -573,7 +581,8 @@ int main(int argc, char* argv[])
 
         auto verifierIn = backend.createInputChannel("inproc_raw", config);
         auto verifierOut = backend.createOutputChannel("inproc_verified", config);
-        Proxy::Handler::XmlVerificationHandler verifier(backend, xsdPath);
+        Proxy::Handler::XmlVerificationHandler verifier(backend);
+        verifier.onConfigure(config);
         Core::Handler::HandlerRunner verifierRunner(verifier);
         verifierRunner.setExecutionModel(model);
         verifier.registerInputChannel(std::move(verifierIn));

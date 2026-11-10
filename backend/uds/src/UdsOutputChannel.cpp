@@ -37,7 +37,7 @@ void UdsOutputChannel::openSocket()
     closeSocket();
     m_socketFd = ::socket(AF_UNIX, SOCK_DGRAM, 0);
     if (m_socketFd < 0) {
-        Proxy::Log::error("[UdsOutputChannel] Failed to create UDS socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDS socket: {}", std::strerror(errno));
         return;
     }
 
@@ -45,7 +45,7 @@ void UdsOutputChannel::openSocket()
     ::setsockopt(m_socketFd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
 
     if (m_destPath.size() >= sizeof(sockaddr_un::sun_path)) {
-        Proxy::Log::error("[UdsOutputChannel] Destination path too long: {}", m_destPath);
+        PROXY_LOG_ERROR("Destination path too long: {}", m_destPath);
         return;
     }
 
@@ -53,7 +53,7 @@ void UdsOutputChannel::openSocket()
     m_destAddr.sun_family = AF_UNIX;
     std::strncpy(m_destAddr.sun_path, m_destPath.c_str(), sizeof(m_destAddr.sun_path) - 1);
 
-    Proxy::Log::info("[UdsOutputChannel] Target configured for UDS path {}", m_destPath);
+    PROXY_LOG_INFO("Target configured for UDS path {}", m_destPath);
 
     // Connect socket to destination address to eliminate per-packet kernel routing checks
     if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) == 0) {
@@ -61,7 +61,7 @@ void UdsOutputChannel::openSocket()
     } else {
         m_connected = false;
         // May fail if receiver is not bound yet; fallback to sendto will work
-        Proxy::Log::debug("[UdsOutputChannel] Non-blocking initial connect deferred: {}", std::strerror(errno));
+        PROXY_LOG_DEBUG("Non-blocking initial connect deferred: {}", std::strerror(errno));
     }
 }
 
@@ -158,13 +158,13 @@ bool UdsOutputChannel::send(Common::Compat::span<const std::byte> message)
     if (sent < 0) {
         const auto count = m_sendFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            Proxy::Log::error("[UdsOutputChannel] Failed to send {} bytes to {} ({}, total failures: {})",
+            PROXY_LOG_ERROR("Failed to send {} bytes to {} ({}, total failures: {})",
                 message.size(), m_destPath, std::strerror(errno), count);
         }
         return false;
     }
 
-    Proxy::Log::debug("[UdsOutputChannel] Sent {} bytes to {}", sent, m_destPath);
+    PROXY_LOG_DEBUG("Sent {} bytes to {}", sent, m_destPath);
     return true;
 }
 

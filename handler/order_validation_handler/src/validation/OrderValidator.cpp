@@ -10,7 +10,7 @@ bool OrderValidator::validate(const Proxy::Model::Order& order)
     // Customer validation:
     // Must be between 2 and 50 characters, only letters, spaces, or hyphens
     if (order.customer.size() < 2 || order.customer.size() > 50) {
-        Proxy::Log::debug("[OrderValidator] Invalid customer length: '{}'", order.customer);
+        PROXY_LOG_DEBUG("Invalid customer length: '{}'", order.customer);
         return false;
     }
 
@@ -18,14 +18,14 @@ bool OrderValidator::validate(const Proxy::Model::Order& order)
         return std::isalpha(c) || std::isspace(c) || c == '-';
     });
     if (!validCustomerChars) {
-        Proxy::Log::debug("[OrderValidator] Customer contains invalid characters: '{}'", order.customer);
+        PROXY_LOG_DEBUG("Customer contains invalid characters: '{}'", order.customer);
         return false;
     }
 
     // Item validation:
     // Must be between 2 and 50 characters, alphanumeric or spaces/hyphens/underscores
     if (order.item.size() < 2 || order.item.size() > 50) {
-        Proxy::Log::debug("[OrderValidator] Invalid item length: '{}'", order.item);
+        PROXY_LOG_DEBUG("Invalid item length: '{}'", order.item);
         return false;
     }
 
@@ -33,14 +33,14 @@ bool OrderValidator::validate(const Proxy::Model::Order& order)
         return std::isalnum(c) || std::isspace(c) || c == '-' || c == '_';
     });
     if (!validItemChars) {
-        Proxy::Log::debug("[OrderValidator] Item contains invalid characters: '{}'", order.item);
+        PROXY_LOG_DEBUG("Item contains invalid characters: '{}'", order.item);
         return false;
     }
 
     // Quantity validation:
     // Must be positive and within reasonable batch limit (<= 10,000)
     if (order.quantity == 0 || order.quantity > 10000) {
-        Proxy::Log::debug("[OrderValidator] Invalid quantity: {}", order.quantity);
+        PROXY_LOG_DEBUG("Invalid quantity: {}", order.quantity);
         return false;
     }
 
@@ -51,7 +51,7 @@ bool OrderValidator::validateView(const Proxy::Model::OrderView& order)
 {
     // Customer validation:
     if (order.customer.size() < 2 || order.customer.size() > 50) {
-        Proxy::Log::debug("[OrderValidator] Invalid customer length: '{}'", order.customer);
+        PROXY_LOG_DEBUG("Invalid customer length: '{}'", order.customer);
         return false;
     }
 
@@ -59,13 +59,13 @@ bool OrderValidator::validateView(const Proxy::Model::OrderView& order)
         return std::isalpha(c) || std::isspace(c) || c == '-';
     });
     if (!validCustomerChars) {
-        Proxy::Log::debug("[OrderValidator] Customer contains invalid characters: '{}'", order.customer);
+        PROXY_LOG_DEBUG("Customer contains invalid characters: '{}'", order.customer);
         return false;
     }
 
     // Item validation:
     if (order.item.size() < 2 || order.item.size() > 50) {
-        Proxy::Log::debug("[OrderValidator] Invalid item length: '{}'", order.item);
+        PROXY_LOG_DEBUG("Invalid item length: '{}'", order.item);
         return false;
     }
 
@@ -73,13 +73,13 @@ bool OrderValidator::validateView(const Proxy::Model::OrderView& order)
         return std::isalnum(c) || std::isspace(c) || c == '-' || c == '_';
     });
     if (!validItemChars) {
-        Proxy::Log::debug("[OrderValidator] Item contains invalid characters: '{}'", order.item);
+        PROXY_LOG_DEBUG("Item contains invalid characters: '{}'", order.item);
         return false;
     }
 
     // Quantity validation:
     if (order.quantity == 0 || order.quantity > 10000) {
-        Proxy::Log::debug("[OrderValidator] Invalid quantity: {}", order.quantity);
+        PROXY_LOG_DEBUG("Invalid quantity: {}", order.quantity);
         return false;
     }
 

@@ -210,7 +210,7 @@ namespace {
         {
             auto expr = parseOr();
             if (m_current.type != TokenType::EndOfInput) {
-                Proxy::Log::error("[ConditionExpressionParser] Unexpected token '{}' at end of expression", m_current.text);
+                PROXY_LOG_ERROR("Unexpected token '{}' at end of expression", m_current.text);
                 return nullptr;
             }
             return expr;
@@ -295,7 +295,7 @@ namespace {
                 advance();
                 auto inner = parseOr();
                 if (!inner || !match(TokenType::RParen)) {
-                    Proxy::Log::error("[ConditionExpressionParser] Expected closing ')'");
+                    PROXY_LOG_ERROR("Expected closing ')'");
                     return nullptr;
                 }
                 return inner;
@@ -308,7 +308,7 @@ namespace {
                 // Handle metadata.<field> comparison
                 if (id == "metadata" && match(TokenType::Dot)) {
                     if (m_current.type != TokenType::Identifier) {
-                        Proxy::Log::error("[ConditionExpressionParser] Expected field name after 'metadata.'");
+                        PROXY_LOG_ERROR("Expected field name after 'metadata.'");
                         return nullptr;
                     }
                     std::string fieldName = std::move(m_current.text);
@@ -328,7 +328,7 @@ namespace {
                     } else if (match(TokenType::GreaterThan)) {
                         op = FieldOperator::GreaterThan;
                     } else {
-                        Proxy::Log::error("[ConditionExpressionParser] Expected comparison operator after 'metadata.{}'", fieldName);
+                        PROXY_LOG_ERROR("Expected comparison operator after 'metadata.{}'", fieldName);
                         return nullptr;
                     }
 
@@ -343,14 +343,14 @@ namespace {
                         return std::make_unique<MetadataFieldCondition>(std::move(fieldName), op, Core::Serialization::Ir::Value(std::move(s)));
                     }
 
-                    Proxy::Log::error("[ConditionExpressionParser] Expected literal value after comparison operator for 'metadata.{}'", fieldName);
+                    PROXY_LOG_ERROR("Expected literal value after comparison operator for 'metadata.{}'", fieldName);
                     return nullptr;
                 }
 
                 return parseFunctionOrComparison(id);
             }
 
-            Proxy::Log::error("[ConditionExpressionParser] Unexpected token in primary expression: '{}'", m_current.text);
+            PROXY_LOG_ERROR("Unexpected token in primary expression: '{}'", m_current.text);
             return nullptr;
         }
 
@@ -360,7 +360,7 @@ namespace {
             if (name == "port") {
                 if (match(TokenType::EqualEqual)) {
                     if (m_current.type != TokenType::NumberLiteral) {
-                        Proxy::Log::error("[ConditionExpressionParser] Expected port number after 'port =='");
+                        PROXY_LOG_ERROR("Expected port number after 'port =='");
                         return nullptr;
                     }
                     int p = std::stoi(m_current.text);
@@ -450,7 +450,7 @@ namespace {
                 return std::make_unique<TextCondition>("", TextMatchMode::Contains, 0);
             }
 
-            Proxy::Log::error("[ConditionExpressionParser] Unknown condition function/keyword: '{}'", name);
+            PROXY_LOG_ERROR("Unknown condition function/keyword: '{}'", name);
             return nullptr;
         }
 

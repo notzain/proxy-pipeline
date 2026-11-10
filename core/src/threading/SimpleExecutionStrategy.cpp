@@ -24,7 +24,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
     constexpr Handler::IHandler::Timeout channelTimeout { 50 };
 
     const auto channelCount = handler.inputChannelCount();
-    Proxy::Log::info("[SimpleExecutionStrategy] Starting deterministic polling loop for {} channel(s)", channelCount);
+    PROXY_LOG_INFO("Starting deterministic polling loop for {} channel(s)", channelCount);
 
     m_workerThread = Common::Compat::jthread([this, &handler, channelCount, channelTimeout](Common::Compat::stop_token stoken) {
         // Single-slot scratch buffer reused across polls; skipped if the channel owns its memory (e.g. Vendor).
@@ -60,9 +60,9 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
                     const auto& cause = result.unwrapErr();
                     if (!cause.is<Common::Net::ReceiveTimeout>()) {
                         if (cause.is<Common::Net::ReceiveClosed>()) {
-                            Proxy::Log::error("[SimpleExecutionStrategy] Input channel '{}' is closed", channel.name());
+                            PROXY_LOG_ERROR("Input channel '{}' is closed", channel.name());
                         } else {
-                            Proxy::Log::error("[SimpleExecutionStrategy] Input channel '{}' failed: {}",
+                            PROXY_LOG_ERROR("Input channel '{}' failed: {}",
                                 channel.name(), cause.message());
                         }
                         m_running.store(false, std::memory_order_release);
@@ -76,7 +76,7 @@ void SimpleExecutionStrategy::start(Handler::IHandler& handler)
 
             handler.step();
         }
-        Proxy::Log::info("[SimpleExecutionStrategy] Deterministic loop stopped.");
+        PROXY_LOG_INFO("Deterministic loop stopped.");
     });
 }
 

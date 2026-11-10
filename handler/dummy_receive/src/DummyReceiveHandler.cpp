@@ -30,8 +30,8 @@ Backend::MessageResult DummyReceiveHandler::onMessageReceived(std::string_view c
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    Proxy::Log::info("[DummyReceive] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
-    Proxy::Log::debug("[DummyReceive] Channel '{}' hex dump: {}", channelName, hexFormatted);
+    PROXY_LOG_INFO("Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
+    PROXY_LOG_DEBUG("Channel '{}' hex dump: {}", channelName, hexFormatted);
     return Backend::Consumed { };
 }
 

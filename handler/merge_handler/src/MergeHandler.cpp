@@ -31,7 +31,7 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
     std::string outChannelName = config.getOr<std::string>("merge.output_channel", "pipe_out");
     auto outputChannel = backend().createOutputChannel(outChannelName, config);
     if (!outputChannel) {
-        Proxy::Log::error("[MergeHandler] Failed to create output channel '{}'", outChannelName);
+        PROXY_LOG_ERROR("Failed to create output channel '{}'", outChannelName);
         return false;
     }
     m_outputChannel = registerOutputChannel(std::move(outputChannel));
@@ -42,7 +42,7 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
     for (const auto& inName : inChannelNames) {
         auto inChannel = backend().createInputChannel(inName, config);
         if (!inChannel) {
-            Proxy::Log::error("[MergeHandler] Failed to create input channel '{}'", inName);
+            PROXY_LOG_ERROR("Failed to create input channel '{}'", inName);
             return false;
         }
         auto ptr = registerInputChannel(std::move(inChannel));
@@ -55,15 +55,15 @@ bool MergeHandler::onConfigure(const Core::Config::Configuration& config)
 Backend::MessageResult MergeHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     std::string_view outName = m_outputChannel ? m_outputChannel->name() : "";
-    Proxy::Log::info("[MergeHandler] Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
+    PROXY_LOG_INFO("Input channel '{}' received message ({} bytes payload), redirecting to '{}'...",
         channelName, message.payload().size(), outName);
 
     if (m_outputChannel) {
         if (!m_outputChannel->send(message)) {
-            Proxy::Log::warn("[MergeHandler] Failed to redirect message to output channel '{}'", outName);
+            PROXY_LOG_WARN("Failed to redirect message to output channel '{}'", outName);
         }
     } else {
-        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found", outName);
+        PROXY_LOG_WARN("Output channel '{}' not found", outName);
     }
     return Backend::Forwarded { .channel = outName };
 }
@@ -81,17 +81,17 @@ void MergeHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Proxy::Log::debug("[MergeHandler] Input channel '{}' received batch of {} messages, redirecting to '{}'...",
+    PROXY_LOG_DEBUG("Input channel '{}' received batch of {} messages, redirecting to '{}'...",
         channelName, messages.size(), outName);
 
     if (m_outputChannel) {
         std::size_t sent = m_outputChannel->sendBatch(messages);
         if (sent < messages.size()) {
-            Proxy::Log::warn("[MergeHandler] Only {}/{} messages redirected to output channel '{}'",
+            PROXY_LOG_WARN("Only {}/{} messages redirected to output channel '{}'",
                 sent, messages.size(), outName);
         }
     } else {
-        Proxy::Log::warn("[MergeHandler] Output channel '{}' not found for sendBatch", outName);
+        PROXY_LOG_WARN("Output channel '{}' not found for sendBatch", outName);
     }
 }
 

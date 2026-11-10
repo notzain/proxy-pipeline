@@ -14,8 +14,8 @@ int main(int argc, char* argv[])
         configPath = argv[1];
     }
 
-    Proxy::Log::info("Starting XmlVerificationHandler executable...");
-    Proxy::Log::info("Loading configuration from: {}", configPath.string());
+    PROXY_LOG_INFO("Starting XmlVerificationHandler executable...");
+    PROXY_LOG_INFO("Loading configuration from: {}", configPath.string());
 
     Core::Config::Configuration config = Core::Config::Configuration::fromFile(configPath);
 
@@ -28,9 +28,9 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Proxy::Log::info("XmlVerificationHandler initialized successfully. Starting event loop...");
+    PROXY_LOG_INFO("XmlVerificationHandler initialized successfully. Starting event loop...");
     runner.start();
 
-    Proxy::Log::info("XmlVerificationHandler exiting cleanly.");
+    PROXY_LOG_INFO("XmlVerificationHandler exiting cleanly.");
     return 0;
 }

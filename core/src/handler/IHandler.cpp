@@ -27,7 +27,7 @@ bool IHandler::configure(const Config::Configuration& config)
 Common::Memory::Borrow<::Backend::IInputChannel> IHandler::registerInputChannel(std::unique_ptr<::Backend::IInputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::error("[IHandler] Attempted to register null input channel");
+        PROXY_LOG_ERROR("Attempted to register null input channel");
         throw std::invalid_argument("Attempted to register null input channel");
     }
     auto* rawPtr = channel.get();
@@ -41,7 +41,7 @@ Common::Memory::Borrow<::Backend::IInputChannel> IHandler::bindInputChannel(
 {
     auto channel = m_backend.createInputChannel(channelName, config);
     if (!channel) {
-        Proxy::Log::error("[IHandler] Failed to create input channel '{}'", channelName);
+        PROXY_LOG_ERROR("Failed to create input channel '{}'", channelName);
         throw std::runtime_error(std::string("Failed to create input channel: ") + std::string(channelName));
     }
     return registerInputChannel(std::move(channel));
@@ -54,12 +54,12 @@ std::optional<Common::Memory::Borrow<::Backend::IInputChannel>> IHandler::tryBin
     try {
         auto channel = m_backend.createInputChannel(channelName, config);
         if (!channel) {
-            Proxy::Log::error("[IHandler] Failed to create input channel '{}'", channelName);
+            PROXY_LOG_ERROR("Failed to create input channel '{}'", channelName);
             return std::nullopt;
         }
         return registerInputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        Proxy::Log::error("[IHandler] Exception creating input channel '{}': {}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating input channel '{}': {}", channelName, e.what());
         return std::nullopt;
     }
 }
@@ -70,7 +70,7 @@ Common::Memory::Borrow<::Backend::IOutputChannel> IHandler::bindOutputChannel(
 {
     auto channel = m_backend.createOutputChannel(channelName, config);
     if (!channel) {
-        Proxy::Log::error("[IHandler] Failed to create output channel '{}'", channelName);
+        PROXY_LOG_ERROR("Failed to create output channel '{}'", channelName);
         throw std::runtime_error(std::string("Failed to create output channel: ") + std::string(channelName));
     }
     return registerOutputChannel(std::move(channel));
@@ -83,12 +83,12 @@ std::optional<Common::Memory::Borrow<::Backend::IOutputChannel>> IHandler::tryBi
     try {
         auto channel = m_backend.createOutputChannel(channelName, config);
         if (!channel) {
-            Proxy::Log::error("[IHandler] Failed to create output channel '{}'", channelName);
+            PROXY_LOG_ERROR("Failed to create output channel '{}'", channelName);
             return std::nullopt;
         }
         return registerOutputChannel(std::move(channel));
     } catch (const std::exception& e) {
-        Proxy::Log::error("[IHandler] Exception creating output channel '{}': {}", channelName, e.what());
+        PROXY_LOG_ERROR("Exception creating output channel '{}': {}", channelName, e.what());
         return std::nullopt;
     }
 }
@@ -153,7 +153,7 @@ void IHandler::processBatch(
 Common::Memory::Borrow<::Backend::IOutputChannel> IHandler::registerOutputChannel(std::unique_ptr<::Backend::IOutputChannel> channel)
 {
     if (!channel) {
-        Proxy::Log::error("[IHandler] Attempted to register null output channel");
+        PROXY_LOG_ERROR("Attempted to register null output channel");
         throw std::invalid_argument("Attempted to register null output channel");
     }
     auto* rawPtr = channel.get();

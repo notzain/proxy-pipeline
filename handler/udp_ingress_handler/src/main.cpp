@@ -13,8 +13,8 @@ int main(int argc, char* argv[])
         configPath = argv[1];
     }
 
-    Proxy::Log::info("Starting UdpIngressHandler executable...");
-    Proxy::Log::info("Loading configuration from: {}", configPath.string());
+    PROXY_LOG_INFO("Starting UdpIngressHandler executable...");
+    PROXY_LOG_INFO("Loading configuration from: {}", configPath.string());
 
     Core::Config::Configuration config = Core::Config::Configuration::fromFile(configPath);
 
@@ -27,9 +27,9 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Proxy::Log::info("UdpIngressHandler initialized successfully. Starting event loop...");
+    PROXY_LOG_INFO("UdpIngressHandler initialized successfully. Starting event loop...");
     runner.start();
 
-    Proxy::Log::info("UdpIngressHandler exiting cleanly.");
+    PROXY_LOG_INFO("UdpIngressHandler exiting cleanly.");
     return 0;
 }

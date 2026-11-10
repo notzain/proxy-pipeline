@@ -13,8 +13,8 @@ int main(int argc, char* argv[])
         configPath = argv[1];
     }
 
-    Proxy::Log::info("Starting ScatterHandler executable...");
-    Proxy::Log::info("Loading configuration from: {}", configPath.string());
+    PROXY_LOG_INFO("Starting ScatterHandler executable...");
+    PROXY_LOG_INFO("Loading configuration from: {}", configPath.string());
 
     Core::Config::Configuration config = Core::Config::Configuration::fromFile(configPath);
 
@@ -27,9 +27,9 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Proxy::Log::info("ScatterHandler initialized successfully. Starting event loop...");
+    PROXY_LOG_INFO("ScatterHandler initialized successfully. Starting event loop...");
     runner.start();
 
-    Proxy::Log::info("ScatterHandler exiting cleanly.");
+    PROXY_LOG_INFO("ScatterHandler exiting cleanly.");
     return 0;
 }

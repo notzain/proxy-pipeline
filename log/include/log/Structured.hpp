@@ -124,6 +124,7 @@ struct StructuredLogRecord {
     std::string_view message { "" };
     const LogField* fields { nullptr };
     size_t fieldCount { 0 };
+    bool isInterpolated { false };
 };
 
 } // namespace Proxy::Log

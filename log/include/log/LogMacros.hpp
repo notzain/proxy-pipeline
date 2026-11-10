@@ -53,6 +53,21 @@ struct StaticString {
         return count;
     }
 
+    [[nodiscard]] constexpr size_t countTotalPlaceholders() const noexcept
+    {
+        size_t count = 0;
+        for (size_t i = 0; i + 1 < N; ++i) {
+            if (data[i] == '{') {
+                if (data[i + 1] == '{') {
+                    ++i;
+                    continue;
+                }
+                ++count;
+            }
+        }
+        return count;
+    }
+
     [[nodiscard]] constexpr std::string_view getPlaceholderName(size_t targetIdx) const noexcept
     {
         size_t currentIdx = 0;
@@ -194,6 +209,7 @@ void logNamed(Level level, std::string_view component, std::string_view fmtPatte
     record.message = formattedMsg;
     record.fields = fields.data();
     record.fieldCount = sizeof...(Args);
+    record.isInterpolated = true;
 
     ::Proxy::Log::logStructured(record);
 }
@@ -244,18 +260,26 @@ inline void logSimple(Level level, std::string_view component, std::string_view 
 template <const auto& RawFmt, typename... Args>
 void dispatchFormat(Level level, std::string_view component, std::string_view varNamesStr, const Args&... args)
 {
-    constexpr size_t placeholderCount = RawFmt.countNamedPlaceholders();
-    if constexpr (placeholderCount == sizeof...(Args) && placeholderCount > 0) {
+    constexpr size_t namedCount = RawFmt.countNamedPlaceholders();
+    constexpr size_t totalCount = RawFmt.countTotalPlaceholders();
+
+    if constexpr (namedCount == sizeof...(Args) && namedCount > 0) {
+        // Case 1: All arguments matched to named placeholders {field}
         static constexpr auto anonChars = RawFmt.toAnonymous();
         constexpr auto names = []() {
-            std::array<std::string_view, placeholderCount> arr { };
-            for (size_t i = 0; i < placeholderCount; ++i) {
+            std::array<std::string_view, namedCount> arr {};
+            for (size_t i = 0; i < namedCount; ++i) {
                 arr[i] = RawFmt.getPlaceholderName(i);
             }
             return arr;
         }();
         logNamed(level, component, std::string_view(anonChars.data()), names, args...);
+    } else if constexpr (totalCount == sizeof...(Args) && totalCount > 0) {
+        // Case 2: Anonymous (or mixed) placeholders: interpolate sentence, and use expression names as fields
+        std::array<std::string_view, sizeof...(Args)> names = parseVariableNames<sizeof...(Args)>(varNamesStr);
+        logNamed(level, component, std::string_view(RawFmt.data), names, args...);
     } else {
+        // Case 3: Plain message without placeholders; trailing arguments become fields
         logPlain(level, component, std::string_view(RawFmt.data), varNamesStr, args...);
     }
 }

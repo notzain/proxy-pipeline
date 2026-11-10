@@ -31,8 +31,8 @@ Backend::MessageResult PrintHandler::onMessageReceived(std::string_view channelN
         hexFormatted += fmt::format("{:02x} ", val);
     }
 
-    Proxy::Log::info("[PrintHandler] Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
-    Proxy::Log::debug("[PrintHandler] Hex dump: {}", hexFormatted);
+    PROXY_LOG_INFO("Channel '{}' received message ({} bytes): {}", channelName, payload.size(), textFormatted);
+    PROXY_LOG_DEBUG("Hex dump: {}", hexFormatted);
     return Backend::Consumed { };
 }
 
@@ -41,7 +41,7 @@ void PrintHandler::onBatchReceived(
     Common::Compat::span<const Backend::MessageView> messages,
     Common::Compat::span<Backend::MessageResult> outResults)
 {
-    Proxy::Log::info("[PrintHandler] Channel '{}' received batch of {} message(s)", channelName, messages.size());
+    PROXY_LOG_INFO("Channel '{}' received batch of {} message(s)", channelName, messages.size());
     const auto count = std::min(messages.size(), outResults.size());
     for (std::size_t i = 0; i < count; ++i) {
         outResults[i] = onMessageReceived(channelName, messages[i]);

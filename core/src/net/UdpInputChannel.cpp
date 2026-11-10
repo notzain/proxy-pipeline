@@ -128,7 +128,7 @@ void UdpInputChannel::openAndBindSocket()
     const int domain = (m_boundAddr.family() == Common::Net::AddressFamily::Ipv6) ? AF_INET6 : AF_INET;
     m_socketFd.reset(::socket(domain, SOCK_DGRAM, 0));
     if (!m_socketFd) {
-        Proxy::Log::error("[UdpInputChannel] Failed to create UDP socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
 
@@ -144,12 +144,12 @@ void UdpInputChannel::openAndBindSocket()
     sockaddr_storage ss { };
     std::size_t nativeLen = m_boundAddr.toNative(&ss, sizeof(ss));
     if (nativeLen == 0 || ::bind(m_socketFd.get(), reinterpret_cast<sockaddr*>(&ss), static_cast<socklen_t>(nativeLen)) < 0) {
-        Proxy::Log::error("[UdpInputChannel] Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
         closeSocket();
         return;
     }
 
-    Proxy::Log::info("[UdpInputChannel] Bound and listening on UDP {}:{}", m_host, m_port);
+    PROXY_LOG_INFO("Bound and listening on UDP {}:{}", m_host, m_port);
 }
 
 Common::Net::BytesResult UdpInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)

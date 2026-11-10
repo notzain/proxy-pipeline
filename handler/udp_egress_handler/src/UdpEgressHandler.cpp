@@ -24,7 +24,7 @@ UdpEgressHandler::~UdpEgressHandler() = default;
 bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
 {
     if (!m_config.load(config)) {
-        Proxy::Log::error("[UdpEgressHandler] Configuration loading failed due to invalid parameter types");
+        PROXY_LOG_ERROR("Configuration loading failed due to invalid parameter types");
         return false;
     }
 
@@ -33,7 +33,7 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     // 1. Create input channel through the chain's backend (e.g. SHM, UDS)
     auto inChannel = backend().createInputChannel(inputChannelName, config);
     if (!inChannel) {
-        Proxy::Log::error("[UdpEgressHandler] Failed to create input channel '{}'", inputChannelName);
+        PROXY_LOG_ERROR("Failed to create input channel '{}'", inputChannelName);
         return false;
     }
     registerInputChannel(std::move(inChannel));
@@ -41,7 +41,7 @@ bool UdpEgressHandler::onConfigure(const Core::Config::Configuration& config)
     // 2. Initialize UDP output socket
     m_udpOut = std::make_unique<Core::Net::UdpOutputChannel>("udp_network_egress", m_config.destHost, static_cast<std::uint16_t>(m_config.destPort));
 
-    Proxy::Log::info("[UdpEgressHandler] Configured on channel '{}' (mode: {}, default target: {}:{})",
+    PROXY_LOG_INFO("Configured on channel '{}' (mode: {}, default target: {}:{})",
         inputChannelName, (m_config.mode == "forward") ? "forward" : "reply_to_origin", m_config.destHost, m_config.destPort);
 
     return true;
@@ -63,23 +63,23 @@ Backend::MessageResult UdpEgressHandler::onMessageReceived(std::string_view chan
                 : Common::Net::SocketAddress::fromIpv4Net(meta->srcIp, meta->srcPort);
 
             if (Proxy::Log::shouldLog(Proxy::Log::Level::Debug)) {
-                Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Replying {} payload bytes directly to origin client {}",
+                PROXY_LOG_DEBUG("Channel '{}': Replying {} payload bytes directly to origin client {}",
                     channelName, payload.size(), originAddr.toString());
             }
 
             if (!m_udpOut->sendTo(payload, originAddr)) {
-                Proxy::Log::warn("[UdpEgressHandler] Failed to send reply to origin client {}", originAddr.toString());
+                PROXY_LOG_WARN("Failed to send reply to origin client {}", originAddr.toString());
             }
             return Backend::Consumed { };
         }
     }
 
     // Default or forward mode
-    Proxy::Log::debug("[UdpEgressHandler] Channel '{}': Forwarding {} payload bytes to {}:{}",
+    PROXY_LOG_DEBUG("Channel '{}': Forwarding {} payload bytes to {}:{}",
         channelName, payload.size(), m_config.destHost, m_config.destPort);
 
     if (!m_udpOut->send(payload)) {
-        Proxy::Log::warn("[UdpEgressHandler] Failed to forward packet to {}:{}", m_config.destHost, m_config.destPort);
+        PROXY_LOG_WARN("Failed to forward packet to {}:{}", m_config.destHost, m_config.destPort);
     }
     return Backend::Consumed { };
 }

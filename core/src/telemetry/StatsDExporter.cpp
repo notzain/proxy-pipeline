@@ -32,7 +32,7 @@ void StatsDExporter::initSocket()
 {
     m_socketFd.reset(::socket(AF_INET, SOCK_DGRAM, 0));
     if (!m_socketFd) {
-        Proxy::Log::error("[StatsDExporter] Failed to create UDP socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
 
@@ -40,13 +40,13 @@ void StatsDExporter::initSocket()
     addr.sin_family = AF_INET;
     addr.sin_port = htons(m_port);
     if (::inet_pton(AF_INET, m_host.c_str(), &addr.sin_addr) <= 0) {
-        Proxy::Log::error("[StatsDExporter] Invalid host address '{}'", m_host);
+        PROXY_LOG_ERROR("Invalid host address '{}'", m_host);
         m_socketFd.reset();
         return;
     }
 
     if (::connect(m_socketFd.get(), reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        Proxy::Log::error("[StatsDExporter] Failed to connect UDP socket to {}:{}: {}", m_host, m_port, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to connect UDP socket to {}:{}: {}", m_host, m_port, std::strerror(errno));
         m_socketFd.reset();
     }
 }

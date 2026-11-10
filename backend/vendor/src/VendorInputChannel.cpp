@@ -57,7 +57,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
     }
 
     if (!m_manager) {
-        Proxy::Log::error("[VendorInputChannel] VendorManager not initialized");
+        PROXY_LOG_ERROR("VendorManager not initialized");
         return Common::Net::BytesResult::err(Common::Net::ReceiveFailure { });
     }
 
@@ -70,7 +70,7 @@ Common::Net::BytesResult VendorInputChannel::receiveSlot(
     if (!node) {
         const auto count = m_poolExhaustionCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            Proxy::Log::warn("[VendorInputChannel] Relay pool capacity reached on channel '{}'; applying ingress backpressure (total events: {})",
+            PROXY_LOG_WARN("Relay pool capacity reached on channel '{}'; applying ingress backpressure (total events: {})",
                 name(), count);
         }
         return Common::Net::BytesResult::err(Common::Net::ReceiveTimeout { });

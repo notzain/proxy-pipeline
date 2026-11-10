@@ -37,7 +37,7 @@ bool VendorRelayNode::preparePayload() noexcept
     if (ec) {
         const auto count = s_payloadPreparationFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            Proxy::Log::error("[VendorRelayNode] Failed to read payload file '{}' for message ID {} (total failures: {})",
+            PROXY_LOG_ERROR("Failed to read payload file '{}' for message ID {} (total failures: {})",
                 filePath, message.getId(), count);
         }
         return false;
@@ -48,7 +48,7 @@ bool VendorRelayNode::preparePayload() noexcept
         if (!mapping) {
             const auto count = s_payloadPreparationFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
             if (Common::Diagnostics::shouldLogEventCount(count)) {
-                Proxy::Log::error("[VendorRelayNode] Failed to map payload file '{}' for message ID {} (total failures: {})",
+                PROXY_LOG_ERROR("Failed to map payload file '{}' for message ID {} (total failures: {})",
                     filePath, message.getId(), count);
             }
             return false;
@@ -73,12 +73,12 @@ void VendorRelayNode::settle(void* ctx, ::Backend::Settlement outcome) noexcept
     const std::uint64_t msgId = n->message.getId();
     switch (outcome) {
     case ::Backend::Settlement::Ack:
-        Proxy::Log::debug("[VendorSettlement] Finalizing message ID {}", msgId);
+        PROXY_LOG_DEBUG("Finalizing message ID {}", msgId);
         n->manager->finalize(n->message);
         break;
     case ::Backend::Settlement::Reject:
     case ::Backend::Settlement::Release:
-        Proxy::Log::debug("[VendorSettlement] Dropping message ID {}", msgId);
+        PROXY_LOG_DEBUG("Dropping message ID {}", msgId);
         n->manager->drop(n->message);
         break;
     }

@@ -31,7 +31,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
     const auto inputChannelName = config.getOr<std::string>("split.input_channel", "pipe_in");
     auto inputChannel = backend().createInputChannel(inputChannelName, config);
     if (!inputChannel) {
-        Proxy::Log::error("[SplitHandler] Failed to create input channel '{}'", inputChannelName);
+        PROXY_LOG_ERROR("Failed to create input channel '{}'", inputChannelName);
         return false;
     }
     registerInputChannel(std::move(inputChannel));
@@ -42,7 +42,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
     for (const auto& outName : outChannelNames) {
         auto outChannel = backend().createOutputChannel(outName, config);
         if (!outChannel) {
-            Proxy::Log::error("[SplitHandler] Failed to create output channel '{}'", outName);
+            PROXY_LOG_ERROR("Failed to create output channel '{}'", outName);
             return false;
         }
         auto ptr = registerOutputChannel(std::move(outChannel));
@@ -54,7 +54,7 @@ bool SplitHandler::onConfigure(const Core::Config::Configuration& config)
 
 Backend::MessageResult SplitHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
-    Proxy::Log::info("[SplitHandler] Channel '{}' received message ({} bytes payload), splitting to output channels...",
+    PROXY_LOG_INFO("Channel '{}' received message ({} bytes payload), splitting to output channels...",
         channelName, message.payload().size());
     std::size_t forwarded = 0;
     for (auto outChan : m_outputChannelsList) {
@@ -62,7 +62,7 @@ Backend::MessageResult SplitHandler::onMessageReceived(std::string_view channelN
             forwarded++;
         }
     }
-    Proxy::Log::debug("[SplitHandler] Successfully forwarded message to {} output channels", forwarded);
+    PROXY_LOG_DEBUG("Successfully forwarded message to {} output channels", forwarded);
     return Backend::Forwarded { .channel = m_outputChannelsStr };
 }
 
@@ -78,7 +78,7 @@ void SplitHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Proxy::Log::debug("[SplitHandler] Channel '{}' received batch of {} messages, splitting...", channelName, messages.size());
+    PROXY_LOG_DEBUG("Channel '{}' received batch of {} messages, splitting...", channelName, messages.size());
 
     for (auto outChan : m_outputChannelsList) {
         if (outChan) {

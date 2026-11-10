@@ -13,8 +13,8 @@ int main(int argc, char* argv[])
         configPath = argv[1];
     }
 
-    Proxy::Log::info("Starting PrintHandler executable...");
-    Proxy::Log::info("Loading configuration from: {}", configPath.string());
+    PROXY_LOG_INFO("Starting PrintHandler executable...");
+    PROXY_LOG_INFO("Loading configuration from: {}", configPath.string());
 
     // Configuration is always read from file - applications never hardcode their own properties
     Core::Config::Configuration config = Core::Config::Configuration::fromFile(configPath);
@@ -29,10 +29,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Proxy::Log::info("PrintHandler initialized successfully. Starting event loop...");
+    PROXY_LOG_INFO("PrintHandler initialized successfully. Starting event loop...");
     // Start the event loop (handles SIGINT / Ctrl+C to cleanly stop)
     runner.start();
 
-    Proxy::Log::info("PrintHandler exiting cleanly.");
+    PROXY_LOG_INFO("PrintHandler exiting cleanly.");
     return 0;
 }

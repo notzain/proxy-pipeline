@@ -29,14 +29,14 @@ bool OrderValidationHandler::onConfigure(const Core::Config::Configuration& conf
 
     auto inChannel = backend().createInputChannel(inputChannelName, config);
     if (!inChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create input channel '{}'", inputChannelName);
+        PROXY_LOG_ERROR("Failed to create input channel '{}'", inputChannelName);
         return false;
     }
     registerInputChannel(std::move(inChannel));
 
     auto outChannel = backend().createOutputChannel(outputChannelName, config);
     if (!outChannel) {
-        Proxy::Log::error("[OrderValidationHandler] Failed to create output channel '{}'", outputChannelName);
+        PROXY_LOG_ERROR("Failed to create output channel '{}'", outputChannelName);
         return false;
     }
     m_cachedOutputChannel = registerOutputChannel(std::move(outChannel));
@@ -154,7 +154,7 @@ Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_vie
 {
     auto order = parseOrder(message.payload());
     if (!order.has_value()) {
-        Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to Order. Discarding.",
+        PROXY_LOG_WARN("Message from '{}' ({} bytes) failed XML deserialization to Order. Discarding.",
             channelName, message.payload().size());
         return Backend::Dropped {
             .reason = "Failed XML deserialization to Order",
@@ -163,7 +163,7 @@ Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_vie
     }
 
     if (!validateOrder(*order)) {
-        Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
+        PROXY_LOG_WARN("Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
             order->customer, order->item, order->quantity);
         return Backend::Dropped {
             .reason = "Failed domain business rules validation (customer/item/qty)",
@@ -172,7 +172,7 @@ Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_vie
     }
 
     if (!m_cachedOutputChannel) {
-        Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
+        PROXY_LOG_WARN("No output channel is available for forwarding");
         return Backend::Dropped {
             .reason = "No output channel available for forwarding",
             .errorCode = 500
@@ -180,10 +180,10 @@ Backend::MessageResult OrderValidationHandler::onMessageReceived(std::string_vie
     }
 
     const auto outputChannelName = m_cachedOutputChannel->name();
-    Proxy::Log::debug("[OrderValidationHandler] Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
+    PROXY_LOG_DEBUG("Order validated for customer '{}', item '{}', qty {}. Forwarding to '{}'...",
         order->customer, order->item, order->quantity, outputChannelName);
     if (!m_cachedOutputChannel->send(message)) {
-        Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", outputChannelName);
+        PROXY_LOG_WARN("Failed to forward validated order to '{}'", outputChannelName);
     }
     return Backend::Forwarded { .channel = outputChannelName };
 }
@@ -204,7 +204,7 @@ void OrderValidationHandler::onBatchReceived(
         const auto& msg = messages[i];
         auto order = parseOrder(msg.payload());
         if (!order.has_value()) {
-            Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization. Discarding.",
+            PROXY_LOG_WARN("Message from '{}' ({} bytes) failed XML deserialization. Discarding.",
                 channelName, msg.payload().size());
             outResults[i] = Backend::Dropped {
                 .reason = "Failed XML deserialization to Order",
@@ -214,7 +214,7 @@ void OrderValidationHandler::onBatchReceived(
         }
 
         if (!validateOrder(*order)) {
-            Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
+            PROXY_LOG_WARN("Order for customer '{}' / item '{}' / qty {} failed domain validation. Discarding.",
                 order->customer, order->item, order->quantity);
             outResults[i] = Backend::Dropped {
                 .reason = "Failed domain business rules validation (customer/item/qty)",
@@ -248,23 +248,23 @@ void OrderValidationHandler::onMessageReceivedFast(std::string_view channelName,
 {
     auto order = parseOrderDirect(buffer);
     if (!order.has_value()) {
-        Proxy::Log::warn("[OrderValidationHandler] Message from '{}' ({} bytes) failed XML deserialization to OrderView. Discarding.",
+        PROXY_LOG_WARN("Message from '{}' ({} bytes) failed XML deserialization to OrderView. Discarding.",
             channelName, buffer.size());
         return;
     }
 
     if (!validateOrderFast(*order)) {
-        Proxy::Log::warn("[OrderValidationHandler] Order for customer '{}' / item '{}' / qty {} failed fast domain validation. Discarding.",
+        PROXY_LOG_WARN("Order for customer '{}' / item '{}' / qty {} failed fast domain validation. Discarding.",
             order->customer, order->item, order->quantity);
         return;
     }
 
     if (m_cachedOutputChannel) {
         if (!m_cachedOutputChannel->send(buffer)) {
-            Proxy::Log::warn("[OrderValidationHandler] Failed to forward validated order to '{}'", m_cachedOutputChannel->name());
+            PROXY_LOG_WARN("Failed to forward validated order to '{}'", m_cachedOutputChannel->name());
         }
     } else {
-        Proxy::Log::warn("[OrderValidationHandler] No output channel is available for forwarding");
+        PROXY_LOG_WARN("No output channel is available for forwarding");
     }
 }
 #endif

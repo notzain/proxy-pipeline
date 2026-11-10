@@ -18,7 +18,7 @@ void FileBackend::configure(const ::Backend::IConfig& config)
 
     std::error_code ec;
     std::filesystem::create_directories(m_watchDirectory, ec);
-    Proxy::Log::info("[FileBackend] Watching directory: {}", m_watchDirectory.string());
+    PROXY_LOG_INFO("Watching directory: {}", m_watchDirectory.string());
 }
 
 std::unique_ptr<::Backend::IInputChannel> FileBackend::createInputChannel(std::string_view name, const ::Backend::IConfig& config)

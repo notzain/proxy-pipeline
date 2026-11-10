@@ -45,7 +45,7 @@ void dispatchReceivedBatch(
             ++invalidEnvelopeCount;
             s_droppedCounter.increment();
             if (Common::Diagnostics::shouldLogEventCount(invalidEnvelopeCount)) {
-                Proxy::Log::warn("[MessageDispatcher] Channel '{}' received invalid envelope ({} bytes, total dropped: {}).",
+                PROXY_LOG_WARN("Channel '{}' received invalid envelope ({} bytes, total dropped: {}).",
                     channelName, rawMessage.size(), invalidEnvelopeCount);
             }
             continue;

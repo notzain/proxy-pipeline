@@ -15,7 +15,7 @@ FileOutputChannel::FileOutputChannel(std::string name, std::filesystem::path out
 {
     std::error_code ec;
     std::filesystem::create_directories(m_outputDir, ec);
-    Proxy::Log::info("[FileOutputChannel] Output directory: {}", m_outputDir.string());
+    PROXY_LOG_INFO("Output directory: {}", m_outputDir.string());
 }
 
 bool FileOutputChannel::send(Common::Compat::span<const std::byte> message)
@@ -37,7 +37,7 @@ bool FileOutputChannel::send(Common::Compat::span<const std::byte> message)
     if (!out.is_open()) {
         const auto count = m_writeFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            Proxy::Log::error("[FileOutputChannel] Failed to write message file {} (total failures: {})",
+            PROXY_LOG_ERROR("Failed to write message file {} (total failures: {})",
                 filePath.string(), count);
         }
         return false;
@@ -46,7 +46,7 @@ bool FileOutputChannel::send(Common::Compat::span<const std::byte> message)
     out.write(reinterpret_cast<const char*>(message.data()), static_cast<std::streamsize>(message.size()));
     out.close();
 
-    Proxy::Log::debug("[FileOutputChannel] Successfully wrote {} bytes to {}", message.size(), filePath.string());
+    PROXY_LOG_DEBUG("Successfully wrote {} bytes to {}", message.size(), filePath.string());
     return true;
 }
 

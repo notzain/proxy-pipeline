@@ -16,7 +16,7 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
     // 1. Output channel is created through the active backend (e.g. SHM, UDS, etc.)
     auto outChannel = backend().createOutputChannel(outputChannelName, config);
     if (!outChannel) {
-        Proxy::Log::error("[UdpIngressHandler] Failed to create pipeline output channel '{}'", outputChannelName);
+        PROXY_LOG_ERROR("Failed to create pipeline output channel '{}'", outputChannelName);
         return false;
     }
     m_outputChannel = registerOutputChannel(std::move(outChannel));
@@ -26,7 +26,7 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
     int port = config.getOr<int>("ingress.port", 9000);
     int bufferSize = config.getOr<int>("ingress.buffer_size", 8 * 1024 * 1024);
 
-    Proxy::Log::info("[UdpIngressHandler] Binding UDP network ingress on {}:{} (egress channel: '{}')...", host, port, m_outputChannel->name());
+    PROXY_LOG_INFO("Binding UDP network ingress on {}:{} (egress channel: '{}')...", host, port, m_outputChannel->name());
 
     auto udpChannel = std::make_unique<Core::Net::UdpInputChannel>(
         "udp_network_ingress",
@@ -41,7 +41,7 @@ bool UdpIngressHandler::onConfigure(const Core::Config::Configuration& config)
 Backend::MessageResult UdpIngressHandler::onMessageReceived(std::string_view channelName, const Backend::MessageView& message)
 {
     if (!m_outputChannel) {
-        Proxy::Log::warn("[UdpIngressHandler] No output channel is available for forwarding");
+        PROXY_LOG_WARN("No output channel is available for forwarding");
         return Backend::Dropped {
             .reason = "No output channel available for forwarding",
             .errorCode = 500
@@ -49,11 +49,11 @@ Backend::MessageResult UdpIngressHandler::onMessageReceived(std::string_view cha
     }
 
     const auto outputChannelName = m_outputChannel->name();
-    Proxy::Log::debug("[UdpIngressHandler] Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
+    PROXY_LOG_DEBUG("Received datagram ({} bytes payload, {} bytes metadata) on '{}'. Forwarding to '{}'...",
         message.payload().size(), message.metadata().size(), channelName, outputChannelName);
 
     if (!m_outputChannel->send(message)) {
-        Proxy::Log::warn("[UdpIngressHandler] Failed to forward datagram to '{}'", outputChannelName);
+        PROXY_LOG_WARN("Failed to forward datagram to '{}'", outputChannelName);
     }
     return Backend::Forwarded { .channel = outputChannelName };
 }
@@ -65,7 +65,7 @@ void UdpIngressHandler::onBatchReceived(
 {
     const auto count = std::min(messages.size(), outResults.size());
     if (!m_outputChannel) {
-        Proxy::Log::warn("[UdpIngressHandler] No output channel is available for batch forwarding");
+        PROXY_LOG_WARN("No output channel is available for batch forwarding");
         for (std::size_t i = 0; i < count; ++i) {
             outResults[i] = Backend::Dropped {
                 .reason = "No output channel available for forwarding",
@@ -82,7 +82,7 @@ void UdpIngressHandler::onBatchReceived(
     if (messages.empty())
         return;
 
-    Proxy::Log::debug("[UdpIngressHandler] Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
+    PROXY_LOG_DEBUG("Received batch of {} datagram(s) on '{}'. Forwarding to '{}'...",
         messages.size(), channelName, outputChannelName);
 
     m_outputChannel->sendBatch(messages);

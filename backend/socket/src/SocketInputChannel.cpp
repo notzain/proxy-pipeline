@@ -43,7 +43,7 @@ void SocketInputChannel::openAndBindSocket()
 
     m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (m_socketFd < 0) {
-        Proxy::Log::error("[SocketInputChannel] Failed to create UDP socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
 
@@ -67,12 +67,12 @@ void SocketInputChannel::openAndBindSocket()
     }
 
     if (::bind(m_socketFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        Proxy::Log::error("[SocketInputChannel] Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to bind UDP socket to {}:{} ({})", m_host, m_port, std::strerror(errno));
         closeSocket();
         return;
     }
 
-    Proxy::Log::info("[SocketInputChannel] Listening on UDP {}:{}", m_host, m_port);
+    PROXY_LOG_INFO("Listening on UDP {}:{}", m_host, m_port);
 }
 
 BytesResult SocketInputChannel::receiveSlot(::Backend::BufferSlot& slot, Timeout timeout)

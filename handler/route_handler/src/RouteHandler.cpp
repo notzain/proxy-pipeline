@@ -13,13 +13,13 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
 {
     RouteHandlerConfig cfg;
     if (!cfg.loadRules(config)) {
-        Proxy::Log::error("[RouteHandler] Failed to load configuration");
+        PROXY_LOG_ERROR("Failed to load configuration");
         return false;
     }
 
     auto inChan = backend().createInputChannel(cfg.inputChannel.value(), config);
     if (!inChan) {
-        Proxy::Log::error("[RouteHandler] Failed to create input channel '{}'", cfg.inputChannel);
+        PROXY_LOG_ERROR("Failed to create input channel '{}'", cfg.inputChannel);
         return false;
     }
     registerInputChannel(std::move(inChan));
@@ -30,7 +30,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
         if (defChan) {
             m_defaultOutputChannel = registerOutputChannel(std::move(defChan));
         } else {
-            Proxy::Log::warn("[RouteHandler] Failed to create default output channel '{}'", cfg.defaultOutputChannel);
+            PROXY_LOG_WARN("Failed to create default output channel '{}'", cfg.defaultOutputChannel);
         }
     }
 
@@ -44,7 +44,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
             if (rule.action().isForward()) {
                 const auto& target = rule.targetChannelName();
                 if (target.empty()) {
-                    Proxy::Log::warn("[RouteHandler] Forward rule '{}' has no target channel specified, skipping", ruleCfg.name);
+                    PROXY_LOG_WARN("Forward rule '{}' has no target channel specified, skipping", ruleCfg.name);
                     continue;
                 }
 
@@ -56,7 +56,7 @@ bool RouteHandler::onConfigure(const Core::Config::Configuration& config)
                         outPtr = registerOutputChannel(std::move(outChan));
                         createdChannels[target] = outPtr;
                     } else {
-                        Proxy::Log::error("[RouteHandler] Failed to create target output channel '{}' for rule '{}'", target, ruleCfg.name);
+                        PROXY_LOG_ERROR("Failed to create target output channel '{}' for rule '{}'", target, ruleCfg.name);
                     }
                 } else {
                     outPtr = it->second;
@@ -95,7 +95,7 @@ Backend::MessageResult RouteHandler::onMessageReceived(std::string_view channelN
         }
 
         if (const auto* rej = rule.action().asReject()) {
-            Proxy::Log::debug("[RouteHandler] Message from '{}' explicitly rejected: {}", channelName, rej->reason);
+            PROXY_LOG_DEBUG("Message from '{}' explicitly rejected: {}", channelName, rej->reason);
             return Backend::Dropped {
                 .reason = rej->reason,
                 .errorCode = rej->errorCode
@@ -113,7 +113,7 @@ Backend::MessageResult RouteHandler::onMessageReceived(std::string_view channelN
         return Backend::Forwarded { .channel = m_defaultOutputChannel->name() };
     }
 
-    Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
+    PROXY_LOG_DEBUG("Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
     return Backend::Dropped {
         .reason = "Matched no routing rule and no default channel configured",
         .errorCode = 404
@@ -167,7 +167,7 @@ void RouteHandler::onBatchReceived(
             buckets[m_defaultOutputChannel].push_back(msg);
             outResults[i] = Backend::Forwarded { .channel = m_defaultOutputChannel->name() };
         } else {
-            Proxy::Log::debug("[RouteHandler] Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
+            PROXY_LOG_DEBUG("Message from '{}' matched no rule and no default channel configured. Discarding.", channelName);
             outResults[i] = Backend::Dropped {
                 .reason = "Matched no routing rule and no default channel configured",
                 .errorCode = 404

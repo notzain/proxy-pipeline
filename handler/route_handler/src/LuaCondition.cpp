@@ -80,7 +80,7 @@ struct LuaCondition::Impl {
         auto loadResult = lua.load(wrappedScript);
         if (!loadResult.valid()) {
             sol::error err = loadResult;
-            Proxy::Log::error("[LuaCondition] Failed to compile Lua script: {}", err.what());
+            PROXY_LOG_ERROR("Failed to compile Lua script: {}", err.what());
             return;
         }
 
@@ -88,7 +88,7 @@ struct LuaCondition::Impl {
         auto execResult = pf();
         if (!execResult.valid()) {
             sol::error err = execResult;
-            Proxy::Log::error("[LuaCondition] Failed to initialize Lua condition function: {}", err.what());
+            PROXY_LOG_ERROR("Failed to initialize Lua condition function: {}", err.what());
             return;
         }
 
@@ -103,7 +103,7 @@ struct LuaCondition::Impl {
                 func = lua["matches"];
                 valid = true;
             } else {
-                Proxy::Log::error("[LuaCondition] Lua snippet must return a function(msg) or define 'route(msg)'");
+                PROXY_LOG_ERROR("Lua snippet must return a function(msg) or define 'route(msg)'");
             }
         }
     }
@@ -200,7 +200,7 @@ bool LuaCondition::matches(const Backend::MessageView& message) const noexcept
         sol::protected_function_result result = m_impl->func(msg);
         if (!result.valid()) {
             sol::error err = result;
-            Proxy::Log::error("[LuaCondition] Error evaluating Lua rule: {}", err.what());
+            PROXY_LOG_ERROR("Error evaluating Lua rule: {}", err.what());
             return false;
         }
 
@@ -212,7 +212,7 @@ bool LuaCondition::matches(const Backend::MessageView& message) const noexcept
             return !str.empty();
         }
     } catch (const std::exception& e) {
-        Proxy::Log::error("[LuaCondition] Exception during Lua evaluation: {}", e.what());
+        PROXY_LOG_ERROR("Exception during Lua evaluation: {}", e.what());
         return false;
     }
 
@@ -244,7 +244,7 @@ struct LuaCondition::Impl {
 LuaCondition::LuaCondition(std::string scriptCode)
     : m_impl(std::make_unique<Impl>(Impl { std::move(scriptCode) }))
 {
-    Proxy::Log::warn("[LuaCondition] Lua support is disabled in this build (PROXY_ENABLE_LUA=OFF)");
+    PROXY_LOG_WARN("Lua support is disabled in this build (PROXY_ENABLE_LUA=OFF)");
 }
 
 LuaCondition::~LuaCondition() = default;

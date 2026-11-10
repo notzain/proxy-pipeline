@@ -50,7 +50,7 @@ bool ScatterHandler::onConfigure(const Core::Config::Configuration& config)
     m_outputChannelsStr = config.getOr<std::string>("scatter.output_channels", "");
     std::vector<std::string> outChannelNames = splitString(m_outputChannelsStr, ',');
     if (outChannelNames.empty()) {
-        Proxy::Log::error("[ScatterHandler] No output channels specified in 'scatter.output_channels'");
+        PROXY_LOG_ERROR("No output channels specified in 'scatter.output_channels'");
         return false;
     }
 
@@ -62,7 +62,7 @@ bool ScatterHandler::onConfigure(const Core::Config::Configuration& config)
         m_outputChannelsList.push_back(optOut.value());
     }
 
-    Proxy::Log::info("[ScatterHandler] Configured with {} inspection branches", m_outputChannelsList.size());
+    PROXY_LOG_INFO("Configured with {} inspection branches", m_outputChannelsList.size());
     return true;
 }
 
@@ -71,14 +71,14 @@ Backend::MessageResult ScatterHandler::onMessageReceived(
     const Backend::MessageView& message)
 {
     if (m_outputChannelsList.empty()) {
-        Proxy::Log::warn("[ScatterHandler] No output channels configured; dropping message");
+        PROXY_LOG_WARN("No output channels configured; dropping message");
         return Backend::Dropped { .reason = "No output channels configured", .errorCode = 500 };
     }
 
     const auto correlationId = m_nextCorrelationId.fetch_add(1, std::memory_order_relaxed);
     const auto totalSplits = static_cast<std::uint16_t>(m_outputChannelsList.size());
 
-    Proxy::Log::debug("[ScatterHandler] Channel '{}' received message ({} bytes, protocol={}), scattering correlationId={} to {} branches...",
+    PROXY_LOG_DEBUG("Channel '{}' received message ({} bytes, protocol={}), scattering correlationId={} to {} branches...",
         channelName, message.payload().size(), static_cast<unsigned>(message.protocol().value()), correlationId, totalSplits);
 
     for (std::uint16_t i = 0; i < totalSplits; ++i) {
@@ -94,19 +94,19 @@ Backend::MessageResult ScatterHandler::onMessageReceived(
 
         const auto packedEnvelope = Backend::InspectionView::pack(message, header);
         if (!packedEnvelope) {
-            Proxy::Log::error("[ScatterHandler] Could not serialize inspection envelope for branch {}", i);
+            PROXY_LOG_ERROR("Could not serialize inspection envelope for branch {}", i);
             return Backend::Dropped { .reason = "Inspection envelope exceeds envelope size limit", .errorCode = 413 };
         }
 
         auto optView = Backend::MessageView::from(Common::Compat::span<const std::byte>(packedEnvelope->data(), packedEnvelope->size()));
         if (!optView) {
-            Proxy::Log::error("[ScatterHandler] Failed to serialize inspection envelope for branch {}", i);
+            PROXY_LOG_ERROR("Failed to serialize inspection envelope for branch {}", i);
             continue;
         }
 
         auto outChan = m_outputChannelsList[i];
         if (outChan && !outChan->send(*optView)) {
-            Proxy::Log::warn("[ScatterHandler] Failed to send split {} to branch '{}'", i, outChan->name());
+            PROXY_LOG_WARN("Failed to send split {} to branch '{}'", i, outChan->name());
         }
     }
 

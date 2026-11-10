@@ -38,7 +38,7 @@ void SocketOutputChannel::openSocket()
     closeSocket();
     m_socketFd = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (m_socketFd < 0) {
-        Proxy::Log::error("[SocketOutputChannel] Failed to create UDP socket: {}", std::strerror(errno));
+        PROXY_LOG_ERROR("Failed to create UDP socket: {}", std::strerror(errno));
         return;
     }
 
@@ -50,17 +50,17 @@ void SocketOutputChannel::openSocket()
     m_destAddr.sin_port = htons(m_destPort);
 
     if (::inet_pton(AF_INET, m_destHost.c_str(), &m_destAddr.sin_addr) <= 0) {
-        Proxy::Log::error("[SocketOutputChannel] Invalid destination IP address: {}", m_destHost);
+        PROXY_LOG_ERROR("Invalid destination IP address: {}", m_destHost);
     }
 
-    Proxy::Log::info("[SocketOutputChannel] Target configured for UDP {}:{}", m_destHost, m_destPort);
+    PROXY_LOG_INFO("Target configured for UDP {}:{}", m_destHost, m_destPort);
 
     // Connect socket to destination address to eliminate per-packet kernel route lookups
     if (::connect(m_socketFd, reinterpret_cast<const sockaddr*>(&m_destAddr), sizeof(m_destAddr)) == 0) {
         m_connected = true;
     } else {
         m_connected = false;
-        Proxy::Log::warn("[SocketOutputChannel] Failed to connect UDP socket to {}:{} ({})", m_destHost, m_destPort, std::strerror(errno));
+        PROXY_LOG_WARN("Failed to connect UDP socket to {}:{} ({})", m_destHost, m_destPort, std::strerror(errno));
     }
 }
 
@@ -167,13 +167,13 @@ bool SocketOutputChannel::send(Common::Compat::span<const std::byte> message)
     if (sent < 0) {
         const auto count = m_sendFailureCount.fetch_add(1, std::memory_order_relaxed) + 1;
         if (Common::Diagnostics::shouldLogEventCount(count)) {
-            Proxy::Log::error("[SocketOutputChannel] Failed to send {} bytes to {}:{} ({}, total failures: {})",
+            PROXY_LOG_ERROR("Failed to send {} bytes to {}:{} ({}, total failures: {})",
                 message.size(), m_destHost, m_destPort, std::strerror(errno), count);
         }
         return false;
     }
 
-    Proxy::Log::debug("[SocketOutputChannel] Sent {} bytes to {}:{}", sent, m_destHost, m_destPort);
+    PROXY_LOG_DEBUG("Sent {} bytes to {}:{}", sent, m_destHost, m_destPort);
     return true;
 }
 

@@ -24,7 +24,7 @@ VendorBackend::~VendorBackend() = default;
 
 void VendorBackend::configure(const ::Backend::IConfig& /*config*/)
 {
-    Proxy::Log::info("[VendorBackend] Configured 3rd-party vendor backend.");
+    PROXY_LOG_INFO("Configured 3rd-party vendor backend.");
 }
 
 std::unique_ptr<::Backend::IInputChannel> VendorBackend::createInputChannel(

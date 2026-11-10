@@ -202,11 +202,28 @@ TEST_CASE("Proxy::Log PROXY_LOG macros with named placeholders and dual-mode aut
 
         CHECK(sink->lastComponent == "TestLog");
         CHECK(sink->lastMessage == "Buffer overflow occurred");
+        CHECK(sink->lastRecord.isInterpolated == false);
         REQUIRE(sink->lastFields.size() == 2);
         CHECK(sink->lastFields[0].key() == "droppedCount");
         CHECK(std::get<uint64_t>(sink->lastFields[0].value()) == 3);
         CHECK(sink->lastFields[1].key() == "isThrottled");
         CHECK(std::get<bool>(sink->lastFields[1].value()) == true);
+    }
+
+    SECTION("Anonymous {} placeholder interpolation and structured field extraction")
+    {
+        std::string_view channel = "udp_data_link";
+        int messageSize = 128;
+        PROXY_LOG_INFO("Sending message to channel '{}': {} bytes", channel, messageSize);
+
+        CHECK(sink->lastComponent == "TestLog");
+        CHECK(sink->lastMessage == "Sending message to channel 'udp_data_link': 128 bytes");
+        CHECK(sink->lastRecord.isInterpolated == true);
+        REQUIRE(sink->lastFields.size() == 2);
+        CHECK(sink->lastFields[0].key() == "channel");
+        CHECK(std::get<std::string_view>(sink->lastFields[0].value()) == "udp_data_link");
+        CHECK(sink->lastFields[1].key() == "messageSize");
+        CHECK(std::get<int64_t>(sink->lastFields[1].value()) == 128);
     }
 
     Proxy::Log::init(std::make_unique<Proxy::Log::ConsoleLogSink>());

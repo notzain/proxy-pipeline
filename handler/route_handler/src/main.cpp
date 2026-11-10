@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    Proxy::Log::info("[Main] Starting RouteHandler loop...");
+    PROXY_LOG_INFO("Starting RouteHandler loop...");
     runner.start();
     return 0;
 }
