@@ -37,27 +37,10 @@ public:
     {
     }
 
-    constexpr LogField(std::string_view key, int val) noexcept
+    template <typename Int, typename = std::enable_if_t<std::is_integral_v<Int> && !std::is_same_v<Int, bool>>>
+    constexpr LogField(std::string_view key, Int val) noexcept
         : m_key(key)
-        , m_value(static_cast<int64_t>(val))
-    {
-    }
-
-    constexpr LogField(std::string_view key, int64_t val) noexcept
-        : m_key(key)
-        , m_value(val)
-    {
-    }
-
-    constexpr LogField(std::string_view key, unsigned int val) noexcept
-        : m_key(key)
-        , m_value(static_cast<uint64_t>(val))
-    {
-    }
-
-    constexpr LogField(std::string_view key, uint64_t val) noexcept
-        : m_key(key)
-        , m_value(val)
+        , m_value(std::is_signed_v<Int> ? ValueType(static_cast<int64_t>(val)) : ValueType(static_cast<uint64_t>(val)))
     {
     }
 
@@ -98,7 +81,7 @@ public:
         return f;
     }
 
-    static constexpr LogField rawJson(std::string_view key, std::string_view json) noexcept
+    static LogField rawJson(std::string_view key, std::string_view json) noexcept
     {
         LogField f(key, json);
         f.m_isRawJson = true;

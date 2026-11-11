@@ -90,7 +90,7 @@ void DedicatedThreadStrategy::start(Handler::IHandler& handler)
         }
     });
 
-    PROXY_LOG_INFO("Dedicated worker threads active", m_workerThreads.size());
+    PROXY_LOG_INFO("Dedicated worker threads active", Proxy::Log::LogField("workerCount", m_workerThreads.size()));
 }
 
 void DedicatedThreadStrategy::stop()

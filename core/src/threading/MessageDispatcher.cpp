@@ -45,8 +45,10 @@ void dispatchReceivedBatch(
             ++invalidEnvelopeCount;
             s_droppedCounter.increment();
             if (Common::Diagnostics::shouldLogEventCount(invalidEnvelopeCount)) {
+                const auto bytes = rawMessage.size();
+                const auto droppedCount = invalidEnvelopeCount;
                 PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'",
-                    channelName, rawMessage.size(), invalidEnvelopeCount);
+                    channelName, bytes, droppedCount);
             }
             continue;
         }

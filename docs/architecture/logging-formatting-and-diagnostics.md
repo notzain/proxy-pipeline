@@ -251,16 +251,18 @@ Static Event        Target Subject           Metadata & Metrics
 
 #### Before vs. After Example
 
-- ❌ **Conversational / Unbalanced**:
+- ❌ **Conversational / Unbalanced (Redundant Metrics in Prose)**:
   ```cpp
-  PROXY_LOG_WARN("Channel '{}' received invalid envelope ({} bytes, total dropped: {}).",
-      channelName, rawMessage.size(), invalidEnvelopeCount);
+  PROXY_LOG_WARN("Invalid envelope received on channel '{channel}' ({bytes} bytes, total dropped: {droppedCount})",
+      channelName, bytes, droppedCount);
   ```
-  *Downside*: Full-text string duplicates the numbers; clustering engines struggle to group events.
--  **Balanced Machine-First**:
+  - **Console Sink**: `[warning] [MessageDispatcher] Invalid envelope received on channel 'accounting' (16 bytes, total dropped: 1)`
+  - *Downside*: Full-text string duplicates numerical measurements; log clustering and fingerprinting engines create noisy buckets instead of a single canonical event type.
+
+-  **Balanced Machine-First (Hybrid Subject + Structured Metrics)**:
   ```cpp
   PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'",
-      channelName, rawMessage.size(), invalidEnvelopeCount);
+      channelName, bytes, droppedCount);
   ```
   - **Console Sink**: `[warning] [MessageDispatcher] Invalid envelope received on channel 'accounting' [bytes=16 droppedCount=1]`
   - **JSON Sink**:
@@ -272,13 +274,14 @@ Static Event        Target Subject           Metadata & Metrics
       "droppedCount": 1
     }
     ```
+  - *Benefit*: Human operator sees target entity in prose with metrics bracketed at the end; machine ingestors parse typed JSON attributes without regex extraction.
 
 ### Placeholder Patterns Reference
 
 | Pattern | Syntax | When to Use | Output (Console vs JSON) |
 | :--- | :--- | :--- | :--- |
-| **Hybrid Named + Trailing** *(Standard / Default)* | `PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'", ch, bytes, dropped);` | **Default for events with a subject and metrics.** Subject is interpolated in prose; trailing parameters become bracketed fields in console and typed JSON fields. | **Console**: `... on channel 'eth0' [bytes=512 dropped=1]`<br>**JSON**: `{"message": "... on channel 'eth0'", "channel": "eth0", "bytes": 512, "dropped": 1}` |
-| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_INFO("Starting thread pool", workerCount, channelCount);` | **Pure event notifications** where the event is static and all variables are secondary metrics or state counters. | **Console**: `Starting thread pool [workers=4 pollers=2]`<br>**JSON**: `{"message": "Starting thread pool", "workers": 4, "pollers": 2}` |
+| **Hybrid Named + Trailing** *(Standard / Default)* | `PROXY_LOG_WARN("Invalid envelope received on channel '{channel}'", channelName, bytes, droppedCount);` | **Default for events with a subject and metrics.** Subject is interpolated in prose; trailing parameters become bracketed fields in console and typed JSON fields. | **Console**: `... on channel 'accounting' [bytes=512 droppedCount=1]`<br>**JSON**: `{"message": "... on channel 'accounting'", "channel": "accounting", "bytes": 512, "droppedCount": 1}` |
+| **Trailing Key-Values** *(Event Summaries & Telemetry)* | `PROXY_LOG_INFO("Starting thread pool", LogField("workerCount", m_numWorkerThreads), channelCount);` | **Pure event notifications** where the event is static and all variables are secondary metrics or state counters. | **Console**: `Starting thread pool [workerCount=4 channelCount=2]`<br>**JSON**: `{"message": "Starting thread pool", "workerCount": 4, "channelCount": 2}` |
 | **Plain Text** *(Milestones & Transitions)* | `PROXY_LOG_INFO("Event loop started");` | **Static milestones** without dynamic parameters (startup, shutdown, state transitions). | **Console**: `"Event loop started"`<br>**JSON**: `{"message": "Event loop started"}` |
 | **Anonymous `{}`** *(Internal Debugging Only)* | `PROXY_LOG_DEBUG("x = {}, y = {}", x, y);` | **Temporary development tracing only.** Discouraged in `core` and production handler paths because schema keys are inferred from local variable names. | **Console**: Formatted prose.<br>**JSON**: Best-effort inferred keys. |
 
@@ -292,6 +295,31 @@ To eliminate impedance mismatch between C++ source code, JSON configuration sche
 - Diagnostics: `errorMessage`, `cause`
 
 This ensures trailing variables in C++ (`..., channelCount, bytesRead`) seamlessly match explicit format placeholders (`{channelCount}`) without requiring casing conversions or causing key bifurcation in log databases.
+
+### Explicit Fields for Expressions and Member Variables: `LogField`
+
+When logging a metric or field derived from a method call or member variable with a prefix (e.g. `m_workerThreads.size()` or `m_numWorkerThreads`), passing the expression directly causes the preprocessor to stringify the expression itself (e.g., `[m_workerThreads.size()=3]`).
+
+To guarantee clean `camelCase` keys without declaring redundant temporary variables, pass an explicit `Proxy::Log::LogField`:
+
+```cpp
+// Explicit LogField guarantees the key is clean camelCase:
+PROXY_LOG_INFO("Dedicated worker threads active",
+    Proxy::Log::LogField("workerCount", m_workerThreads.size()));
+
+// Multiple metrics can mix explicit LogField and direct camelCase variables:
+PROXY_LOG_INFO("Starting thread pool",
+    Proxy::Log::LogField("workerCount", m_numWorkerThreads), channelCount);
+```
+
+- **Console Sink**: `[info] [DedicatedThreadStrategy] Dedicated worker threads active [workerCount=3]`
+- **JSON Sink**:
+  ```json
+  {
+    "message": "Dedicated worker threads active",
+    "workerCount": 3
+  }
+  ```
 
 ---
 

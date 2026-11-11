@@ -115,7 +115,7 @@ void HandlerRunner::startAsync(bool registerSignals)
         PosixSignalManager::acquire(this);
     }
     try {
-        PROXY_LOG_INFO("Event loop started", m_handler.inputChannelCount());
+        PROXY_LOG_INFO("Event loop started", Proxy::Log::LogField("inputChannelCount", m_handler.inputChannelCount()));
         m_strategy->start(m_handler);
         m_shutdownThread = Common::Compat::jthread([this, registerSignals](Common::Compat::stop_token stopToken) {
             while (!stopToken.stop_requested()) {

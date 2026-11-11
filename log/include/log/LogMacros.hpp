@@ -170,7 +170,24 @@ std::array<std::string_view, N> parseVariableNames(std::string_view str)
             ++start;
         }
         size_t end = start;
-        while (end < str.size() && str[end] != ',') {
+        int parens = 0;
+        int braces = 0;
+        while (end < str.size()) {
+            if (str[end] == '(') {
+                ++parens;
+            } else if (str[end] == ')') {
+                if (parens > 0) {
+                    --parens;
+                }
+            } else if (str[end] == '{') {
+                ++braces;
+            } else if (str[end] == '}') {
+                if (braces > 0) {
+                    --braces;
+                }
+            } else if (str[end] == ',' && parens == 0 && braces == 0) {
+                break;
+            }
             ++end;
         }
         size_t trimEnd = end;
@@ -202,7 +219,7 @@ void logHybrid(Level level, std::string_view component, std::string_view fmtPatt
         auto formatWithTuple = [&]<size_t... Is>(std::index_sequence<Is...>) {
             return fmt::vformat(fmtPattern, fmt::make_format_args(std::get<Is>(argsTuple)...));
         };
-        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> {});
+        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> { });
     }
 
     if constexpr (FormatArgCount == 0) {
@@ -211,7 +228,7 @@ void logHybrid(Level level, std::string_view component, std::string_view fmtPatt
         auto formatWithTuple = [&]<size_t... Is>(std::index_sequence<Is...>) {
             return fmt::vformat(fmtPattern, fmt::make_format_args(std::get<Is>(argsTuple)...));
         };
-        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> {});
+        formattedMsg = formatWithTuple(std::make_index_sequence<FormatArgCount> { });
     }
 
     size_t idx = 0;
@@ -266,75 +283,82 @@ inline void logSimple(Level level, std::string_view component, std::string_view 
     ::Proxy::Log::logStructured(record);
 }
 
-template <const auto& RawFmt, typename... Args>
-void dispatchFormat(Level level, std::string_view component, std::string_view varNamesStr, const Args&... args)
+constexpr std::string_view extractArgNames(std::string_view allArgsStr) noexcept
 {
-    constexpr size_t namedCount = RawFmt.countNamedPlaceholders();
-    constexpr size_t totalCount = RawFmt.countTotalPlaceholders();
-    constexpr size_t totalArgs = sizeof...(Args);
+    size_t i = 0;
+    while (i < allArgsStr.size() && allArgsStr[i] == ' ') {
+        ++i;
+    }
+    if (i < allArgsStr.size() && allArgsStr[i] == '"') {
+        ++i;
+        while (i < allArgsStr.size()) {
+            if (allArgsStr[i] == '\\' && i + 1 < allArgsStr.size()) {
+                i += 2;
+            } else if (allArgsStr[i] == '"') {
+                ++i;
+                break;
+            } else {
+                ++i;
+            }
+        }
+    }
+    while (i < allArgsStr.size() && (allArgsStr[i] == ' ' || allArgsStr[i] == ',')) {
+        ++i;
+    }
+    if (i >= allArgsStr.size()) {
+        return { };
+    }
+    return allArgsStr.substr(i);
+}
 
-    if constexpr (namedCount > 0 && namedCount <= totalArgs) {
-        // Case 1: Format string has {named} placeholders (and optionally trailing context args)
-        static constexpr auto anonChars = RawFmt.toAnonymous();
-        std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
-        std::array<std::string_view, totalArgs> finalNames;
-        for (size_t i = 0; i < namedCount; ++i) {
-            finalNames[i] = RawFmt.getPlaceholderName(i);
-        }
-        for (size_t i = namedCount; i < totalArgs; ++i) {
-            finalNames[i] = exprNames[i];
-        }
-        logHybrid<namedCount>(level, component, std::string_view(anonChars.data()), finalNames, args...);
-    } else if constexpr (totalCount > 0 && totalCount <= totalArgs) {
-        // Case 2: Format string has anonymous {} placeholders (and optionally trailing context args)
-        std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
-        logHybrid<totalCount>(level, component, std::string_view(RawFmt.data), exprNames, args...);
+template <const auto& RawFmt, typename... Args>
+void dispatchLog(Level level, std::string_view component, std::string_view allArgsStr, const Args&... args)
+{
+    if constexpr (sizeof...(Args) == 0) {
+        logSimple(level, component, std::string_view(RawFmt.data));
     } else {
-        // Case 3: Plain message without placeholders; all trailing arguments become fields
-        logPlain(level, component, std::string_view(RawFmt.data), varNamesStr, args...);
+        constexpr size_t namedCount = RawFmt.countNamedPlaceholders();
+        constexpr size_t totalCount = RawFmt.countTotalPlaceholders();
+        constexpr size_t totalArgs = sizeof...(Args);
+        std::string_view varNamesStr = extractArgNames(allArgsStr);
+
+        if constexpr (namedCount > 0 && namedCount <= totalArgs) {
+            // Case 1: Format string has {named} placeholders (and optionally trailing context args)
+            static constexpr auto anonChars = RawFmt.toAnonymous();
+            std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
+            std::array<std::string_view, totalArgs> finalNames;
+            for (size_t i = 0; i < namedCount; ++i) {
+                finalNames[i] = RawFmt.getPlaceholderName(i);
+            }
+            for (size_t i = namedCount; i < totalArgs; ++i) {
+                finalNames[i] = exprNames[i];
+            }
+            logHybrid<namedCount>(level, component, std::string_view(anonChars.data()), finalNames, args...);
+        } else if constexpr (totalCount > 0 && totalCount <= totalArgs) {
+            // Case 2: Format string has anonymous {} placeholders (and optionally trailing context args)
+            std::array<std::string_view, totalArgs> exprNames = parseVariableNames<totalArgs>(varNamesStr);
+            logHybrid<totalCount>(level, component, std::string_view(RawFmt.data), exprNames, args...);
+        } else {
+            // Case 3: Plain message without placeholders; all trailing arguments become fields
+            logPlain(level, component, std::string_view(RawFmt.data), varNamesStr, args...);
+        }
     }
 }
 
 } // namespace Proxy::Log::Detail
 
-#define PROXY_LOG_EXPAND_ARGS(level, fmtStr, ...)                                 \
+#define PROXY_LOG_EXPAND(level, fmtStr, ...)                                      \
     do {                                                                          \
         if (::Proxy::Log::shouldLog(level)) {                                     \
             static constexpr ::Proxy::Log::Detail::StaticString s_rawFmt(fmtStr); \
-            ::Proxy::Log::Detail::dispatchFormat<s_rawFmt>(                       \
+            ::Proxy::Log::Detail::dispatchLog<s_rawFmt>(                          \
                 level, PROXY_LOG_CURRENT_COMPONENT, #__VA_ARGS__, ##__VA_ARGS__); \
         }                                                                         \
     } while (0)
 
-#define PROXY_LOG_DISPATCH_1(level, msg) \
-    ::Proxy::Log::Detail::logSimple(level, PROXY_LOG_CURRENT_COMPONENT, msg)
-
-#define PROXY_LOG_DISPATCH_N(level, msg, ...) \
-    PROXY_LOG_EXPAND_ARGS(level, msg, __VA_ARGS__)
-
-#define PROXY_LOG_ARG16(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, ...) _16
-
-#define PROXY_LOG_HAS_COMMA(...) \
-    PROXY_LOG_ARG16(__VA_ARGS__, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
-
-#define PROXY_LOG_DISPATCH_CHOOSER(has_comma) \
-    PROXY_LOG_DISPATCH_CHOOSER_IMPL(has_comma)
-
-#define PROXY_LOG_DISPATCH_CHOOSER_IMPL(has_comma) \
-    PROXY_LOG_DISPATCH_CHOOSER_##has_comma
-
-#define PROXY_LOG_DISPATCH_CHOOSER_0(level, ...) \
-    PROXY_LOG_DISPATCH_1(level, __VA_ARGS__)
-
-#define PROXY_LOG_DISPATCH_CHOOSER_1(level, ...) \
-    PROXY_LOG_DISPATCH_N(level, __VA_ARGS__)
-
-#define PROXY_LOG_DISPATCH(level, ...) \
-    PROXY_LOG_DISPATCH_CHOOSER(PROXY_LOG_HAS_COMMA(__VA_ARGS__))(level, __VA_ARGS__)
-
-#define PROXY_LOG_TRACE(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Trace, __VA_ARGS__)
-#define PROXY_LOG_DEBUG(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Debug, __VA_ARGS__)
-#define PROXY_LOG_INFO(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Info, __VA_ARGS__)
-#define PROXY_LOG_WARN(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Warn, __VA_ARGS__)
-#define PROXY_LOG_ERROR(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Error, __VA_ARGS__)
-#define PROXY_LOG_CRITICAL(...) PROXY_LOG_DISPATCH(::Proxy::Log::Level::Critical, __VA_ARGS__)
+#define PROXY_LOG_TRACE(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Trace, __VA_ARGS__)
+#define PROXY_LOG_DEBUG(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Debug, __VA_ARGS__)
+#define PROXY_LOG_INFO(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Info, __VA_ARGS__)
+#define PROXY_LOG_WARN(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Warn, __VA_ARGS__)
+#define PROXY_LOG_ERROR(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Error, __VA_ARGS__)
+#define PROXY_LOG_CRITICAL(...) PROXY_LOG_EXPAND(::Proxy::Log::Level::Critical, __VA_ARGS__)

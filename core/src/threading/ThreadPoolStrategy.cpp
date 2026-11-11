@@ -305,7 +305,7 @@ void ThreadPoolStrategy::start(Handler::IHandler& handler)
     auto* enqueueBackpressureCounter = &Core::Telemetry::MetricsRegistry::instance().counter(
         "queue_enqueue_backpressure_events_total",
         "Queue enqueue attempts that required the blocking path because capacity was unavailable or a producer was contending");
-    PROXY_LOG_INFO("Starting thread pool", m_numWorkerThreads, channelCount);
+    PROXY_LOG_INFO("Starting thread pool", Proxy::Log::LogField("workerCount", m_numWorkerThreads), channelCount);
 
     // 1. Launch pool worker threads with partitioned queues
     for (std::size_t i = 0; i < m_numWorkerThreads; ++i) {
